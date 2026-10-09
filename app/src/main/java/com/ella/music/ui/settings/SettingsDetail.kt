@@ -1,0 +1,328 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
+package com.ella.music.ui.settings
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.verticalScroll
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.ella.music.R
+import com.ella.music.data.SettingsManager
+import com.ella.music.viewmodel.PlayerViewModel
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import com.ella.music.ui.components.EllaSmallTopAppBar
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+enum class SettingsDetailMode {
+    AppearanceHome,
+    LibraryScanning,
+    Integrations,
+    Lyrics
+}
+
+internal fun shouldHandleHomeDisplayBackLocally(
+    showHomeDisplayPage: Boolean,
+    initialHomeDisplay: Boolean
+): Boolean = showHomeDisplayPage && !initialHomeDisplay
+
+@Composable
+fun SettingsDetailScreen(
+    onBack: () -> Unit,
+    onNavigateToLyricFont: () -> Unit,
+    playerViewModel: PlayerViewModel? = null,
+    showOnlyLyrics: Boolean = false,
+    mode: SettingsDetailMode = SettingsDetailMode.AppearanceHome,
+    initialHomeDisplay: Boolean = false,
+    highlightKey: String? = null,
+    onNavigateToScanFolders: (() -> Unit)? = null,
+    onNavigateToNavidromeConfig: (() -> Unit)? = null,
+    onNavigateToOpenSubsonicConfig: (() -> Unit)? = null,
+    onNavigateToEmbyConfig: (() -> Unit)? = null,
+    onNavigateToWebDavConfig: (() -> Unit)? = null,
+    onNavigateToLyricPluginSources: () -> Unit = {},
+    onNavigateToLastFmSettings: () -> Unit = {},
+    onNavigateToBottomNavigationSettings: () -> Unit = {},
+    onNavigateToPlayerShortcutSettings: (String) -> Unit = {},
+    onNavigateToAppearancePage: (String) -> Unit = {},
+    mainViewModel: com.ella.music.viewmodel.MainViewModel? = null,
+    onCloseSettings: (() -> Unit)? = null
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
+    val pageBackground = com.ella.music.ui.components.ellaPageBackground()
+
+    val lyricWesternFontName by settingsManager.lyricWesternFontName.collectAsState(initial = "")
+    val lyricCjkFontName by settingsManager.lyricCjkFontName.collectAsState(initial = "")
+    val homeSectionOrder by settingsManager.homeSectionOrder.collectAsState(initial = SettingsManager.DEFAULT_HOME_SECTION_ORDER)
+    val homeRecentSectionMode by settingsManager.homeRecentSectionMode.collectAsState(
+        initial = SettingsManager.HOME_RECENT_SECTION_MODE_ADDED
+    )
+    val homeHiddenSections by settingsManager.homeHiddenSections.collectAsState(initial = "")
+    val homeTopBarActionOrder by settingsManager.homeTopBarActionOrder.collectAsState(
+        initial = SettingsManager.DEFAULT_HOME_TOP_BAR_ACTION_ORDER
+    )
+    val homeHiddenTopBarActions by settingsManager.homeHiddenTopBarActions.collectAsState(initial = "")
+    val homeLibraryTileOrder by settingsManager.homeLibraryTileOrder.collectAsState(initial = SettingsManager.DEFAULT_HOME_LIBRARY_TILE_ORDER)
+    val homeHiddenLibraryTiles by settingsManager.homeHiddenLibraryTiles.collectAsState(initial = "")
+    val homeOnlineTileOrder by settingsManager.homeOnlineTileOrder.collectAsState(initial = SettingsManager.DEFAULT_HOME_ONLINE_TILE_ORDER)
+    val homeHiddenOnlineTiles by settingsManager.homeHiddenOnlineTiles.collectAsState(initial = "")
+    val homeTilePinButtonsVisible by settingsManager.homeTilePinButtonsVisible.collectAsState(initial = false)
+    val homeSectionItems = listOf(
+        HomePreferenceItem("library", stringResource(R.string.settings_home_section_library), stringResource(R.string.settings_home_section_library_summary)),
+        HomePreferenceItem("recent", stringResource(R.string.settings_home_section_recent), stringResource(R.string.settings_home_section_recent_summary))
+    )
+    val homeTopBarActionItems = listOf(
+        HomePreferenceItem("shuffle", stringResource(R.string.home_daily_shuffle), stringResource(R.string.home_daily_shuffle_summary)),
+        HomePreferenceItem(
+            "analytics",
+            stringResource(R.string.settings_home_top_action_analytics),
+            stringResource(R.string.settings_home_top_actions_summary)
+        ),
+        HomePreferenceItem(
+            "settings",
+            stringResource(R.string.settings_home_top_action_settings),
+            stringResource(R.string.settings_home_top_actions_summary)
+        )
+    )
+    val homeLibraryTileItems = listOf(
+        HomePreferenceItem("poster_wall", stringResource(R.string.poster_wall_title), stringResource(R.string.poster_wall_summary)),
+        HomePreferenceItem("artist", stringResource(R.string.settings_library_tile_artist), stringResource(R.string.settings_library_tile_artist_summary)),
+        HomePreferenceItem("album", stringResource(R.string.settings_library_tile_album), stringResource(R.string.settings_library_tile_album_summary)),
+        HomePreferenceItem("recent_playback", stringResource(R.string.recent_playback_title), stringResource(R.string.settings_home_section_recent_playback_summary)),
+        HomePreferenceItem("folder", stringResource(R.string.settings_library_tile_folder), stringResource(R.string.settings_library_tile_folder_summary)),
+        HomePreferenceItem("folder_tree", stringResource(R.string.settings_library_tile_folder_tree), stringResource(R.string.settings_library_tile_folder_tree_summary)),
+        HomePreferenceItem("folder_playlist", stringResource(R.string.settings_library_tile_folder_playlist), stringResource(R.string.settings_library_tile_folder_playlist_summary)),
+        HomePreferenceItem("playlist", stringResource(R.string.settings_library_tile_playlist), stringResource(R.string.settings_library_tile_playlist_summary)),
+        HomePreferenceItem("genre", stringResource(R.string.settings_library_tile_genre), stringResource(R.string.settings_library_tile_genre_summary)),
+        HomePreferenceItem("year", stringResource(R.string.settings_library_tile_year), stringResource(R.string.settings_library_tile_year_summary)),
+        HomePreferenceItem("composer", stringResource(R.string.settings_library_tile_composer), stringResource(R.string.settings_library_tile_composer_summary)),
+        HomePreferenceItem("arranger", stringResource(R.string.settings_library_tile_arranger), stringResource(R.string.settings_library_tile_arranger_summary)),
+        HomePreferenceItem("lyricist", stringResource(R.string.settings_library_tile_lyricist), stringResource(R.string.settings_library_tile_lyricist_summary))
+    )
+    val homeOnlineTileItems = emptyList<HomePreferenceItem>()
+    val effectiveMode = if (showOnlyLyrics) SettingsDetailMode.Lyrics else mode
+    var showHomeDisplayPage by remember(initialHomeDisplay) { mutableStateOf(initialHomeDisplay) }
+    // Keep both viewports alive while the nested page is open. They are still scoped to this
+    // navigation entry, so leaving the secondary settings page resets them on the next visit.
+    val detailScrollState = rememberSettingsScrollState("settings_detail_${effectiveMode.name}")
+    val homeDisplayScrollState = rememberSettingsScrollState("settings_home_display")
+    val contentScrollState = if (showHomeDisplayPage) homeDisplayScrollState else detailScrollState
+    LaunchedEffect(showHomeDisplayPage) {
+        if (showHomeDisplayPage) homeDisplayScrollState.scrollTo(0)
+    }
+
+    BackHandler(
+        enabled = shouldHandleHomeDisplayBackLocally(showHomeDisplayPage, initialHomeDisplay)
+    ) {
+        showHomeDisplayPage = false
+    }
+
+    val systemBarsMode by settingsManager.systemBarsMode.collectAsState(
+        initial = SettingsManager.SYSTEM_BARS_MODE_SHOW_BOTH
+    )
+    val systemBarsReserveSpace by settingsManager.systemBarsReserveSpace.collectAsState(
+        initial = SettingsManager.DEFAULT_SYSTEM_BARS_RESERVE_SPACE
+    )
+    val shouldReserveStatus = systemBarsReserveSpace || systemBarsMode !in setOf(
+        SettingsManager.SYSTEM_BARS_MODE_HIDE_STATUS,
+        SettingsManager.SYSTEM_BARS_MODE_HIDE_BOTH
+    )
+
+    val settingsBackdrop = rememberLayerBackdrop()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(pageBackground)
+
+    ) {
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(settingsBackdrop)
+                .verticalScroll(contentScrollState)
+                .padding(horizontal = 12.dp)
+        ) {
+            Spacer(modifier = Modifier.height(64.dp + if (shouldReserveStatus) WindowInsets.statusBarsIgnoringVisibility.asPaddingValues().calculateTopPadding() else 0.dp))
+
+            if (effectiveMode == SettingsDetailMode.AppearanceHome) {
+                // Keep the appearance controls composed while Home Display is open. Their
+                // DataStore collectors therefore keep their latest values and switches do not
+                // flash through defaults when the nested page closes (#473).
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (showHomeDisplayPage) Modifier.height(0.dp).clipToBounds() else Modifier)
+                ) {
+                    Column {
+                        SettingsAppearanceSection(
+                            highlightKey = highlightKey,
+                            page = APPEARANCE_PAGE_HUB,
+                            onNavigateToBottomNavigationSettings = onNavigateToBottomNavigationSettings,
+                            onNavigateToPlayerShortcutSettings = onNavigateToPlayerShortcutSettings,
+                            onNavigateToAppearancePage = onNavigateToAppearancePage,
+                            onNavigateToLyricFont = onNavigateToLyricFont,
+                            onNavigateToHomeDisplay = {
+                                showHomeDisplayPage = true
+                                scope.launch { homeDisplayScrollState.scrollTo(0) }
+                            }
+                        )
+                    }
+                }
+                if (!showHomeDisplayPage) {
+                    Spacer(modifier = Modifier.height(160.dp))
+                    return@Column
+                }
+            }
+
+            if (showHomeDisplayPage) {
+                HomeDisplaySettingsPage(
+                    sectionItems = homeSectionItems,
+                    sectionOrder = homeSectionOrder,
+                    recentSectionMode = homeRecentSectionMode,
+                    hiddenSections = homeHiddenSections,
+                    topBarActionItems = homeTopBarActionItems,
+                    topBarActionOrder = homeTopBarActionOrder,
+                    hiddenTopBarActions = homeHiddenTopBarActions,
+                    tileItems = homeLibraryTileItems,
+                    onlineItems = homeOnlineTileItems,
+                    onlineOrder = homeOnlineTileOrder,
+                    hiddenOnlineTiles = homeHiddenOnlineTiles,
+                    tilePinButtonsVisible = homeTilePinButtonsVisible,
+                    highlightKey = highlightKey,
+                    onHiddenSectionsChange = { value ->
+                        scope.launch { settingsManager.setHomeHiddenSections(value) }
+                    },
+                    onHiddenOnlineTilesChange = { value ->
+                        scope.launch { settingsManager.setHomeHiddenOnlineTiles(value) }
+                    },
+                    onSectionOrderChange = { value ->
+                        scope.launch { settingsManager.setHomeSectionOrder(value) }
+                    },
+                    onTopBarActionOrderChange = { value ->
+                        scope.launch { settingsManager.setHomeTopBarActionOrder(value) }
+                    },
+                    onHiddenTopBarActionsChange = { value ->
+                        scope.launch { settingsManager.setHomeHiddenTopBarActions(value) }
+                    },
+                    onRecentSectionModeChange = { value ->
+                        scope.launch { settingsManager.setHomeRecentSectionMode(value) }
+                    },
+                    onOnlineOrderChange = { value ->
+                        scope.launch { settingsManager.setHomeOnlineTileOrder(value) }
+                    },
+                    onTilePinButtonsVisibleChange = { value ->
+                        scope.launch { settingsManager.setHomeTilePinButtonsVisible(value) }
+                    },
+                )
+                Spacer(modifier = Modifier.height(160.dp))
+                return@Column
+            }
+
+            when (effectiveMode) {
+                SettingsDetailMode.AppearanceHome -> {
+                    // Composed above so it remains alive while Home Display is visible.
+                }
+                SettingsDetailMode.LibraryScanning -> {
+                    SettingsLibrarySourceSection(
+                        highlightKey = highlightKey,
+                        onOpenScanFolders = onNavigateToScanFolders,
+                        onOpenNavidromeConfig = onNavigateToNavidromeConfig,
+                        onOpenOpenSubsonicConfig = onNavigateToOpenSubsonicConfig,
+                        onOpenEmbyConfig = onNavigateToEmbyConfig,
+                        onOpenWebDavConfig = onNavigateToWebDavConfig,
+                        mainViewModel = mainViewModel
+                    )
+                    SettingsScanSection(highlightKey = highlightKey)
+                    SettingsTagScrapingSection(highlightKey = highlightKey)
+                }
+                SettingsDetailMode.Integrations -> {
+                    SettingsMcpSection(highlightKey = highlightKey)
+                    SettingsLastFmSection(
+                        highlightKey = highlightKey,
+                        onOpenLastFmSettings = onNavigateToLastFmSettings
+                    )
+                }
+                SettingsDetailMode.Lyrics -> {
+                    SettingsLyricsSection(
+                        playerViewModel = playerViewModel,
+                        highlightKey = highlightKey,
+                        onNavigateToLyricPluginSources = onNavigateToLyricPluginSources
+                    )
+                    SettingsLyricShareSection(highlightKey = highlightKey)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(160.dp))
+        }
+        val closeActionForHomeDisplay = onCloseSettings ?: com.ella.music.ui.components.LocalSettingsCloseAction.current
+        androidx.compose.runtime.CompositionLocalProvider(
+            com.ella.music.ui.components.LocalSettingsCloseAction provides closeActionForHomeDisplay
+        ) {
+            EllaSmallTopAppBar(
+                enableProgressiveBlur = true,
+                backdrop = settingsBackdrop,
+                title = when {
+                    showHomeDisplayPage -> stringResource(R.string.settings_home_display)
+                    effectiveMode == SettingsDetailMode.AppearanceHome -> stringResource(R.string.settings_appearance_home)
+                    effectiveMode == SettingsDetailMode.LibraryScanning -> stringResource(R.string.settings_library_scan)
+                    effectiveMode == SettingsDetailMode.Integrations -> stringResource(R.string.settings_integrations)
+                    else -> stringResource(R.string.settings_lyrics)
+                },
+                color = pageBackground,
+                defaultWindowInsetsPadding = shouldReserveStatus,
+                navigationIcon = {
+                    IconButton(
+                        onClick = {
+                            if (shouldHandleHomeDisplayBackLocally(showHomeDisplayPage, initialHomeDisplay)) {
+                                showHomeDisplayPage = false
+                            } else {
+                                onBack()
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Regular.Back,
+                            contentDescription = stringResource(R.string.common_back),
+                            tint = MiuixTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            )
+        }
+
+    }
+}

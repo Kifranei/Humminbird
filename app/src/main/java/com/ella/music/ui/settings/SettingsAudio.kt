@@ -1,0 +1,758 @@
+package com.ella.music.ui.settings
+
+import android.Manifest
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.verticalScroll
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.ui.zIndex
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.ella.music.R
+import com.ella.music.data.SettingsManager
+import com.ella.music.player.BluetoothAutoPlayReceiver
+import com.ella.music.ui.components.EllaSmallTopAppBar
+import com.ella.music.viewmodel.PlayerViewModel
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.preference.WindowSpinnerPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+@Composable
+fun AudioSettingsScreen(
+    onBack: () -> Unit,
+    playerViewModel: PlayerViewModel? = null,
+    onNavigateToEqualizer: () -> Unit = {},
+    highlightKey: String? = null
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
+    val pageBackground = com.ella.music.ui.components.ellaPageBackground()
+    val settingsBackdrop = rememberLayerBackdrop()
+    val bluetoothAutoPlayPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        scope.launch { settingsManager.setBluetoothAutoPlay(granted) }
+        if (!granted) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.settings_bluetooth_auto_play_permission_denied),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val gaplessPlayback by settingsManager.gaplessPlayback.collectAsState(initial = true)
+    val karaokeAccompanimentEnabled by settingsManager.karaokeAccompanimentEnabled.collectAsState(initial = false)
+    val crossfadeEnabled by settingsManager.crossfadeEnabled.collectAsState(initial = false)
+    val crossfadeDurationMs by settingsManager.crossfadeDurationMs.collectAsState(initial = 0)
+    val crossfadeCurve by settingsManager.crossfadeCurve.collectAsState(
+        initial = SettingsManager.CROSSFADE_CURVE_EQUAL_POWER
+    )
+    val playCountThresholdPercent by settingsManager.playCountThresholdPercent.collectAsState(
+        initial = SettingsManager.DEFAULT_PLAY_COUNT_THRESHOLD_PERCENT
+    )
+    val playCountThresholdDurationMs by settingsManager.playCountThresholdDurationMs.collectAsState(
+        initial = SettingsManager.DEFAULT_PLAY_COUNT_THRESHOLD_DURATION_MS
+    )
+    var showCrossfadeDurationDialog by remember { mutableStateOf(false) }
+    val replayGainMode by settingsManager.replayGainMode.collectAsState(initial = SettingsManager.REPLAY_GAIN_OFF)
+    val replayGainPreamp by settingsManager.replayGainPreampDb.collectAsState(initial = 0f)
+    val resumePlaybackPosition by settingsManager.resumePlaybackPosition.collectAsState(initial = false)
+    val audioFocusDisabled by settingsManager.audioFocusDisabled.collectAsState(initial = false)
+    val shuffleMode by settingsManager.shuffleMode.collectAsState(initial = SettingsManager.SHUFFLE_MODE_PSEUDO)
+    val shuffleReshuffleOnStartup by settingsManager.shuffleReshuffleOnStartup.collectAsState(initial = false)
+    val disableSequentialPlayback by settingsManager.disableSequentialPlayback.collectAsState(initial = false)
+    val playNextMode by settingsManager.playNextMode.collectAsState(initial = SettingsManager.PLAY_NEXT_MODE_REVERSE_STACK)
+    val previousButtonAction by settingsManager.previousButtonAction.collectAsState(initial = SettingsManager.PREVIOUS_BUTTON_PREVIOUS)
+    val pausedSwitchMode by settingsManager.pausedSwitchMode.collectAsState(initial = SettingsManager.PAUSED_SWITCH_MODE_KEEP_PAUSED)
+    val decoderMode by settingsManager.decoderMode.collectAsState(initial = 2)
+    val audioOutputBackend by settingsManager.audioOutputBackend.collectAsState(initial = SettingsManager.AUDIO_OUTPUT_BACKEND_AUTO)
+    val audioOutputBitDepth by settingsManager.audioOutputBitDepth.collectAsState(initial = SettingsManager.AUDIO_OUTPUT_BIT_DEPTH_AUTO)
+    val audioOutputSampleRate by settingsManager.audioOutputSampleRate.collectAsState(initial = SettingsManager.AUDIO_OUTPUT_SAMPLE_RATE_AUTO)
+    val startupPlayMode by settingsManager.startupPlayMode.collectAsState(initial = SettingsManager.STARTUP_PLAY_OFF)
+    val bluetoothAutoPlay by settingsManager.bluetoothAutoPlay.collectAsState(initial = false)
+    val decoderLabels = listOf(
+        stringResource(R.string.settings_audio_decoder_system),
+        stringResource(R.string.settings_audio_decoder_ffmpeg),
+        stringResource(R.string.settings_audio_decoder_auto)
+    )
+    val selectedDecoderMode = decoderMode.coerceIn(decoderLabels.indices)
+    val audioOutputBackendValues = listOf(
+        SettingsManager.AUDIO_OUTPUT_BACKEND_AUTO,
+        SettingsManager.AUDIO_OUTPUT_BACKEND_OPENSLES,
+        SettingsManager.AUDIO_OUTPUT_BACKEND_AAUDIO,
+        SettingsManager.AUDIO_OUTPUT_BACKEND_HI_RES,
+        SettingsManager.AUDIO_OUTPUT_BACKEND_AUDIOTRACK
+    )
+    val audioOutputBackendLabels = listOf(
+        stringResource(R.string.settings_audio_output_backend_auto),
+        stringResource(R.string.settings_audio_output_backend_opensles),
+        stringResource(R.string.settings_audio_output_backend_aaudio),
+        stringResource(R.string.settings_audio_output_backend_hires),
+        stringResource(R.string.settings_audio_output_backend_audiotrack)
+    )
+    val selectedAudioOutputBackendIndex = audioOutputBackendValues.indexOf(audioOutputBackend).let {
+        if (it >= 0) it else 0
+    }
+    val audioOutputBitDepthValues = listOf(
+        SettingsManager.AUDIO_OUTPUT_BIT_DEPTH_AUTO,
+        SettingsManager.AUDIO_OUTPUT_BIT_DEPTH_16,
+        SettingsManager.AUDIO_OUTPUT_BIT_DEPTH_24,
+        SettingsManager.AUDIO_OUTPUT_BIT_DEPTH_32,
+        SettingsManager.AUDIO_OUTPUT_BIT_DEPTH_FLOAT32
+    )
+    val audioOutputBitDepthLabels = listOf(
+        stringResource(R.string.settings_audio_output_auto),
+        stringResource(R.string.settings_audio_output_bit_depth_16),
+        stringResource(R.string.settings_audio_output_bit_depth_24),
+        stringResource(R.string.settings_audio_output_bit_depth_32),
+        stringResource(R.string.settings_audio_output_bit_depth_float32)
+    )
+    val selectedAudioOutputBitDepthIndex = audioOutputBitDepthValues.indexOf(audioOutputBitDepth).let {
+        if (it >= 0) it else 0
+    }
+    val audioOutputSampleRateValues = listOf(SettingsManager.AUDIO_OUTPUT_SAMPLE_RATE_AUTO) +
+        SettingsManager.AUDIO_OUTPUT_SAMPLE_RATES.toList()
+    val audioOutputSampleRateLabels = listOf(stringResource(R.string.settings_audio_output_auto)) +
+        SettingsManager.AUDIO_OUTPUT_SAMPLE_RATES.map { rate ->
+            stringResource(R.string.settings_audio_output_sample_rate_khz, rate / 1000f)
+        }
+    val selectedAudioOutputSampleRateIndex = audioOutputSampleRateValues.indexOf(audioOutputSampleRate).let {
+        if (it >= 0) it else 0
+    }
+    val shuffleModeLabels = listOf(
+        stringResource(R.string.settings_shuffle_mode_pseudo_random),
+        stringResource(R.string.settings_shuffle_mode_true_random)
+    )
+    val selectedShuffleMode = shuffleMode.coerceIn(shuffleModeLabels.indices)
+    val playNextModeLabels = listOf(
+        stringResource(R.string.settings_play_next_mode_reverse_stack),
+        stringResource(R.string.settings_play_next_mode_forward_stack)
+    )
+    val selectedPlayNextMode = playNextMode.coerceIn(playNextModeLabels.indices)
+    val previousButtonLabels = listOf(
+        stringResource(R.string.settings_previous_button_previous),
+        stringResource(R.string.settings_previous_button_replay_current)
+    )
+    val selectedPreviousButtonAction = previousButtonAction.coerceIn(previousButtonLabels.indices)
+    val pausedSwitchModeLabels = listOf(
+        stringResource(R.string.settings_paused_switch_keep_paused),
+        stringResource(R.string.settings_paused_switch_play)
+    )
+    val selectedPausedSwitchMode = pausedSwitchMode.coerceIn(pausedSwitchModeLabels.indices)
+    val replayGainLabels = listOf(
+        stringResource(R.string.settings_replay_gain_off),
+        stringResource(R.string.settings_replay_gain_track),
+        stringResource(R.string.settings_replay_gain_album),
+        stringResource(R.string.settings_replay_gain_auto)
+    )
+    val selectedReplayGainMode = replayGainMode.coerceIn(replayGainLabels.indices)
+    val crossfadeCurveLabels = listOf(
+        stringResource(R.string.settings_crossfade_curve_equal_power),
+        stringResource(R.string.settings_crossfade_curve_linear),
+        stringResource(R.string.settings_crossfade_curve_smooth),
+        stringResource(R.string.settings_crossfade_curve_flat)
+    )
+    val selectedCrossfadeCurve = crossfadeCurve.coerceIn(crossfadeCurveLabels.indices)
+    val crossfadeCurveEntries = listOf(
+        DropdownItem(
+            title = crossfadeCurveLabels[SettingsManager.CROSSFADE_CURVE_EQUAL_POWER],
+            summary = stringResource(R.string.settings_crossfade_curve_equal_power_summary)
+        ),
+        DropdownItem(title = crossfadeCurveLabels[SettingsManager.CROSSFADE_CURVE_LINEAR]),
+        DropdownItem(title = crossfadeCurveLabels[SettingsManager.CROSSFADE_CURVE_SMOOTH]),
+        DropdownItem(
+            title = crossfadeCurveLabels[SettingsManager.CROSSFADE_CURVE_FLAT],
+            summary = stringResource(R.string.settings_crossfade_curve_flat_summary)
+        )
+    )
+    val playCountDurationSeconds = playCountThresholdDurationMs / 1_000
+    val playCountDurationLabel = "%d:%02d".format(
+        java.util.Locale.ROOT,
+        playCountDurationSeconds / 60,
+        playCountDurationSeconds % 60
+    )
+    val startupPlayLabels = listOf(
+        stringResource(R.string.settings_startup_play_off),
+        stringResource(R.string.settings_startup_play_random),
+        stringResource(R.string.settings_startup_play_resume)
+    )
+    val selectedStartupPlayMode = startupPlayMode.coerceIn(startupPlayLabels.indices)
+    val startupPlayEntries = listOf(
+        DropdownItem(
+            title = startupPlayLabels[SettingsManager.STARTUP_PLAY_OFF],
+            summary = stringResource(R.string.settings_startup_play_off_summary)
+        ),
+        DropdownItem(
+            title = startupPlayLabels[SettingsManager.STARTUP_PLAY_RANDOM],
+            summary = stringResource(R.string.settings_startup_play_random_summary)
+        ),
+        DropdownItem(
+            title = startupPlayLabels[SettingsManager.STARTUP_PLAY_RESUME],
+            summary = stringResource(R.string.settings_startup_play_resume_summary)
+        )
+    )
+    val decoderEntries = listOf(
+        DropdownItem(
+            title = decoderLabels[0],
+            summary = stringResource(R.string.settings_audio_decoder_system_summary)
+        ),
+        DropdownItem(
+            title = decoderLabels[1],
+            summary = stringResource(R.string.settings_audio_decoder_ffmpeg_summary)
+        ),
+        DropdownItem(
+            title = decoderLabels[2],
+            summary = stringResource(R.string.settings_audio_decoder_auto_summary)
+        )
+    )
+    val audioOutputBackendEntries = listOf(
+        DropdownItem(
+            title = audioOutputBackendLabels[0],
+            summary = stringResource(R.string.settings_audio_output_backend_auto_summary)
+        ),
+        DropdownItem(
+            title = audioOutputBackendLabels[1],
+            summary = stringResource(R.string.settings_audio_output_backend_compat_summary)
+        ),
+        DropdownItem(
+            title = audioOutputBackendLabels[2],
+            summary = stringResource(R.string.settings_audio_output_backend_compat_summary)
+        ),
+        DropdownItem(
+            title = audioOutputBackendLabels[3],
+            summary = stringResource(R.string.settings_audio_output_backend_hires_summary)
+        ),
+        DropdownItem(
+            title = audioOutputBackendLabels[4],
+            summary = stringResource(R.string.settings_audio_output_backend_audiotrack_summary)
+        )
+    )
+    val audioOutputBitDepthEntries = audioOutputBitDepthLabels.map { DropdownItem(title = it) }
+    val audioOutputSampleRateEntries = audioOutputSampleRateLabels.map { DropdownItem(title = it) }
+    val shuffleModeEntries = listOf(
+        DropdownItem(
+            title = shuffleModeLabels[0],
+            summary = stringResource(R.string.settings_shuffle_mode_pseudo_random_summary)
+        ),
+        DropdownItem(
+            title = shuffleModeLabels[SettingsManager.SHUFFLE_MODE_TRUE_RANDOM],
+            summary = stringResource(R.string.settings_shuffle_mode_true_random_summary)
+        )
+    )
+    val previousButtonEntries = listOf(
+        DropdownItem(
+            title = previousButtonLabels[SettingsManager.PREVIOUS_BUTTON_PREVIOUS],
+            summary = stringResource(R.string.settings_previous_button_previous_summary)
+        ),
+        DropdownItem(
+            title = previousButtonLabels[SettingsManager.PREVIOUS_BUTTON_REPLAY_CURRENT],
+            summary = stringResource(R.string.settings_previous_button_replay_current_summary)
+        )
+    )
+    val pausedSwitchModeEntries = listOf(
+        DropdownItem(
+            title = pausedSwitchModeLabels[SettingsManager.PAUSED_SWITCH_MODE_KEEP_PAUSED],
+            summary = stringResource(R.string.settings_paused_switch_keep_paused_summary)
+        ),
+        DropdownItem(
+            title = pausedSwitchModeLabels[SettingsManager.PAUSED_SWITCH_MODE_PLAY],
+            summary = stringResource(R.string.settings_paused_switch_play_summary)
+        )
+    )
+    val playNextModeEntries = listOf(
+        DropdownItem(
+            title = playNextModeLabels[SettingsManager.PLAY_NEXT_MODE_REVERSE_STACK],
+            summary = stringResource(R.string.settings_play_next_mode_reverse_stack_summary)
+        ),
+        DropdownItem(
+            title = playNextModeLabels[SettingsManager.PLAY_NEXT_MODE_FORWARD_STACK],
+            summary = stringResource(R.string.settings_play_next_mode_forward_stack_summary)
+        )
+    )
+    val replayGainEntries = listOf(
+        DropdownItem(
+            title = replayGainLabels[SettingsManager.REPLAY_GAIN_OFF],
+            summary = stringResource(R.string.settings_replay_gain_off_summary)
+        ),
+        DropdownItem(
+            title = replayGainLabels[SettingsManager.REPLAY_GAIN_TRACK],
+            summary = stringResource(R.string.settings_replay_gain_track_summary)
+        ),
+        DropdownItem(
+            title = replayGainLabels[SettingsManager.REPLAY_GAIN_ALBUM],
+            summary = stringResource(R.string.settings_replay_gain_album_summary)
+        ),
+        DropdownItem(
+            title = replayGainLabels[SettingsManager.REPLAY_GAIN_AUTO],
+            summary = stringResource(R.string.settings_replay_gain_auto_summary)
+        )
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(pageBackground)
+    ) {
+        EllaSmallTopAppBar(
+            modifier = Modifier.zIndex(1f),
+            backdrop = settingsBackdrop,
+            enableProgressiveBlur = true,
+            title = stringResource(R.string.settings_audio_screen_title),
+            color = pageBackground,
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = MiuixIcons.Regular.Back,
+                        contentDescription = stringResource(R.string.common_back),
+                        tint = MiuixTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(settingsBackdrop)
+                .verticalScroll(rememberSettingsScrollState("settings_audio"))
+                .padding(horizontal = 12.dp)
+        ) {
+            Spacer(modifier = Modifier.height(64.dp + WindowInsets.statusBars.asPaddingValues().calculateTopPadding()))
+            SmallTitle(text = stringResource(R.string.equalizer_section_effects))
+
+            SettingsCardGroup(highlight = highlightKey == "audio_effects") {
+                SettingsFocusAnchor(active = highlightKey == "audio_effects") {
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.equalizer_screen_title) {
+                    ArrowPreference(
+                        title = stringResource(R.string.equalizer_screen_title),
+                        summary = stringResource(R.string.settings_audio_equalizer_summary),
+                        onClick = onNavigateToEqualizer
+                    )
+                    } // search-anchor:end
+
+                }
+            }
+
+            SmallTitle(text = stringResource(R.string.settings_audio_output_section))
+
+            SettingsCardGroup(highlight = highlightKey == "audio_output") {
+                Column {
+                    SettingsFocusAnchor(active = highlightKey == "audio_output") {
+                        // search-anchor:start
+                        SettingsSearchAnchor(R.string.settings_audio_output_backend) {
+                        WindowSpinnerPreference(
+                            title = stringResource(R.string.settings_audio_output_backend),
+                            summary = stringResource(R.string.settings_audio_output_backend_summary),
+                            items = audioOutputBackendEntries,
+                            selectedIndex = selectedAudioOutputBackendIndex,
+                            onSelectedIndexChange = { index ->
+                                scope.launch {
+                                    settingsManager.setAudioOutputBackend(audioOutputBackendValues[index])
+                                }
+                            }
+                        )
+                        } // search-anchor:end
+
+                    }
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_audio_output_bit_depth) {
+                    WindowSpinnerPreference(
+                        title = stringResource(R.string.settings_audio_output_bit_depth),
+                        summary = stringResource(R.string.settings_audio_output_bit_depth_summary),
+                        items = audioOutputBitDepthEntries,
+                        selectedIndex = selectedAudioOutputBitDepthIndex,
+                        onSelectedIndexChange = { index ->
+                            scope.launch {
+                                settingsManager.setAudioOutputBitDepth(audioOutputBitDepthValues[index])
+                            }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_audio_output_sample_rate) {
+                    WindowSpinnerPreference(
+                        title = stringResource(R.string.settings_audio_output_sample_rate),
+                        summary = stringResource(R.string.settings_audio_output_sample_rate_summary),
+                        items = audioOutputSampleRateEntries,
+                        selectedIndex = selectedAudioOutputSampleRateIndex,
+                        onSelectedIndexChange = { index ->
+                            scope.launch {
+                                settingsManager.setAudioOutputSampleRate(audioOutputSampleRateValues[index])
+                            }
+                        }
+                    )
+                    } // search-anchor:end
+
+                }
+            }
+
+            SmallTitle(text = stringResource(R.string.settings_playback_section))
+
+            SettingsCardGroup(highlight = highlightKey == "audio_playback") {
+                Column {
+                    SettingsFocusAnchor(active = highlightKey == "audio_playback") {
+                        // search-anchor:start
+                        SettingsSearchAnchor(R.string.settings_gapless_playback) {
+                        SwitchPreference(
+                            title = stringResource(R.string.settings_gapless_playback),
+                            summary = stringResource(R.string.settings_gapless_playback_summary),
+                            checked = gaplessPlayback,
+                            onCheckedChange = {
+                                scope.launch { settingsManager.setGaplessPlayback(it) }
+                            }
+                        )
+                        } // search-anchor:end
+
+                    }
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_karaoke_accompaniment) {
+                    SwitchPreference(
+                        title = stringResource(R.string.settings_karaoke_accompaniment),
+                        summary = stringResource(R.string.settings_karaoke_accompaniment_summary),
+                        checked = karaokeAccompanimentEnabled,
+                        onCheckedChange = {
+                            scope.launch { settingsManager.setKaraokeAccompanimentEnabled(it) }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_crossfade) {
+                    SwitchPreference(
+                        title = stringResource(R.string.settings_crossfade),
+                        summary = stringResource(R.string.settings_crossfade_summary),
+                        checked = crossfadeEnabled,
+                        onCheckedChange = { enabled ->
+                            scope.launch {
+                                settingsManager.setCrossfadeEnabled(enabled)
+                            }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    if (crossfadeEnabled /* search-reveal */ || SettingsSearchFocus.reveals(R.string.settings_crossfade_duration, R.string.settings_crossfade_curve)) {
+                        Column {
+                            // search-anchor:start
+                            SettingsSearchAnchor(R.string.settings_crossfade_duration) {
+                            SettingsIntSliderPreference(
+                                title = stringResource(R.string.settings_crossfade_duration),
+                                summary = "",
+                                value = (crossfadeDurationMs / 10).coerceIn(1, 1_200),
+                                valueRange = 1..1_200,
+                                valueText = stringResource(
+                                    R.string.settings_crossfade_value,
+                                    crossfadeDurationMs / 1_000f
+                                ),
+                                steps = 0,
+                                showKeyPoints = false,
+                                onClick = { showCrossfadeDurationDialog = true },
+                                holdDownState = showCrossfadeDurationDialog,
+                                onValueChange = { centiseconds ->
+                                    scope.launch {
+                                        settingsManager.setCrossfadeDurationMs(
+                                            (centiseconds * 10).coerceIn(10, 12_000)
+                                        )
+                                    }
+                                }
+                            )
+                            } // search-anchor:end
+
+                            // search-anchor:start
+                            SettingsSearchAnchor(R.string.settings_crossfade_curve) {
+                            WindowSpinnerPreference(
+                                title = stringResource(R.string.settings_crossfade_curve),
+                                summary = stringResource(R.string.settings_crossfade_curve_summary),
+                                items = crossfadeCurveEntries,
+                                selectedIndex = selectedCrossfadeCurve,
+                                onSelectedIndexChange = { curve ->
+                                    scope.launch { settingsManager.setCrossfadeCurve(curve) }
+                                }
+                            )
+                            } // search-anchor:end
+
+                        }
+                    }
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_play_count_percent) {
+                    SettingsIntSliderPreference(
+                        title = stringResource(R.string.settings_play_count_percent),
+                        summary = stringResource(
+                            R.string.settings_play_count_percent_summary,
+                            playCountThresholdPercent
+                        ),
+                        value = playCountThresholdPercent,
+                        valueRange = SettingsManager.MIN_PLAY_COUNT_THRESHOLD_PERCENT..
+                            SettingsManager.MAX_PLAY_COUNT_THRESHOLD_PERCENT,
+                        valueText = "$playCountThresholdPercent%",
+                        onValueChange = { percent ->
+                            scope.launch { settingsManager.setPlayCountThresholdPercent(percent) }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_play_count_duration) {
+                    SettingsIntSliderPreference(
+                        title = stringResource(R.string.settings_play_count_duration),
+                        summary = stringResource(
+                            R.string.settings_play_count_duration_summary,
+                            playCountDurationLabel
+                        ),
+                        value = playCountDurationSeconds,
+                        valueRange = 0..360,
+                        valueText = playCountDurationLabel,
+                        onValueChange = { seconds ->
+                            scope.launch {
+                                settingsManager.setPlayCountThresholdDurationMs(seconds * 1_000)
+                            }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_replay_gain) {
+                    WindowSpinnerPreference(
+                        title = stringResource(R.string.settings_replay_gain),
+                        summary = stringResource(R.string.settings_replay_gain_summary),
+                        items = replayGainEntries,
+                        selectedIndex = selectedReplayGainMode,
+                        onSelectedIndexChange = { index ->
+                            scope.launch { settingsManager.setReplayGainMode(index) }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_replay_gain_preamp) {
+                        SettingsFloatSliderPreference(
+                            title = stringResource(R.string.settings_replay_gain_preamp),
+                            summary = stringResource(R.string.settings_replay_gain_preamp_summary),
+                            value = replayGainPreamp,
+                            valueRange = -12f..12f,
+                            manualValueRange = -30f..30f,
+                            valueText = String.format(java.util.Locale.getDefault(), "%+.2f dB", replayGainPreamp),
+                            decimalPlaces = 2,
+                            onValueChange = { scope.launch { settingsManager.setReplayGainPreampDb(it) } }
+                        )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_resume_playback_position) {
+                    SwitchPreference(
+                        title = stringResource(R.string.settings_resume_playback_position),
+                        summary = stringResource(R.string.settings_resume_playback_position_summary),
+                        checked = resumePlaybackPosition,
+                        onCheckedChange = {
+                            scope.launch { settingsManager.setResumePlaybackPosition(it) }
+                            playerViewModel?.setResumePlaybackPositionEnabled(it)
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_startup_play) {
+                    WindowSpinnerPreference(
+                        title = stringResource(R.string.settings_startup_play),
+                        summary = stringResource(R.string.settings_startup_play_summary),
+                        items = startupPlayEntries,
+                        selectedIndex = selectedStartupPlayMode,
+                        onSelectedIndexChange = { index ->
+                            scope.launch { settingsManager.setStartupPlayMode(index) }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_bluetooth_auto_play) {
+                    SwitchPreference(
+                        title = stringResource(R.string.settings_bluetooth_auto_play),
+                        summary = stringResource(R.string.settings_bluetooth_auto_play_summary),
+                        checked = bluetoothAutoPlay,
+                        onCheckedChange = {
+                            if (!it) {
+                                scope.launch { settingsManager.setBluetoothAutoPlay(false) }
+                            } else if (
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                                !BluetoothAutoPlayReceiver.hasBluetoothConnectPermission(context)
+                            ) {
+                                bluetoothAutoPlayPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                            } else {
+                                scope.launch { settingsManager.setBluetoothAutoPlay(true) }
+                            }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_shuffle_mode) {
+                    WindowSpinnerPreference(
+                        title = stringResource(R.string.settings_shuffle_mode),
+                        summary = stringResource(R.string.settings_shuffle_mode_summary),
+                        items = shuffleModeEntries,
+                        selectedIndex = selectedShuffleMode,
+                        onSelectedIndexChange = { index ->
+                            scope.launch { settingsManager.setShuffleMode(index) }
+                            playerViewModel?.setShuffleMode(index)
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_shuffle_reshuffle_on_startup) {
+                    SwitchPreference(
+                        title = stringResource(R.string.settings_shuffle_reshuffle_on_startup),
+                        summary = stringResource(R.string.settings_shuffle_reshuffle_on_startup_summary),
+                        checked = shuffleReshuffleOnStartup,
+                        onCheckedChange = { enabled ->
+                            scope.launch { settingsManager.setShuffleReshuffleOnStartup(enabled) }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_disable_sequential_playback) {
+                    SwitchPreference(
+                        title = stringResource(R.string.settings_disable_sequential_playback),
+                        summary = stringResource(R.string.settings_disable_sequential_playback_summary),
+                        checked = disableSequentialPlayback,
+                        onCheckedChange = { enabled ->
+                            playerViewModel?.setDisableSequentialPlayback(enabled)
+                                ?: scope.launch { settingsManager.setDisableSequentialPlayback(enabled) }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_play_next_mode) {
+                    WindowSpinnerPreference(
+                        title = stringResource(R.string.settings_play_next_mode),
+                        summary = stringResource(R.string.settings_play_next_mode_summary),
+                        items = playNextModeEntries,
+                        selectedIndex = selectedPlayNextMode,
+                        onSelectedIndexChange = { index ->
+                            scope.launch { settingsManager.setPlayNextMode(index) }
+                            playerViewModel?.setPlayNextMode(index)
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_previous_button) {
+                    WindowSpinnerPreference(
+                        title = stringResource(R.string.settings_previous_button),
+                        summary = stringResource(R.string.settings_previous_button_summary),
+                        items = previousButtonEntries,
+                        selectedIndex = selectedPreviousButtonAction,
+                        onSelectedIndexChange = { index ->
+                            scope.launch { settingsManager.setPreviousButtonAction(index) }
+                            playerViewModel?.setPreviousButtonAction(index)
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_paused_switch_mode) {
+                    WindowSpinnerPreference(
+                        title = stringResource(R.string.settings_paused_switch_mode),
+                        summary = stringResource(R.string.settings_paused_switch_mode_summary),
+                        items = pausedSwitchModeEntries,
+                        selectedIndex = selectedPausedSwitchMode,
+                        onSelectedIndexChange = { index ->
+                            scope.launch { settingsManager.setPausedSwitchMode(index) }
+                            playerViewModel?.setPausedSwitchMode(index)
+                        }
+                    )
+                    } // search-anchor:end
+
+                }
+            }
+
+            SmallTitle(text = stringResource(R.string.settings_system_section))
+
+            SettingsCardGroup(highlight = highlightKey == "audio_system") {
+                Column {
+                    SettingsFocusAnchor(active = highlightKey == "audio_system") {
+                        // search-anchor:start
+                        SettingsSearchAnchor(R.string.settings_disable_audio_focus) {
+                        SwitchPreference(
+                            title = stringResource(R.string.settings_disable_audio_focus),
+                            summary = stringResource(R.string.settings_disable_audio_focus_summary),
+                            checked = audioFocusDisabled,
+                            onCheckedChange = {
+                                scope.launch { settingsManager.setAudioFocusDisabled(it) }
+                            }
+                        )
+                        } // search-anchor:end
+
+                    }
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_decoder) {
+                    WindowSpinnerPreference(
+                        title = stringResource(R.string.settings_decoder),
+                        summary = stringResource(R.string.settings_decoder_summary),
+                        items = decoderEntries,
+                        selectedIndex = selectedDecoderMode,
+                        onSelectedIndexChange = { index ->
+                            playerViewModel?.setDecoderMode(index)
+                                ?: scope.launch { settingsManager.setDecoderMode(index) }
+                        }
+                    )
+                    } // search-anchor:end
+
+                }
+            }
+
+            Spacer(modifier = Modifier.height(160.dp))
+        }
+    }
+
+    SettingsSecondsInputDialog(
+        show = showCrossfadeDurationDialog,
+        title = stringResource(R.string.settings_crossfade_duration),
+        summary = stringResource(R.string.settings_duration_input_range, 0.01f, 12f),
+        valueMs = crossfadeDurationMs.coerceIn(10, 12_000),
+        minMs = 10,
+        maxMs = 12_000,
+        onDismissRequest = { showCrossfadeDurationDialog = false },
+        onSave = { durationMs ->
+            scope.launch { settingsManager.setCrossfadeDurationMs(durationMs) }
+        }
+    )
+}

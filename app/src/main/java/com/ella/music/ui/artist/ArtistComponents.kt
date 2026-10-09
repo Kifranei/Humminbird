@@ -1,0 +1,944 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
+package com.ella.music.ui.artist
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.net.Uri
+import android.widget.Toast
+import androidx.annotation.StringRes
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import top.yukonga.miuix.kmp.basic.Button
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.ella.music.R
+import com.ella.music.data.ArtistCoverAsset
+import com.ella.music.data.ArtistCoverKind
+import com.ella.music.data.ArtistDescriptionSaveResult
+import com.ella.music.data.ArtistDescriptionStore
+import com.ella.music.data.SettingsManager
+import com.ella.music.data.lastfm.DEFAULT_LAST_FM_WIKI_REGION
+import com.ella.music.data.lastfm.ARTIST_BIO_LANGUAGES
+import com.ella.music.data.lastfm.ArtistBioMenuSource
+import com.ella.music.data.lastfm.artistBioSourcesForLanguage
+import com.ella.music.data.lastfm.normalizeArtistBioSource
+import com.ella.music.ui.components.EllaMiuixBottomSheet
+import com.ella.music.data.lastfm.ArtistWikiSource
+import com.ella.music.data.lastfm.LastFmArtistWiki
+import com.ella.music.data.lastfm.LastFmVerificationRequiredException
+import com.ella.music.data.lastfm.LastFmSecureStore
+import com.ella.music.data.lastfm.artistBioDownloadAllowed
+import com.ella.music.data.lastfm.fetchLastFmArtistWiki
+import com.ella.music.data.lastfm.isWifiConnected
+import com.ella.music.data.lastfm.normalizeLastFmWikiRegion
+import com.ella.music.data.model.Album
+import com.ella.music.data.model.Song
+import com.ella.music.data.model.formatPlaybackDuration
+import com.ella.music.ui.components.AppleStylePlayButton
+import com.ella.music.ui.components.EllaCenteredLoadingIndicator
+import com.ella.music.ui.components.ArtworkUsage
+import com.ella.music.ui.components.DefaultAlbumCover
+import com.ella.music.ui.components.SafeCoverImage
+import com.ella.music.ui.components.ellaPageBackground
+import com.ella.music.ui.components.rememberSongArtworkState
+import com.ella.music.ui.player.DynamicCoverSource
+import com.ella.music.ui.player.DynamicCoverVideo
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+internal enum class ArtistTab(@param:StringRes val labelRes: Int) {
+    Songs(R.string.artist_tab_songs),
+    ParticipatedAlbums(R.string.artist_tab_participated_albums),
+    ReleaseAlbums(R.string.artist_tab_release_albums),
+    Biography(R.string.artist_tab_biography),
+    MusicVideos(R.string.artist_tab_music_videos)
+}
+
+@Composable
+internal fun ArtistJumpActions(
+    hasComposerCategory: Boolean,
+    hasArrangerCategory: Boolean,
+    hasLyricistCategory: Boolean,
+    hasNeteaseArtist: Boolean,
+    onNeteaseWikiClick: (() -> Unit)? = null,
+    onComposerClick: () -> Unit,
+    onArrangerClick: () -> Unit,
+    onLyricistClick: () -> Unit,
+    onNeteaseClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (hasComposerCategory) {
+            ArtistJumpChip(stringResource(R.string.artist_composer_page), onComposerClick)
+        }
+        if (hasArrangerCategory) {
+            ArtistJumpChip(stringResource(R.string.artist_arranger_page), onArrangerClick)
+        }
+        if (hasLyricistCategory) {
+            ArtistJumpChip(stringResource(R.string.artist_lyricist_page), onLyricistClick)
+        }
+        if (hasNeteaseArtist) {
+            ArtistJumpChip(stringResource(R.string.artist_netease_artist_page), onNeteaseClick)
+            onNeteaseWikiClick?.let { ArtistJumpChip(stringResource(R.string.netease_link_artist_wiki), it) }
+        }
+    }
+}
+
+@Composable
+private fun ArtistJumpChip(text: String, onClick: () -> Unit) {
+    Text(
+        text = text,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        color = MiuixTheme.colorScheme.primary,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.12f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    )
+}
+
+internal fun openUrl(context: Context, url: String) {
+    if (url.isBlank()) return
+    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+}
+
+@Composable
+internal fun ArtistBiographyPanel(
+    artistName: String,
+    songs: List<Song> = emptyList(),
+    downloadMode: Int,
+    onOpenLastFmSettings: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settingsManager = remember(context) { SettingsManager.getInstance(context) }
+    val descriptionStore = remember(context) { ArtistDescriptionStore.getInstance(context) }
+    val lastFmApiKey by LastFmSecureStore.getInstance(context).credentials.collectAsState()
+    val regionCode by settingsManager.artistBioLastFmLang.collectAsState(initial = DEFAULT_LAST_FM_WIKI_REGION)
+    val bioSourceId by settingsManager.artistBioSource.collectAsState(initial = ArtistBioMenuSource.Wikipedia.id)
+    val selectedRegion = normalizeLastFmWikiRegion(regionCode)
+    val selectedLanguage = ARTIST_BIO_LANGUAGES.firstOrNull { it.code == selectedRegion }
+        ?: ARTIST_BIO_LANGUAGES.first()
+    val librarySource by settingsManager.librarySource.collectAsState(initial = "")
+    val neteaseMode = librarySource == SettingsManager.LIBRARY_SOURCE_NETEASE
+    val selectedSource = run {
+        val source = normalizeArtistBioSource(bioSourceId)
+        val available = artistBioSourcesForLanguage(selectedLanguage.code)
+        when {
+            neteaseMode -> ArtistBioMenuSource.Netease
+            source in available -> source
+            else -> available.first()
+        }
+    }
+    var languageSheetVisible by remember { mutableStateOf(false) }
+    // NetEase mode is already streaming from NetEase, so its biography is fetched like the songs are.
+    val allowed = remember(downloadMode, neteaseMode) {
+        neteaseMode || artistBioDownloadAllowed(downloadMode, isWifiConnected(context))
+    }
+    var wiki by remember(artistName, selectedRegion, selectedSource) { mutableStateOf<LastFmArtistWiki?>(null) }
+    var loading by remember(artistName, selectedRegion, selectedSource) { mutableStateOf(allowed) }
+    var failed by remember(artistName, selectedRegion, selectedSource) { mutableStateOf(false) }
+    var errorMessage by remember(artistName, selectedRegion, selectedSource) { mutableStateOf<String?>(null) }
+    var challengeUrl by remember(artistName, selectedRegion, selectedSource) { mutableStateOf<String?>(null) }
+    var showVerificationSheet by remember { mutableStateOf(false) }
+    var retryTrigger by remember { mutableIntStateOf(0) }
+    var saving by remember(artistName, selectedRegion, selectedSource) { mutableStateOf(false) }
+    LaunchedEffect(artistName, allowed, selectedRegion, selectedSource, lastFmApiKey.apiKey, retryTrigger) {
+        if (!allowed) {
+            loading = false
+            failed = false
+            errorMessage = null
+            challengeUrl = null
+            wiki = null
+            return@LaunchedEffect
+        }
+        loading = true
+        failed = false
+        errorMessage = null
+        challengeUrl = null
+        val result = runCatching {
+            fetchLastFmArtistWiki(
+                artistName = artistName,
+                regionCode = selectedRegion,
+                apiKey = lastFmApiKey.apiKey,
+                preferredSource = selectedSource
+            )
+        }
+        result.onSuccess {
+            wiki = it
+            if (it.text.isBlank()) {
+                failed = true
+                errorMessage = context.getString(R.string.artist_biography_empty)
+            }
+        }.onFailure { error ->
+            failed = true
+            if (error is LastFmVerificationRequiredException) {
+                challengeUrl = error.url
+            }
+            errorMessage = error.message?.takeIf { it.isNotBlank() }
+                ?: error.localizedMessage?.takeIf { it.isNotBlank() }
+                ?: error.toString()
+        }
+        loading = false
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { languageSheetVisible = true }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.artist_biography_language),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = stringResource(selectedLanguage.countryNameRes),
+                    fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                )
+            }
+        }
+        EllaMiuixBottomSheet(
+            show = languageSheetVisible,
+            title = stringResource(R.string.artist_biography_language),
+            onDismissRequest = { languageSheetVisible = false }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                ARTIST_BIO_LANGUAGES.forEach { language ->
+                    val sources = artistBioSourcesForLanguage(language.code)
+                    val languageSelected = language.code == selectedLanguage.code
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .then(
+                                if (languageSelected) {
+                                    Modifier.border(
+                                        width = 1.5.dp,
+                                        color = MiuixTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .clickable {
+                                val nextSource = if (selectedSource in sources) selectedSource else sources.first()
+                                languageSheetVisible = false
+                                scope.launch {
+                                    settingsManager.setArtistBioLastFmLang(language.code)
+                                    settingsManager.setArtistBioSource(nextSource.id)
+                                }
+                            }
+                            .padding(horizontal = 10.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = stringResource(language.countryNameRes),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            modifier = Modifier.width(132.dp)
+                        )
+                        Row(modifier = Modifier.weight(1f).horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            sources.forEach { source ->
+                                val sourceSelected = languageSelected && source == selectedSource
+                                val sourceDescription = stringResource(
+                                    when (source) {
+                                        ArtistBioMenuSource.Wikipedia ->
+                                            R.string.artist_biography_source_wikipedia
+                                        ArtistBioMenuSource.LastFm ->
+                                            R.string.artist_image_source_lastfm
+                                        ArtistBioMenuSource.QQ -> R.string.artist_image_source_qq
+                                        ArtistBioMenuSource.Kugou -> R.string.artist_image_source_kugou
+                                        ArtistBioMenuSource.Kuwo -> R.string.artist_image_source_kuwo
+                                        ArtistBioMenuSource.Netease ->
+                                            R.string.artist_image_source_netease
+                                    }
+                                )
+                                val outline = if (sourceSelected) {
+                                    MiuixTheme.colorScheme.primary
+                                } else {
+                                    MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.45f)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .background(MiuixTheme.colorScheme.surfaceContainerHigh)
+                                        .border(1.5.dp, outline, RoundedCornerShape(999.dp))
+                                        .semantics { contentDescription = sourceDescription }
+                                        .clickable {
+                                            languageSheetVisible = false
+                                            scope.launch {
+                                                settingsManager.setArtistBioLastFmLang(language.code)
+                                                settingsManager.setArtistBioSource(source.id)
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    com.ella.music.ui.components.MusicProviderIcon(source.iconRes, sourceDescription)
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        when {
+            !allowed -> Text(
+                text = stringResource(R.string.artist_biography_unavailable),
+                fontSize = 14.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+            )
+            loading -> EllaCenteredLoadingIndicator()
+            failed -> {
+                val errText = errorMessage.orEmpty().ifBlank { stringResource(R.string.artist_biography_failed) }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f))
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = {
+                                val clipboard = context.getSystemService(ClipboardManager::class.java)
+                                clipboard?.setPrimaryClip(ClipData.newPlainText("Biography Error", errText))
+                                Toast.makeText(
+                                    context,
+                                    R.string.artist_biography_error_copied,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        )
+                        .padding(14.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.artist_biography_failed),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MiuixTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = errText,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        color = MiuixTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.artist_biography_error_hint),
+                        fontSize = 11.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    )
+                    if (selectedSource == ArtistBioMenuSource.LastFm) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = stringResource(R.string.lastfm_biography_api_hint),
+                            fontSize = 13.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                        )
+                        Button(onClick = onOpenLastFmSettings, modifier = Modifier.fillMaxWidth()) {
+                            Text(text = stringResource(R.string.lastfm_biography_api_settings))
+                        }
+                    }
+                    if (challengeUrl != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(
+                            onClick = { showVerificationSheet = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(text = stringResource(R.string.lastfm_verification_button))
+                        }
+                    }
+                }
+            }
+            wiki?.text.isNullOrBlank() -> Text(
+                text = stringResource(R.string.artist_biography_empty),
+                fontSize = 14.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+            )
+            else -> {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(
+                        text = wiki?.text.orEmpty(),
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
+                        color = MiuixTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(
+                        when (wiki?.source) {
+                            ArtistWikiSource.QQ -> R.string.artist_biography_read_more_qq
+                            ArtistWikiSource.Kugou -> R.string.artist_biography_read_more_kugou
+                            ArtistWikiSource.Kuwo -> R.string.artist_biography_read_more_kuwo
+                            ArtistWikiSource.Netease -> R.string.artist_biography_read_more_netease
+                            ArtistWikiSource.WikipediaSelected,
+                            ArtistWikiSource.WikipediaEnglish -> R.string.artist_biography_read_more_wikipedia
+                            else -> R.string.artist_biography_read_more
+                        }
+                    ),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MiuixTheme.colorScheme.primary,
+                    modifier = Modifier.clickable {
+                        openUrl(context, wiki?.artistUrl.orEmpty())
+                    }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = stringResource(R.string.artist_biography_save_to_introduction),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (saving) {
+                        MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    } else {
+                        MiuixTheme.colorScheme.primary
+                    },
+                    modifier = Modifier.clickable(enabled = !saving && wiki?.text.orEmpty().isNotBlank()) {
+                        val biography = wiki?.text.orEmpty().trim()
+                        if (biography.isBlank()) return@clickable
+                        saving = true
+                        scope.launch {
+                            val result = runCatching {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    descriptionStore.save(artistName, songs, biography)
+                                }
+                            }
+                            saving = false
+                            result.onSuccess { saveResult ->
+                                val message = when (saveResult) {
+                                    ArtistDescriptionSaveResult.SAVED_TO_NFO ->
+                                        R.string.artist_introduction_saved_nfo
+                                    ArtistDescriptionSaveResult.SAVED_LOCALLY ->
+                                        R.string.artist_introduction_saved_local
+                                    ArtistDescriptionSaveResult.CLEARED ->
+                                        R.string.artist_introduction_cleared
+                                }
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            }.onFailure {
+                                Toast.makeText(
+                                    context,
+                                    R.string.artist_introduction_save_failed,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    }
+    if (showVerificationSheet && challengeUrl != null) {
+        LastFmVerificationSheet(
+            url = challengeUrl!!,
+            onDismissRequest = { showVerificationSheet = false },
+            onOpenApiSettings = {
+                showVerificationSheet = false
+                onOpenLastFmSettings()
+            },
+            onVerified = {
+                showVerificationSheet = false
+                retryTrigger++
+            }
+        )
+    }
+}
+
+@Composable
+internal fun ArtistTabRow(
+    tabs: List<ArtistTab>,
+    selectedTab: ArtistTab,
+    onTabSelected: (ArtistTab) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        tabs.forEach { tab ->
+            val selected = tab == selectedTab
+            Text(
+                text = stringResource(tab.labelRes),
+                fontSize = 14.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = if (selected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier
+                    .wrapContentWidth()
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        if (selected) MiuixTheme.colorScheme.primary
+                        else MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.72f)
+                    )
+                    .clickable { onTabSelected(tab) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+internal fun ArtistHeader(
+    artistName: String,
+    fallbackCoverModel: Any?,
+    customCoverAssets: List<ArtistCoverAsset>,
+    dynamicCoverEnabled: Boolean,
+    carousel: Boolean,
+    songCount: Int,
+    albumCount: Int,
+    onPlayAll: () -> Unit,
+    onIntroductionClick: () -> Unit,
+    showIntroductionEntry: Boolean = true,
+    onPreviewCover: ((Any?) -> Unit)? = null
+) {
+    val headerTextColor = Color.White
+    val headerSubTextColor = Color.White.copy(alpha = 0.78f)
+    val pageBackground = ellaPageBackground()
+    val videoAsset = remember(customCoverAssets) {
+        customCoverAssets.firstOrNull { it.kind == ArtistCoverKind.Video }
+    }
+    val dynamicCoverSource = remember(videoAsset, dynamicCoverEnabled) {
+        if (!dynamicCoverEnabled) null
+        else videoAsset?.let { asset ->
+            DynamicCoverSource(
+                uri = asset.uri,
+                failureKey = "artist-video:${asset.uri}"
+            )
+        }
+    }
+    val imageUris = remember(customCoverAssets) {
+        customCoverAssets.filter { it.kind == ArtistCoverKind.Image }.map { it.uri }
+    }
+    var videoFailed by remember(dynamicCoverSource?.failureKey) { mutableStateOf(false) }
+    var visibleCoverModel by remember(videoAsset, customCoverAssets, fallbackCoverModel, dynamicCoverEnabled) {
+        mutableStateOf<Any?>(
+            (videoAsset?.uri.takeIf { dynamicCoverEnabled })
+                ?: customCoverAssets.firstOrNull { it.kind == ArtistCoverKind.Image }?.uri
+                ?: fallbackCoverModel
+        )
+    }
+    LaunchedEffect(videoFailed) {
+        if (videoFailed && visibleCoverModel == videoAsset?.uri) {
+            visibleCoverModel = customCoverAssets.firstOrNull { it.kind == ArtistCoverKind.Image }?.uri
+                ?: fallbackCoverModel
+        }
+    }
+    val coverInteractionModifier = if (onPreviewCover == null) {
+        Modifier.fillMaxSize()
+    } else {
+        Modifier
+            .fillMaxSize()
+            .combinedClickable(
+                onClick = {},
+                onLongClick = { onPreviewCover(visibleCoverModel) }
+            )
+    }
+    val useDynamicVideo = dynamicCoverSource != null && !videoFailed
+    // Apple Music / coneplayer: taller hero + earlier soft melt for dynamic video covers.
+    val headerHeight = if (useDynamicVideo) 560.dp else 468.dp
+    val meltFadeStart = if (useDynamicVideo) 0.62f else 0.70f
+    val softMeltModifier = Modifier
+        .fillMaxSize()
+        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0.00f to Color.White,
+                        meltFadeStart to Color.White,
+                        0.88f to Color.White.copy(alpha = 0.55f),
+                        1.00f to Color.Transparent
+                    )
+                ),
+                blendMode = BlendMode.DstIn
+            )
+        }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(headerHeight)
+    ) {
+        Box(modifier = coverInteractionModifier) {
+            if (useDynamicVideo) {
+                DynamicCoverVideo(
+                    source = dynamicCoverSource,
+                    isPlaying = true,
+                    onPlaybackError = { videoFailed = true },
+                    modifier = softMeltModifier,
+                    cornerRadiusDp = 0f,
+                    resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                )
+            } else if (imageUris.isNotEmpty()) {
+                ArtistHeaderImageCover(
+                    imageUris = imageUris,
+                    carousel = carousel,
+                    onVisibleUriChange = { visibleCoverModel = it },
+                    modifier = softMeltModifier
+                )
+            } else if (fallbackCoverModel != null) {
+                SafeCoverImage(
+                    model = fallbackCoverModel,
+                    contentDescription = null,
+                    modifier = softMeltModifier,
+                    contentScale = ContentScale.Crop,
+                    sizePx = 3000,
+                    loadOriginal = true
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MiuixTheme.colorScheme.surfaceContainer)
+                )
+            }
+        }
+
+        // Light readability scrim — artwork already soft-melts via DstIn (AM player style).
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.00f to Color.Black.copy(alpha = 0.10f),
+                            0.45f to Color.Transparent,
+                            0.72f to Color.Black.copy(alpha = 0.22f),
+                            0.90f to pageBackground.copy(alpha = 0.55f),
+                            1.00f to pageBackground
+                        )
+                    )
+                )
+        )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 42.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = artistName.ifBlank { stringResource(R.string.player_unknown_artist) },
+                fontSize = 36.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = headerTextColor,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Text(
+                text = stringResource(R.string.artist_album_song_summary, albumCount, songCount),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = headerSubTextColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            if (showIntroductionEntry) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .clickable(onClick = onIntroductionClick)
+                        .padding(horizontal = 2.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.artist_introduction_entry),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = headerSubTextColor
+                    )
+                    Icon(
+                        imageVector = MiuixIcons.Basic.ArrowRight,
+                        contentDescription = null,
+                        tint = headerSubTextColor,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            AppleStylePlayButton(
+                text = stringResource(R.string.play_all),
+                onClick = onPlayAll,
+                modifier = Modifier
+                    .padding(top = 12.dp)
+            )
+        }
+    }
+}
+
+/**
+ * 艺术家头部封面：单图直接显示；多图时按设置在「轮播」（定时淡入淡出切换）与
+ * 「随机」（每次进入随机取一张）之间选择。
+ */
+@Composable
+private fun ArtistHeaderImageCover(
+    imageUris: List<Uri>,
+    carousel: Boolean,
+    onVisibleUriChange: (Uri) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (imageUris.size <= 1) {
+        val uri = imageUris.firstOrNull()
+        if (uri != null) {
+            LaunchedEffect(uri) { onVisibleUriChange(uri) }
+        }
+        SafeCoverImage(
+            model = uri,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.Crop,
+            sizePx = 3000,
+            loadOriginal = true
+        )
+        return
+    }
+
+    if (!carousel) {
+        val randomUri = remember(imageUris) { imageUris.random() }
+        LaunchedEffect(randomUri) { onVisibleUriChange(randomUri) }
+        SafeCoverImage(
+            model = randomUri,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.Crop,
+            sizePx = 3000,
+            loadOriginal = true
+        )
+        return
+    }
+
+    var index by remember(imageUris) { mutableStateOf(0) }
+    LaunchedEffect(imageUris, index) {
+        imageUris.getOrNull(index)?.let(onVisibleUriChange)
+    }
+    LaunchedEffect(imageUris) {
+        while (true) {
+            kotlinx.coroutines.delay(ARTIST_COVER_CAROUSEL_INTERVAL_MS)
+            index = (index + 1) % imageUris.size
+        }
+    }
+    Crossfade(
+        targetState = index,
+        animationSpec = tween(durationMillis = 900),
+        modifier = modifier,
+        label = "artist-cover-carousel"
+    ) { current ->
+        SafeCoverImage(
+            model = imageUris[current.coerceIn(imageUris.indices)],
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            sizePx = 3000,
+            loadOriginal = true
+        )
+    }
+}
+
+private const val ARTIST_COVER_CAROUSEL_INTERVAL_MS = 5000L
+
+@Composable
+internal fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        fontSize = 18.sp,
+        fontWeight = FontWeight.Bold,
+        color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.88f),
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+    )
+}
+
+@Composable
+internal fun ArtistAlbumRow(
+    album: Album,
+    duration: Long,
+    albumArtUri: Uri?,
+    representativeSong: Song?,
+    loadCoverArt: ((Song) -> Bitmap?)?,
+    contextArtistName: String? = null,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
+) {
+    val context = LocalContext.current
+    val coverState = rememberSongArtworkState(
+        song = representativeSong,
+        albumArtUri = albumArtUri,
+        loadCoverArt = loadCoverArt,
+        usage = ArtworkUsage.ArtistImage,
+        showDefaultWhenMissing = false
+    )
+    val coverModel = coverState.model
+    val summary = buildList {
+        add(context.getString(R.string.artist_album_song_summary_detail, album.songCount))
+        add(duration.formatArtistDetailDuration())
+        if (album.year.isNotBlank()) add(album.year)
+        album.contextualAlbumArtist(contextArtistName)?.let(::add)
+    }.joinToString(" · ")
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (selected) MiuixTheme.colorScheme.primary.copy(alpha = 0.10f)
+                else Color.Transparent
+            )
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MiuixTheme.colorScheme.surfaceContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            if (coverModel != null) {
+                SafeCoverImage(
+                    model = coverModel,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    sizePx = 256,
+                    showDefaultPlaceholder = false
+                )
+            } else {
+                DefaultAlbumCover(modifier = Modifier.fillMaxSize())
+            }
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = album.name
+                    .takeUnless(com.ella.music.data.LibraryNormalizer::isGeneratedUnknownAlbumPlaceholder)
+                    ?: stringResource(R.string.player_unknown_album),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MiuixTheme.colorScheme.onSurface
+            )
+            Text(
+                text = summary,
+                fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+            )
+        }
+
+        Icon(
+            imageVector = MiuixIcons.Basic.ArrowRight,
+            contentDescription = null,
+            tint = if (selectionMode && selected) {
+                MiuixTheme.colorScheme.primary
+            } else {
+                MiuixTheme.colorScheme.onSurfaceVariantSummary
+            },
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+private fun Long.formatArtistDetailDuration(): String {
+    return formatPlaybackDuration()
+}
+
+private fun Album.contextualAlbumArtist(contextArtistName: String?): String? {
+    val currentName = contextArtistName?.trim().orEmpty()
+    val albumArtist = albumArtist.trim()
+    return albumArtist.takeIf {
+        it.isNotBlank() && (currentName.isBlank() || !it.equals(currentName, ignoreCase = true))
+    }
+}

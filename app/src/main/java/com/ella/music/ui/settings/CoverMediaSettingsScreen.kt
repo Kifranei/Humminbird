@@ -1,0 +1,910 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
+package com.ella.music.ui.settings
+
+import android.content.Intent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.documentfile.provider.DocumentFile
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.verticalScroll
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.unit.dp
+import com.ella.music.R
+import com.ella.music.data.SettingsManager
+import com.ella.music.data.lastfm.DEFAULT_LAST_FM_WIKI_REGION
+import com.ella.music.data.lastfm.LAST_FM_WIKI_REGIONS
+import com.ella.music.data.lastfm.normalizeLastFmWikiRegion
+import com.ella.music.ui.components.EllaSmallTopAppBar
+import com.ella.music.ui.components.ReorderableSelectionItem
+import com.ella.music.ui.components.ReorderableSelectionSheet
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.preference.WindowSpinnerPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+@Composable
+fun CoverMediaSettingsScreen(
+    onBack: () -> Unit,
+    highlightKey: String? = null
+) {
+    val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
+    val pageBackground = com.ella.music.ui.components.ellaPageBackground()
+    val settingsBackdrop = rememberLayerBackdrop()
+    val context = LocalContext.current
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val systemBarsMode by settingsManager.systemBarsMode.collectAsState(
+        initial = SettingsManager.SYSTEM_BARS_MODE_SHOW_BOTH
+    )
+    val systemBarsReserveSpace by settingsManager.systemBarsReserveSpace.collectAsState(
+        initial = SettingsManager.DEFAULT_SYSTEM_BARS_RESERVE_SPACE
+    )
+    val shouldReserveStatus = systemBarsReserveSpace || systemBarsMode !in setOf(
+        SettingsManager.SYSTEM_BARS_MODE_HIDE_STATUS,
+        SettingsManager.SYSTEM_BARS_MODE_HIDE_BOTH
+    )
+    val statusBarHeight = if (shouldReserveStatus) {
+        WindowInsets.statusBarsIgnoringVisibility.asPaddingValues().calculateTopPadding()
+    } else {
+        0.dp
+    }
+    val topBarHeight = 56.dp + statusBarHeight
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(pageBackground)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(settingsBackdrop)
+                .verticalScroll(rememberSettingsScrollState("settings_cover_media"))
+                .padding(horizontal = 12.dp)
+        ) {
+            Spacer(modifier = Modifier.height(topBarHeight + 8.dp))
+            SettingsArtistCoverSection(highlightKey = highlightKey)
+            SettingsArtistImageSection(highlightKey = highlightKey)
+            SettingsDynamicCoverSection(highlightKey = highlightKey)
+            SettingsSpotifyCanvasSection()
+            SettingsMusicVideoSection(highlightKey = highlightKey)
+            Spacer(modifier = Modifier.height(160.dp))
+        }
+
+        EllaSmallTopAppBar(
+            backdrop = settingsBackdrop,
+            title = stringResource(R.string.settings_cover_media),
+            color = pageBackground,
+            defaultWindowInsetsPadding = shouldReserveStatus,
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = MiuixIcons.Regular.Back,
+                        contentDescription = stringResource(R.string.common_back),
+                        tint = MiuixTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            },
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+    }
+}
+
+@Composable
+internal fun SettingsArtistImageSection(highlightKey: String? = null) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val downloadMode by settingsManager.artistImageDownload.collectCachedAsState(
+        "artistImageDownload",
+        SettingsManager.DEFAULT_ARTIST_IMAGE_DOWNLOAD
+    )
+    val sourceOrderPreference by settingsManager.artistImageSourceOrder.collectCachedAsState(
+        "artistImageSourceOrder",
+        SettingsManager.DEFAULT_ARTIST_IMAGE_SOURCES
+    )
+    val spotifyClientId by settingsManager.spotifyClientId.collectCachedAsState(
+        "spotifyClientId",
+        ""
+    )
+    val spotifyClientSecret by settingsManager.spotifyClientSecret.collectCachedAsState(
+        "spotifyClientSecret",
+        ""
+    )
+    val imageRegion by settingsManager.artistImageRegion.collectCachedAsState(
+        "artistImageRegion",
+        DEFAULT_LAST_FM_WIKI_REGION
+    )
+    val downloadOptions = listOf(
+        SettingsManager.ARTIST_IMAGE_DOWNLOAD_ALWAYS to stringResource(R.string.settings_artist_image_download_always),
+        SettingsManager.ARTIST_IMAGE_DOWNLOAD_WIFI to stringResource(R.string.settings_artist_image_download_wifi),
+        SettingsManager.ARTIST_IMAGE_DOWNLOAD_NEVER to stringResource(R.string.settings_artist_image_download_never)
+    )
+    val selectedDownloadMode = downloadOptions.indexOfFirst { it.first == SettingsManager.normalizeArtistImageDownload(downloadMode) }
+        .coerceAtLeast(0)
+    val spotifyRegion by settingsManager.artistSpotifyRegion.collectAsState(initial = "US")
+    val selectedImageRegion = com.ella.music.data.lastfm.normalizeArtistImageLastFmRegion(imageRegion)
+    val selectedImageRegionIndex = com.ella.music.data.lastfm.ARTIST_IMAGE_LASTFM_REGIONS.indexOfFirst { it.code == selectedImageRegion }
+        .takeIf { it >= 0 } ?: 0
+    val sourceOptions = listOf(
+        SettingsManager.ARTIST_IMAGE_SOURCE_LASTFM to stringResource(R.string.settings_artist_image_source_lastfm),
+        SettingsManager.ARTIST_IMAGE_SOURCE_SPOTIFY to stringResource(R.string.settings_artist_image_source_spotify),
+        SettingsManager.ARTIST_IMAGE_SOURCE_NETEASE to stringResource(R.string.settings_artist_image_source_netease),
+        SettingsManager.ARTIST_IMAGE_SOURCE_KUGOU to stringResource(R.string.artist_image_source_kugou),
+        SettingsManager.ARTIST_IMAGE_SOURCE_QQ to stringResource(R.string.artist_image_source_qq),
+        SettingsManager.ARTIST_IMAGE_SOURCE_KUWO to stringResource(R.string.artist_image_source_kuwo)
+    )
+    val sourceIds = remember(sourceOptions) { sourceOptions.map { it.first } }
+    val sourceLabels = remember(sourceOptions) { sourceOptions.toMap() }
+    val enabledSourceIds = sourceOrderPreference.filter { it in sourceIds }.distinct()
+    val disabledSourceIds = sourceIds.filterNot { it in enabledSourceIds }
+    var showArtistSourceSheet by remember { mutableStateOf(false) }
+
+    fun saveSourceOrder(next: List<String>) {
+        scope.launch { settingsManager.setArtistImageSourceOrder(next) }
+    }
+
+    val artistSourceSelectionItems = remember(enabledSourceIds, disabledSourceIds, sourceLabels) {
+        enabledSourceIds.map { id ->
+            ReorderableSelectionItem(
+                id = id,
+                title = sourceLabels[id] ?: id,
+                enabled = true
+            )
+        } + disabledSourceIds.map { id ->
+            ReorderableSelectionItem(
+                id = id,
+                title = sourceLabels[id] ?: id,
+                enabled = false
+            )
+        }
+    }
+    val defaultArtistSourceItems = remember(sourceLabels) {
+        SettingsManager.DEFAULT_ARTIST_IMAGE_SOURCES.mapNotNull { id ->
+            sourceLabels[id]?.let { label ->
+                ReorderableSelectionItem(
+                    id = id,
+                    title = label,
+                    enabled = true
+                )
+            }
+        }
+    }
+
+    SmallTitle(text = stringResource(R.string.settings_artist_image_download))
+    SettingsCardGroup(
+        highlight = highlightKey == "cover_media"
+    ) {
+        Column {
+            SettingsFocusAnchor(active = highlightKey == "artist_image_download") {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_artist_image_download) {
+                WindowSpinnerPreference(
+                    title = stringResource(R.string.settings_artist_image_download),
+                    summary = stringResource(R.string.settings_artist_image_download_summary),
+                    items = downloadOptions.map { DropdownItem(title = it.second) },
+                    selectedIndex = selectedDownloadMode,
+                    onSelectedIndexChange = { index ->
+                        downloadOptions.getOrNull(index)?.first?.let { mode ->
+                            scope.launch { settingsManager.setArtistImageDownload(mode) }
+                        }
+                    }
+                )
+                } // search-anchor:end
+
+            }
+            SettingsFocusAnchor(active = highlightKey == "artist_image_region") {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_artist_image_region) {
+                WindowSpinnerPreference(
+                    title = stringResource(R.string.settings_artist_image_region),
+                    summary = stringResource(R.string.settings_artist_image_region_summary),
+                    items = com.ella.music.data.lastfm.ARTIST_IMAGE_LASTFM_REGIONS.map {
+                        DropdownItem(title = stringResource(it.countryNameRes))
+                    },
+                    selectedIndex = selectedImageRegionIndex,
+                    onSelectedIndexChange = { index ->
+                        com.ella.music.data.lastfm.ARTIST_IMAGE_LASTFM_REGIONS.getOrNull(index)?.let { region ->
+                            scope.launch { settingsManager.setArtistImageRegion(region.code) }
+                        }
+                    }
+                )
+                } // search-anchor:end
+
+            }
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_artist_spotify_region) {
+                WindowSpinnerPreference(
+                    title = stringResource(R.string.settings_artist_spotify_region),
+                    summary = stringResource(R.string.settings_artist_spotify_region_summary),
+                    items = com.ella.music.data.lastfm.SPOTIFY_ARTIST_REGIONS.map { DropdownItem(title = stringResource(it.countryNameRes)) },
+                    selectedIndex = com.ella.music.data.lastfm.SPOTIFY_ARTIST_REGIONS.indexOfFirst { it.code == spotifyRegion }.coerceAtLeast(0),
+                    onSelectedIndexChange = { index -> com.ella.music.data.lastfm.SPOTIFY_ARTIST_REGIONS.getOrNull(index)?.let { region -> scope.launch { settingsManager.setArtistSpotifyRegion(region.code) } } }
+                )
+            } // search-anchor:end
+            val artistSourceSummary = remember(enabledSourceIds, sourceLabels) {
+                enabledSourceIds.mapNotNull { sourceLabels[it] }.joinToString(" · ")
+            }
+            SettingsFocusAnchor(active = highlightKey == "artist_image_sources") {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_artist_image_sources) {
+                ArrowPreference(
+                    title = stringResource(R.string.settings_artist_image_sources),
+                    summary = artistSourceSummary.ifBlank { stringResource(R.string.settings_artist_image_sources_summary) },
+                    onClick = { showArtistSourceSheet = true }
+                )
+                } // search-anchor:end
+
+            }
+            SettingsFocusAnchor(active = highlightKey == "artist_image_sources") {
+                Column {
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_spotify_client_id) {
+                    SplitSettingTextField(
+                        label = stringResource(R.string.settings_spotify_client_id),
+                        value = spotifyClientId,
+                        summary = stringResource(R.string.settings_spotify_client_id_summary),
+                        singleLine = true,
+                        onValueChange = { value ->
+                            scope.launch { settingsManager.setSpotifyClientId(value) }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_spotify_client_secret) {
+                    SplitSettingTextField(
+                        label = stringResource(R.string.settings_spotify_client_secret),
+                        value = spotifyClientSecret,
+                        summary = stringResource(R.string.settings_spotify_client_secret_summary),
+                        singleLine = true,
+                        isPassword = true,
+                        onValueChange = { value ->
+                            scope.launch { settingsManager.setSpotifyClientSecret(value) }
+                        }
+                    )
+                    } // search-anchor:end
+
+                }
+            }
+        }
+    }
+    ReorderableSelectionSheet(
+        show = showArtistSourceSheet,
+        title = stringResource(R.string.settings_artist_image_sources),
+        subtitle = stringResource(R.string.settings_artist_image_sources_summary),
+        items = artistSourceSelectionItems,
+        defaultItems = defaultArtistSourceItems,
+        onDismissRequest = { showArtistSourceSheet = false },
+        onSave = { updated ->
+            saveSourceOrder(updated.filter { it.enabled }.map { it.id })
+            showArtistSourceSheet = false
+        },
+        onReset = {
+            saveSourceOrder(SettingsManager.DEFAULT_ARTIST_IMAGE_SOURCES)
+            showArtistSourceSheet = false
+        }
+    )
+}
+
+@Composable
+internal fun SettingsArtistCoverSection(highlightKey: String? = null) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    var confirmRemoveFolder by remember { mutableStateOf(false) }
+    val artistCoverFolderUri by settingsManager.artistCoverFolderUri.collectCachedAsState("artistCoverFolderUri", "")
+    val artistCoverDownloadFolderUri by settingsManager.artistCoverDownloadFolderUri.collectCachedAsState("artistCoverDownloadFolderUri", "")
+    val artistCoverCarousel by settingsManager.artistCoverCarousel.collectCachedAsState("artistCoverCarousel", true)
+    val coverExportFolderUri by settingsManager.coverExportFolderUri.collectCachedAsState("coverExportFolderUri", "")
+    val artistCoverFolderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val readOnly = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        val readWrite = readOnly or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(uri, readWrite)
+        }.recoverCatching {
+            context.contentResolver.takePersistableUriPermission(uri, readOnly)
+        }
+        runCatching {
+            DocumentFile.fromTreeUri(context, uri)?.let { root ->
+                if (root.findFile(".nomedia") == null) {
+                    root.createFile("application/octet-stream", ".nomedia")
+                }
+            }
+        }
+        scope.launch { settingsManager.setArtistCoverFolderUri(uri.toString()) }
+        Toast.makeText(context, context.getString(R.string.settings_artist_cover_folder_saved), Toast.LENGTH_SHORT).show()
+    }
+    val artistCoverDownloadFolderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val readWrite = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, readWrite) }
+        runCatching {
+            DocumentFile.fromTreeUri(context, uri)?.let { root ->
+                if (root.findFile(".nomedia") == null) {
+                    root.createFile("application/octet-stream", ".nomedia")
+                }
+            }
+        }
+        scope.launch { settingsManager.setArtistCoverDownloadFolderUri(uri.toString()) }
+        Toast.makeText(context, context.getString(R.string.settings_artist_cover_download_folder_saved), Toast.LENGTH_SHORT).show()
+    }
+    val coverExportFolderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val readWrite = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, readWrite) }
+        scope.launch { settingsManager.setCoverExportFolderUri(uri.toString()) }
+        Toast.makeText(context, context.getString(R.string.settings_cover_export_folder_saved), Toast.LENGTH_SHORT).show()
+    }
+
+    SmallTitle(text = stringResource(R.string.settings_artist_cover_folder))
+    SettingsCardGroup(
+        highlight = highlightKey in setOf("artist_cover_folder", "artist_cover_download_folder", "artist_cover_carousel", "cover_export_folder", "cover_media")
+    ) {
+        Column {
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_artist_cover_folder) {
+            ArrowPreference(
+                title = stringResource(R.string.settings_artist_cover_folder),
+                summary = if (artistCoverFolderUri.isBlank()) {
+                    stringResource(R.string.settings_artist_cover_folder_summary)
+                } else {
+                    stringResource(R.string.settings_artist_cover_folder_selected)
+                },
+                onClick = { artistCoverFolderPicker.launch(null) }
+            )
+            } // search-anchor:end
+
+            if (artistCoverFolderUri.isNotBlank() /* search-reveal */ || SettingsSearchFocus.reveals(R.string.settings_artist_cover_carousel, R.string.settings_artist_cover_folder_remove)) {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_artist_cover_carousel) {
+                SwitchPreference(
+                    title = stringResource(R.string.settings_artist_cover_carousel),
+                    summary = stringResource(R.string.settings_artist_cover_carousel_summary),
+                    checked = artistCoverCarousel,
+                    onCheckedChange = { scope.launch { settingsManager.setArtistCoverCarousel(it) } }
+                )
+                } // search-anchor:end
+
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_artist_cover_folder_remove) {
+                ArrowPreference(
+                    title = stringResource(R.string.settings_artist_cover_folder_remove),
+                    summary = stringResource(R.string.settings_artist_cover_folder_remove_summary),
+                    onClick = {
+                        confirmRemoveFolder = true
+                    }
+                )
+                } // search-anchor:end
+
+            }
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_artist_cover_download_folder) {
+            WindowSpinnerPreference(
+                title = stringResource(R.string.settings_artist_cover_download_folder),
+                items = listOf(
+                    DropdownItem(stringResource(R.string.settings_artist_cover_folder)),
+                    DropdownItem(stringResource(R.string.settings_artist_cover_internal_storage)),
+                    DropdownItem(stringResource(R.string.settings_artist_cover_custom_storage))
+                ),
+                selectedIndex = when (artistCoverDownloadFolderUri) {
+                    "" -> 0
+                    com.ella.music.data.ARTIST_IMAGE_INTERNAL_STORAGE -> 1
+                    else -> 2
+                },
+                onSelectedIndexChange = { index ->
+                    when (index) {
+                        0 -> scope.launch { settingsManager.setArtistCoverDownloadFolderUri("") }
+                        1 -> scope.launch { settingsManager.setArtistCoverDownloadFolderUri(com.ella.music.data.ARTIST_IMAGE_INTERNAL_STORAGE) }
+                        else -> artistCoverDownloadFolderPicker.launch(null)
+                    }
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_cover_export_folder) {
+            ArrowPreference(
+                title = stringResource(R.string.settings_cover_export_folder),
+                summary = if (coverExportFolderUri.isBlank()) {
+                    stringResource(R.string.settings_cover_export_folder_summary)
+                } else {
+                    stringResource(R.string.settings_cover_export_folder_selected)
+                },
+                onClick = { coverExportFolderPicker.launch(null) }
+            )
+            } // search-anchor:end
+
+            if (coverExportFolderUri.isNotBlank() /* search-reveal */ || SettingsSearchFocus.reveals(R.string.settings_cover_export_folder_remove)) {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_cover_export_folder_remove) {
+                ArrowPreference(
+                    title = stringResource(R.string.settings_cover_export_folder_remove),
+                    summary = stringResource(R.string.settings_cover_export_folder_remove_summary),
+                    onClick = {
+                        scope.launch { settingsManager.setCoverExportFolderUri("") }
+                        Toast.makeText(context, context.getString(R.string.settings_cover_export_folder_cleared), Toast.LENGTH_SHORT).show()
+                    }
+                )
+                } // search-anchor:end
+
+            }
+        }
+    }
+    com.ella.music.ui.components.EllaMiuixDialog(
+        show = confirmRemoveFolder,
+        title = stringResource(R.string.settings_artist_cover_folder_remove),
+        summary = stringResource(R.string.settings_artist_cover_folder_remove_confirm),
+        onDismissRequest = { confirmRemoveFolder = false }
+    ) {
+        com.ella.music.ui.components.EllaMiuixDialogActions(
+            cancelText = stringResource(R.string.common_cancel),
+            confirmText = stringResource(R.string.common_confirm),
+            confirmDangerous = true,
+            onCancel = { confirmRemoveFolder = false },
+            onConfirm = {
+                confirmRemoveFolder = false
+                scope.launch { settingsManager.setArtistCoverFolderUri("") }
+            }
+        )
+    }
+
+}
+
+@Composable
+internal fun SettingsDynamicCoverSection(highlightKey: String? = null) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val dynamicCoverEnabled by settingsManager.dynamicCoverEnabled.collectCachedAsState("dynamicCoverEnabled", false)
+    val dynamicCoverCustomFolders by settingsManager.dynamicCoverCustomFoldersRaw.collectCachedAsState(
+        "dynamicCoverCustomFolders",
+        ""
+    )
+    val dynamicCoverPermissionLauncher = rememberDynamicCoverPermissionLauncher(settingsManager)
+    val dynamicCoverFolderPicker = rememberDynamicCoverFolderPicker(
+        currentFolders = dynamicCoverCustomFolders,
+        settingsManager = settingsManager
+    )
+
+    SmallTitle(text = stringResource(R.string.settings_dynamic_cover))
+    SettingsCardGroup(
+        highlight = highlightKey in setOf("dynamic_cover", "cover_media")
+    ) {
+        Column {
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_dynamic_cover) {
+            SwitchPreference(
+                title = stringResource(R.string.settings_dynamic_cover),
+                summary = stringResource(R.string.settings_dynamic_cover_summary),
+                checked = dynamicCoverEnabled,
+                onCheckedChange = {
+                    setDynamicCoverEnabled(context, scope, settingsManager, dynamicCoverPermissionLauncher, it)
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_dynamic_cover_custom_folders) {
+            ArrowPreference(
+                title = stringResource(R.string.settings_dynamic_cover_custom_folders),
+                summary = if (dynamicCoverCustomFolders.isBlank()) {
+                    stringResource(R.string.settings_dynamic_cover_custom_folders_summary)
+                } else {
+                    stringResource(
+                        R.string.settings_dynamic_cover_custom_folders_selected,
+                        dynamicCoverCustomFolders.lineSequence().filter { it.isNotBlank() }.count()
+                    )
+                },
+                onClick = { dynamicCoverFolderPicker.launch(null) }
+            )
+            } // search-anchor:end
+
+            if (dynamicCoverCustomFolders.isNotBlank() /* search-reveal */ || SettingsSearchFocus.reveals(R.string.settings_dynamic_cover_custom_folders_remove)) {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_dynamic_cover_custom_folders_remove) {
+                ArrowPreference(
+                    title = stringResource(R.string.settings_dynamic_cover_custom_folders_remove),
+                    summary = stringResource(R.string.settings_dynamic_cover_custom_folders_remove_summary),
+                    onClick = {
+                        scope.launch { settingsManager.setDynamicCoverCustomFolders("") }
+                    }
+                )
+                } // search-anchor:end
+
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SettingsMusicVideoSection(highlightKey: String? = null) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val neteaseLinkSettings = com.ella.music.data.netease.NeteaseLinks.settings(context).collectAsState().value
+        ?: com.ella.music.data.netease.NeteaseLinks.current(context)
+    val musicVideoSyncEnabled by settingsManager.musicVideoSyncEnabled.collectCachedAsState(
+        "musicVideoSyncEnabled",
+        SettingsManager.DEFAULT_MUSIC_VIDEO_SYNC_ENABLED
+    )
+    val musicVideoCaptureSubtitles by settingsManager.musicVideoCaptureSubtitles.collectCachedAsState(
+        "musicVideoCaptureSubtitles",
+        false
+    )
+    val musicVideoStretchEnabled by settingsManager.musicVideoStretchEnabled.collectCachedAsState(
+        "musicVideoStretchEnabled",
+        SettingsManager.DEFAULT_MUSIC_VIDEO_STRETCH_ENABLED
+    )
+    val musicVideoOrientation by settingsManager.musicVideoOrientation.collectCachedAsState(
+        "musicVideoOrientation",
+        SettingsManager.DEFAULT_MUSIC_VIDEO_ORIENTATION
+    )
+    val musicVideoFullscreenButtonEnabled by settingsManager.musicVideoFullscreenButtonEnabled.collectCachedAsState(
+        "musicVideoFullscreenButtonEnabled",
+        SettingsManager.DEFAULT_MUSIC_VIDEO_FULLSCREEN_BUTTON_ENABLED
+    )
+    val musicVideoLongPressInfoEnabled by settingsManager.musicVideoLongPressInfoEnabled.collectCachedAsState(
+        "musicVideoLongPressInfoEnabled",
+        SettingsManager.DEFAULT_MUSIC_VIDEO_LONG_PRESS_INFO_ENABLED
+    )
+    val musicVideoLongPressImmersiveLyricsEnabled by settingsManager.musicVideoLongPressImmersiveLyricsEnabled.collectCachedAsState(
+        "musicVideoLongPressImmersiveLyricsEnabled",
+        SettingsManager.DEFAULT_MUSIC_VIDEO_LONG_PRESS_IMMERSIVE_LYRICS_ENABLED
+    )
+    val musicVideoImmersiveLyricsHideSystemBars by settingsManager.musicVideoImmersiveLyricsHideSystemBars.collectCachedAsState(
+        "musicVideoImmersiveLyricsHideSystemBars",
+        SettingsManager.DEFAULT_MUSIC_VIDEO_IMMERSIVE_LYRICS_HIDE_SYSTEM_BARS
+    )
+    val playerAlbumCoverCornerRadius by settingsManager.playerAlbumCoverCornerRadius.collectCachedAsState(
+        "playerAlbumCoverCornerRadius",
+        SettingsManager.DEFAULT_PLAYER_ALBUM_COVER_CORNER_RADIUS_DP
+    )
+    val playerMusicVideoCornerRadius by settingsManager.playerMusicVideoCornerRadius.collectCachedAsState(
+        "playerMusicVideoCornerRadius",
+        SettingsManager.DEFAULT_PLAYER_MUSIC_VIDEO_CORNER_RADIUS_DP
+    )
+    val showLocalMusicVideoInLists by settingsManager.showLocalMusicVideoInLists.collectCachedAsState(
+        "showLocalMusicVideoInLists",
+        true
+    )
+    val showOnlineMusicVideoInLists by settingsManager.showOnlineMusicVideoInLists.collectCachedAsState(
+        "showOnlineMusicVideoInLists",
+        true
+    )
+    val musicVideoCustomFolders by settingsManager.musicVideoCustomFoldersRaw.collectCachedAsState(
+        "musicVideoCustomFolders",
+        ""
+    )
+    val musicVideoSyncPermissionLauncher = rememberMusicVideoSyncPermissionLauncher(settingsManager)
+    val musicVideoFolderPicker = rememberMusicVideoFolderPicker(
+        currentFolders = musicVideoCustomFolders,
+        settingsManager = settingsManager
+    )
+    val offsetPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val json = runCatching {
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            }.getOrNull()
+            if (json.isNullOrBlank()) {
+                Toast.makeText(context, R.string.music_video_offsets_import_failed, Toast.LENGTH_SHORT).show()
+            } else {
+                runCatching { com.ella.music.MusicVideoOffsetsParser.parse(json) }
+                    .onSuccess { settingsManager.setMusicVideoOffsetsJson(json) }
+                    .onFailure {
+                        Toast.makeText(context, R.string.music_video_offsets_import_failed, Toast.LENGTH_SHORT).show()
+                    }
+            }
+        }
+    }
+    val musicVideoOrientationOptions = listOf(
+        SettingsManager.MUSIC_VIDEO_ORIENTATION_SYSTEM to stringResource(R.string.settings_music_video_orientation_system),
+        SettingsManager.MUSIC_VIDEO_ORIENTATION_VIDEO to stringResource(R.string.settings_music_video_orientation_video),
+        SettingsManager.MUSIC_VIDEO_ORIENTATION_LANDSCAPE to stringResource(R.string.settings_music_video_orientation_landscape),
+        SettingsManager.MUSIC_VIDEO_ORIENTATION_PORTRAIT to stringResource(R.string.settings_music_video_orientation_portrait)
+    )
+    val selectedMusicVideoOrientation = musicVideoOrientationOptions.indexOfFirst { it.first == musicVideoOrientation }
+        .takeIf { it >= 0 } ?: 0
+    val musicVideoOrientationEntries = remember(musicVideoOrientationOptions) {
+        musicVideoOrientationOptions.map { DropdownItem(title = it.second) }
+    }
+
+    SmallTitle(text = stringResource(R.string.settings_music_video_sync))
+    SettingsCardGroup(
+        highlight = highlightKey in setOf(
+            "music_video",
+            "cover_media",
+            "music_video_fullscreen_button",
+            "music_video_long_press_info",
+            "music_video_long_press_immersive_lyrics",
+            "player_album_cover_corner_radius",
+            "player_music_video_corner_radius"
+        )
+    ) {
+        Column {
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_music_video_sync) {
+            SwitchPreference(
+                title = stringResource(R.string.settings_music_video_sync),
+                summary = stringResource(R.string.settings_music_video_sync_summary),
+                checked = musicVideoSyncEnabled,
+                onCheckedChange = {
+                    setMusicVideoSyncEnabled(context, scope, settingsManager, musicVideoSyncPermissionLauncher, it)
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_music_video_capture_subtitles) {
+            SwitchPreference(
+                title = stringResource(R.string.settings_music_video_capture_subtitles),
+                summary = stringResource(R.string.settings_music_video_capture_subtitles_summary),
+                checked = musicVideoCaptureSubtitles,
+                onCheckedChange = {
+                    scope.launch { settingsManager.setMusicVideoCaptureSubtitles(it) }
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_music_video_stretch) {
+            SwitchPreference(
+                title = stringResource(R.string.settings_music_video_stretch),
+                summary = stringResource(R.string.settings_music_video_stretch_summary),
+                checked = musicVideoStretchEnabled,
+                onCheckedChange = {
+                    scope.launch { settingsManager.setMusicVideoStretchEnabled(it) }
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_music_video_orientation) {
+            WindowSpinnerPreference(
+                title = stringResource(R.string.settings_music_video_orientation),
+                summary = stringResource(R.string.settings_music_video_orientation_summary),
+                items = musicVideoOrientationEntries,
+                selectedIndex = selectedMusicVideoOrientation,
+                onSelectedIndexChange = { index ->
+                    musicVideoOrientationOptions.getOrNull(index)?.first?.let { orientation ->
+                        scope.launch { settingsManager.setMusicVideoOrientation(orientation) }
+                    }
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_music_video_fullscreen_button) {
+            SwitchPreference(
+                title = stringResource(R.string.settings_music_video_fullscreen_button),
+                summary = stringResource(R.string.settings_music_video_fullscreen_button_summary),
+                checked = musicVideoFullscreenButtonEnabled,
+                onCheckedChange = {
+                    scope.launch { settingsManager.setMusicVideoFullscreenButtonEnabled(it) }
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_music_video_long_press_info) {
+            SwitchPreference(
+                title = stringResource(R.string.settings_music_video_long_press_info),
+                summary = stringResource(R.string.settings_music_video_long_press_info_summary),
+                checked = musicVideoLongPressInfoEnabled,
+                onCheckedChange = {
+                    scope.launch { settingsManager.setMusicVideoLongPressInfoEnabled(it) }
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_music_video_long_press_immersive_lyrics) {
+            SwitchPreference(
+                title = stringResource(R.string.settings_music_video_long_press_immersive_lyrics),
+                summary = stringResource(R.string.settings_music_video_long_press_immersive_lyrics_summary),
+                checked = musicVideoLongPressImmersiveLyricsEnabled,
+                onCheckedChange = {
+                    scope.launch { settingsManager.setMusicVideoLongPressImmersiveLyricsEnabled(it) }
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_music_video_immersive_lyrics_hide_system_bars) {
+            SwitchPreference(
+                title = stringResource(R.string.settings_music_video_immersive_lyrics_hide_system_bars),
+                summary = stringResource(R.string.settings_music_video_immersive_lyrics_hide_system_bars_summary),
+                checked = musicVideoImmersiveLyricsHideSystemBars,
+                onCheckedChange = {
+                    scope.launch { settingsManager.setMusicVideoImmersiveLyricsHideSystemBars(it) }
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_player_album_cover_corner_radius) {
+            SettingsIntSliderPreference(
+                title = stringResource(R.string.settings_player_album_cover_corner_radius),
+                summary = stringResource(R.string.settings_player_cover_corner_radius_summary),
+                value = playerAlbumCoverCornerRadius,
+                valueRange = SettingsManager.PLAYER_CORNER_RADIUS_MIN_DP..SettingsManager.PLAYER_CORNER_RADIUS_MAX_DP,
+                valueText = "${playerAlbumCoverCornerRadius}dp",
+                onValueChange = { value -> scope.launch { settingsManager.setPlayerAlbumCoverCornerRadius(value) } }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_player_music_video_corner_radius) {
+            SettingsIntSliderPreference(
+                title = stringResource(R.string.settings_player_music_video_corner_radius),
+                summary = stringResource(R.string.settings_player_cover_corner_radius_summary),
+                value = playerMusicVideoCornerRadius,
+                valueRange = SettingsManager.PLAYER_CORNER_RADIUS_MIN_DP..SettingsManager.PLAYER_CORNER_RADIUS_MAX_DP,
+                valueText = "${playerMusicVideoCornerRadius}dp",
+                onValueChange = { value -> scope.launch { settingsManager.setPlayerMusicVideoCornerRadius(value) } }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_show_local_mv_in_lists) {
+            SwitchPreference(
+                title = stringResource(R.string.settings_show_local_mv_in_lists),
+                summary = stringResource(R.string.settings_show_local_mv_in_lists_summary),
+                checked = showLocalMusicVideoInLists,
+                onCheckedChange = {
+                    scope.launch { settingsManager.setShowLocalMusicVideoInLists(it) }
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_show_online_mv_in_lists) {
+            SwitchPreference(
+                title = stringResource(R.string.settings_show_online_mv_in_lists),
+                summary = stringResource(R.string.settings_show_online_mv_in_lists_summary),
+                checked = showOnlineMusicVideoInLists,
+                onCheckedChange = {
+                    scope.launch { settingsManager.setShowOnlineMusicVideoInLists(it) }
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.netease_link_mv_open_mode) {
+            WindowSpinnerPreference(
+                title = stringResource(R.string.netease_link_mv_open_mode),
+                summary = stringResource(R.string.netease_link_mv_open_mode_summary),
+                items = listOf(
+                    DropdownItem(title = stringResource(R.string.netease_link_mv_open_internal)),
+                    DropdownItem(title = stringResource(R.string.netease_link_mv_open_external))
+                ),
+                selectedIndex = if (neteaseLinkSettings.openMusicVideoExternally) 1 else 0,
+                onSelectedIndexChange = { index ->
+                    com.ella.music.data.netease.NeteaseLinks.update(context) { it.copy(openMusicVideoExternally = index == 1) }
+                }
+            )
+            } // search-anchor:end
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.netease_link_target) {
+            WindowSpinnerPreference(
+                title = stringResource(R.string.netease_link_target),
+                summary = stringResource(R.string.netease_link_target_summary),
+                items = com.ella.music.data.netease.NeteaseLinkTarget.entries.map { DropdownItem(title = stringResource(it.titleRes)) },
+                selectedIndex = com.ella.music.data.netease.NeteaseLinkTarget.entries.indexOf(neteaseLinkSettings.target),
+                onSelectedIndexChange = { index ->
+                    com.ella.music.data.netease.NeteaseLinkTarget.entries.getOrNull(index)?.let { target ->
+                        com.ella.music.data.netease.NeteaseLinks.update(context) { it.copy(target = target) }
+                    }
+                }
+            )
+            } // search-anchor:end
+
+            if (neteaseLinkSettings.target == com.ella.music.data.netease.NeteaseLinkTarget.Custom) {
+                listOf(
+                    com.ella.music.data.netease.NeteaseLinkKind.Song to R.string.netease_link_kind_song,
+                    com.ella.music.data.netease.NeteaseLinkKind.SongWiki to R.string.netease_link_song_wiki,
+                    com.ella.music.data.netease.NeteaseLinkKind.Artist to R.string.netease_link_kind_artist,
+                    com.ella.music.data.netease.NeteaseLinkKind.ArtistWiki to R.string.netease_link_artist_wiki,
+                    com.ella.music.data.netease.NeteaseLinkKind.Album to R.string.netease_link_kind_album,
+                    com.ella.music.data.netease.NeteaseLinkKind.MusicVideo to R.string.netease_link_kind_mv
+                ).forEach { (kind, labelRes) ->
+                    SplitSettingTextField(
+                        label = stringResource(labelRes),
+                        value = neteaseLinkSettings.custom[kind].orEmpty(),
+                        summary = stringResource(
+                            R.string.netease_link_custom_summary,
+                            com.ella.music.data.netease.NeteaseLinks.defaultPrefix(com.ella.music.data.netease.NeteaseLinkTarget.Web, kind)
+                        ),
+                        singleLine = true,
+                        onValueChange = { value ->
+                            com.ella.music.data.netease.NeteaseLinks.update(context) { current ->
+                                current.copy(custom = current.custom + (kind to value))
+                            }
+                        }
+                    )
+                }
+            }
+
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_music_video_custom_folders) {
+            ArrowPreference(
+                title = stringResource(R.string.settings_music_video_custom_folders),
+                summary = if (musicVideoCustomFolders.isBlank()) {
+                    stringResource(R.string.settings_music_video_custom_folders_summary)
+                } else {
+                    stringResource(
+                        R.string.settings_music_video_custom_folders_selected,
+                        musicVideoCustomFolders.lineSequence().filter { it.isNotBlank() }.count()
+                    )
+                },
+                onClick = { musicVideoFolderPicker.launch(null) }
+            )
+            } // search-anchor:end
+
+            if (musicVideoCustomFolders.isNotBlank() /* search-reveal */ || SettingsSearchFocus.reveals(R.string.settings_music_video_custom_folders_remove)) {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_music_video_custom_folders_remove) {
+                ArrowPreference(
+                    title = stringResource(R.string.settings_music_video_custom_folders_remove),
+                    summary = stringResource(R.string.settings_music_video_custom_folders_remove_summary),
+                    onClick = {
+                        scope.launch { settingsManager.setMusicVideoCustomFolders("") }
+                    }
+                )
+                } // search-anchor:end
+
+            }
+            // search-anchor:start
+            SettingsSearchAnchor(R.string.settings_music_video_offsets) {
+            ArrowPreference(
+                title = stringResource(R.string.settings_music_video_offsets),
+                summary = stringResource(R.string.settings_music_video_offsets_summary),
+                onClick = { offsetPicker.launch(arrayOf("application/json", "text/plain")) }
+            )
+            } // search-anchor:end
+
+        }
+    }
+}

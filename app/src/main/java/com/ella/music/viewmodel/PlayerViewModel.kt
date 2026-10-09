@@ -1,0 +1,2512 @@
+package com.ella.music.viewmodel
+
+import android.app.Application
+import coil3.toBitmap
+import coil3.request.allowHardware
+import android.graphics.Bitmap
+import android.os.SystemClock
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.ella.music.data.AppLogStore
+import com.ella.music.data.CategoryResumeStore
+import com.ella.music.data.lastfm.LastFmHistoryStore
+import com.ella.music.data.lastfm.ListeningHistorySource
+import com.ella.music.data.PlaylistStore
+import com.ella.music.data.PlaybackStatsStore
+import com.ella.music.data.SettingsManager
+import com.ella.music.ui.player.interludes
+import com.ella.music.data.model.LyricLine
+import com.ella.music.data.model.Song
+import com.ella.music.data.model.UserPlaylist
+import com.ella.music.data.model.playlistIdentityKey
+import com.ella.music.data.model.shiftedBy
+import com.ella.music.data.remote.OpenSubsonicCollectionsStore
+import com.ella.music.data.remote.NavidromeService
+import com.ella.music.data.remote.RemoteMusicProvider
+import com.ella.music.data.remote.SavedRemoteServer
+import com.ella.music.data.remote.isSubsonicLike
+import com.ella.music.data.repository.CoverUsage
+import com.ella.music.data.repository.MusicRepository
+import com.ella.music.data.repository.isWebDavRemoteSong
+import com.ella.music.player.DesktopLyricBridge
+import com.ella.music.player.ExoPlayerManager
+import com.ella.music.player.LyricGetterBridge
+import com.ella.music.player.LiveLyricNotificationBridge
+import com.ella.music.player.buildLiveLyricSecondaryText
+import com.ella.music.player.buildLiveLyricNotificationText
+import com.ella.music.player.LyriconBridge
+import com.ella.music.player.MediaNotificationLyricPatchPolicy
+import com.ella.music.player.PlaybackService
+import com.ella.music.player.PlaybackWidgetUpdater
+import com.ella.music.player.SuperLyricBridge
+import com.ella.music.player.TickerBridge
+import com.ella.music.player.XiaomiSuperIslandLyricBridge
+import com.ella.music.player.adjacentPlaylistIndex
+import com.ella.music.player.isSamePlaybackIdentity
+import androidx.media3.common.Player
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private const val LYRIC_POSITION_BACKWARD_DRIFT_TOLERANCE_MS = 600L
+// Compose lyrics interpolate between position samples on the display clock. 10 Hz is therefore
+// visually smooth while avoiding a 20 Hz controller query / bridge dispatch loop all day.
+private const val PLAYBACK_POSITION_UPDATE_INTERVAL_MS = 100L
+private const val SEEK_EXTERNAL_LYRIC_SYNC_DEBOUNCE_MS = 80L
+private const val LIVE_UPDATE_ARTWORK_SIZE = 256
+private const val AB_REPEAT_MIN_LENGTH_MS = 300L
+private const val AB_REPEAT_LOOP_GUARD_MS = 250L
+
+private const val DECODER_MODE_AUTO = 2
+
+class PlayerViewModel(application: Application) : AndroidViewModel(application) {
+    private data class LiveLyricNotificationState(
+        val songKey: String,
+        val lineIndex: Int,
+        val wordIndex: Int,
+        val mode: Int,
+        val displayMode: Int,
+        val secondaryMode: Int,
+        val lyric: String,
+        val compactLyric: String,
+        val allowLongCompactLyric: Boolean,
+        val preserveCompactLyric: Boolean,
+        val secondaryLyric: String?
+    )
+
+    companion object {
+        private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    }
+
+    private val repository = MusicRepository.getInstance(application)
+    val playerManager = ExoPlayerManager(application)
+    val settingsManager = SettingsManager.getInstance(application)
+    private val playCountThresholdPercent = settingsManager.playCountThresholdPercent.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        SettingsManager.DEFAULT_PLAY_COUNT_THRESHOLD_PERCENT
+    )
+    private val playCountThresholdDurationMs = settingsManager.playCountThresholdDurationMs.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        SettingsManager.DEFAULT_PLAY_COUNT_THRESHOLD_DURATION_MS
+    )
+    val lyriconBridge = LyriconBridge(application)
+    val tickerBridge = TickerBridge(application)
+    private val liveLyricNotificationBridge = LiveLyricNotificationBridge(application)
+    private val xiaomiSuperIslandLyricBridge = XiaomiSuperIslandLyricBridge(application, viewModelScope)
+    val desktopLyricBridge = DesktopLyricBridge(application)
+    val superLyricBridge = SuperLyricBridge()
+    val lyricGetterBridge = LyricGetterBridge(application)
+    private val playlistStore = PlaylistStore.getInstance(application)
+    private val openSubsonicCollectionsStore = OpenSubsonicCollectionsStore.getInstance(application)
+    private val playbackStatsStore = PlaybackStatsStore.getInstance(application)
+    private val lastFmHistoryStore = LastFmHistoryStore.getInstance(application)
+    private val navidromeService = NavidromeService(application)
+    private val playbackStatsTracker = PlayerPlaybackStatsTracker(
+        playbackStatsStore = playbackStatsStore,
+        onPlayCounted = { song ->
+            // Never hold the 10 Hz position/lyrics loop on a network request.
+            viewModelScope.launch(Dispatchers.IO) {
+                val config = when (song.onlineSource) {
+                    RemoteMusicProvider.Navidrome.id -> settingsManager.navidromeConfig.first()
+                    RemoteMusicProvider.OpenSubsonic.id -> settingsManager.openSubsonicConfig.first()
+                    else -> null
+                }
+                if (config?.isConfigured == true && song.onlineId.isNotBlank()) {
+                    runCatching { navidromeService.scrobble(config, song.onlineId) }
+                        .onFailure { AppLogStore.warn(application, "SubsonicScrobble", "Failed to scrobble ${song.title}", it) }
+                }
+            }
+        },
+        onLastFmScrobbleEligible = { song, startedAt ->
+            viewModelScope.launch(Dispatchers.IO) {
+                val source = ListeningHistorySource.fromPreference(settingsManager.listeningHistorySource.first())
+                if (source.usesLastFm) {
+                    lastFmHistoryStore.enqueueScrobble(song, startedAt)
+                }
+            }
+        }
+    )
+    private val lazyOnlineQueueController = PlayerLazyOnlineQueueController(viewModelScope, playerManager)
+    private val playbackSettingsBridge = PlayerPlaybackSettingsBridge(
+        application = application,
+        scope = viewModelScope,
+        settingsManager = settingsManager,
+        playerManager = playerManager,
+        repository = repository
+    )
+
+    val currentSong: StateFlow<Song?> = playerManager.currentSong
+    val isPlaying: StateFlow<Boolean> = playerManager.isPlaying
+    val playWhenReady: StateFlow<Boolean> = playerManager.playWhenReady
+    val currentPosition: StateFlow<Long> = playerManager.currentPosition
+    val duration: StateFlow<Long> = playerManager.duration
+    val shuffleEnabled: StateFlow<Boolean> = playerManager.shuffleEnabled
+    val queueLocked: StateFlow<Boolean> = playerManager.queueLocked
+    val repeatMode: StateFlow<Int> = playerManager.repeatMode
+    val playbackSpeed: StateFlow<Float> = playerManager.playbackSpeed
+    val playbackPitch: StateFlow<Float> = playerManager.playbackPitch
+    val playlist: StateFlow<List<Song>> = playerManager.playlistFlow
+    val currentQueueIndex: StateFlow<Int> = playerManager.currentQueueIndex
+
+    private fun resolveAdjacentSong(
+        playlist: List<Song>,
+        currentIndex: Int,
+        currentSong: Song?,
+        repeatMode: Int,
+        offset: Int
+    ): Song? {
+        if (playlist.isEmpty()) return null
+        val fromIndex = currentIndex.takeIf { it in playlist.indices }
+            ?: currentSong?.let { song -> playlist.indexOfFirst { it.isSamePlaybackIdentity(song) }.takeIf { it >= 0 } }
+            ?: 0
+        val targetIndex = adjacentPlaylistIndex(
+            currentIndex = fromIndex,
+            offset = offset,
+            queueSize = playlist.size,
+            wrap = repeatMode != Player.REPEAT_MODE_OFF
+        ) ?: return null
+        return playlist.getOrNull(targetIndex)
+    }
+
+    val previousSong: StateFlow<Song?> = combine(
+        playlist,
+        currentQueueIndex,
+        currentSong,
+        repeatMode
+    ) { list, index, song, repeat ->
+        resolveAdjacentSong(list, index, song, repeat, -1)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val nextSong: StateFlow<Song?> = combine(
+        playlist,
+        currentQueueIndex,
+        currentSong,
+        repeatMode
+    ) { list, index, song, repeat ->
+        resolveAdjacentSong(list, index, song, repeat, 1)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    private val _abRepeatState = MutableStateFlow(AbRepeatState())
+    internal val abRepeatState: StateFlow<AbRepeatState> = _abRepeatState.asStateFlow()
+    val userPlaylists: StateFlow<List<UserPlaylist>> = playlistStore.playlists
+    val favoriteSongKeys: StateFlow<Set<String>> = combine(
+        playlistStore.playlists.map { playlists ->
+            playlists
+                .firstOrNull { it.isFavorites }
+                ?.songs
+                ?.mapTo(mutableSetOf()) { it.key }
+                ?: emptySet()
+        },
+        openSubsonicCollectionsStore.favoriteSongKeys,
+        com.ella.music.data.netease.NeteaseLibraryStore.getInstance(application).favorites
+    ) { localFavorites, remoteFavorites, neteaseFavorites ->
+        localFavorites + remoteFavorites + neteaseFavorites.map { it.playlistIdentityKey() }
+    }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, playlistStore.favoriteSongKeys())
+
+    private val _rawLyrics = MutableStateFlow<List<LyricLine>>(emptyList())
+    private val _lyrics = MutableStateFlow<List<LyricLine>>(emptyList())
+    /**
+     * The backing lyric list is intentionally retained while a replacement is loaded so a
+     * transient controller emission does not blank every surface.  It must not, however, be
+     * presented for the new song.  Keep the identity beside the list and expose only a matching
+     * list to Compose and other consumers.
+     */
+    private val _lyricsSongKey = MutableStateFlow<String?>(null)
+    val lyrics: StateFlow<List<LyricLine>> = combine(
+        currentSong,
+        _lyrics,
+        _lyricsSongKey
+    ) { song, lines, loadedSongKey ->
+        if (song != null && loadedSongKey == song.lyricIdentityKey()) lines else emptyList()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val _lyricsLoading = MutableStateFlow(false)
+    val lyricsLoading: StateFlow<Boolean> = combine(
+        currentSong,
+        _lyricsLoading,
+        _lyricsSongKey
+    ) { song, loading, loadedSongKey ->
+        song != null && (loading || loadedSongKey != song.lyricIdentityKey())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    private val _currentLyricOffsetMs = MutableStateFlow(0L)
+    val currentLyricOffsetMs: StateFlow<Long> = _currentLyricOffsetMs.asStateFlow()
+
+    fun cycleRemoteStreamQuality() {
+        val song = currentSong.value ?: return
+        val provider = RemoteMusicProvider.fromId(song.onlineSource)
+        if (!provider.isSubsonicLike) return
+        viewModelScope.launch {
+            val activeId: String
+            val servers: List<SavedRemoteServer>
+            when (provider) {
+                RemoteMusicProvider.Navidrome -> {
+                    activeId = settingsManager.navidromeActiveServerId.first()
+                    servers = settingsManager.navidromeServers.first()
+                }
+                RemoteMusicProvider.OpenSubsonic -> {
+                    activeId = settingsManager.openSubsonicActiveServerId.first()
+                    servers = settingsManager.openSubsonicServers.first()
+                }
+                else -> return@launch
+            }
+            val server = servers.firstOrNull { it.id == activeId } ?: return@launch
+            val nextBitRate = when (server.config.streamMaxBitRate) {
+                0 -> 320
+                320 -> 192
+                192 -> 128
+                else -> 0
+            }
+            val updatedServer = server.copy(config = server.config.copy(streamMaxBitRate = nextBitRate))
+            when (provider) {
+                RemoteMusicProvider.Navidrome -> settingsManager.upsertNavidromeServer(updatedServer)
+                RemoteMusicProvider.OpenSubsonic -> settingsManager.upsertOpenSubsonicServer(updatedServer)
+            }
+
+            val currentIndex = playlist.value.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+            val position = currentPosition.value
+            val wasPlaying = isPlaying.value
+            val updatedQueue = playlist.value.map { queued ->
+                if (queued.onlineSource == provider.id && queued.onlineId.isNotBlank()) {
+                    queued.copy(path = navidromeService.streamUrl(updatedServer.config, queued.onlineId, nextBitRate))
+                } else {
+                    queued
+                }
+            }
+            playerManager.replacePlaylistPreservingQueueLock(updatedQueue, currentIndex)
+            playerManager.seekTo(position)
+            if (!wasPlaying) playerManager.pause()
+        }
+    }
+
+    private val _lyricFormatAvailability = MutableStateFlow(MusicRepository.LyricFormatAvailability())
+    val lyricFormatAvailability: StateFlow<MusicRepository.LyricFormatAvailability> =
+        _lyricFormatAvailability.asStateFlow()
+
+    private val _preferTtmlLyrics = MutableStateFlow<Boolean?>(null)
+    val preferTtmlLyrics: StateFlow<Boolean?> = _preferTtmlLyrics.asStateFlow()
+
+    private val _currentLyricIndex = MutableStateFlow(-1)
+    val currentLyricIndex: StateFlow<Int> = _currentLyricIndex.asStateFlow()
+
+    private val _showLyrics = MutableStateFlow(false)
+    val showLyrics: StateFlow<Boolean> = _showLyrics.asStateFlow()
+
+    private val _showLyricTranslation = MutableStateFlow(true)
+    val showLyricTranslation: StateFlow<Boolean> = _showLyricTranslation.asStateFlow()
+
+    private val _showLyricPronunciation = MutableStateFlow(true)
+    val showLyricPronunciation: StateFlow<Boolean> = _showLyricPronunciation.asStateFlow()
+
+    private val _locateCurrentSongRequest = MutableStateFlow(0)
+    val locateCurrentSongRequest: StateFlow<Int> = _locateCurrentSongRequest.asStateFlow()
+
+    private val sleepTimerController = PlayerSleepTimerController(
+        scope = viewModelScope,
+        currentSong = { currentSong.value },
+        duration = { duration.value },
+        currentPosition = { currentPosition.value },
+        onPause = { playerManager.pause() }
+    )
+    val sleepTimerEndRealtimeMs: StateFlow<Long?> = sleepTimerController.sleepTimerEndRealtimeMs
+    val stopAfterCurrentEnabled: StateFlow<Boolean> = sleepTimerController.stopAfterCurrentEnabled
+
+    private var positionUpdateJob: Job? = null
+    private var seekExternalLyricSyncJob: Job? = null
+    private var lastSentPlayingState: Boolean? = null
+    private var lastTickerPayload: Pair<String, String?>? = null
+    private var lastLiveUpdateLyricPayload: LiveLyricNotificationState? = null
+    private var liveUpdateArtwork: Bitmap? = null
+
+    /**
+     * NetEase (and other online) songs have no embedded art: their cover is a URL. Load it through
+     * Coil so the Super Island / live-update notifications show the album cover instead of the app icon.
+     */
+    private suspend fun remoteNotificationArtwork(song: Song): Bitmap? {
+        val url = song.coverUrl.takeIf { it.startsWith("http") } ?: return null
+        val sized = if (song.onlineSource == "netease" && "param=" !in url) {
+            url.replaceFirst("http://", "https://") + (if ('?' in url) "&" else "?") + "param=${LIVE_UPDATE_ARTWORK_SIZE}y${LIVE_UPDATE_ARTWORK_SIZE}"
+        } else url
+        return runCatching {
+            val context = getApplication<Application>()
+            coil3.SingletonImageLoader.get(context).execute(
+                coil3.request.ImageRequest.Builder(context)
+                    .data(sized)
+                    .size(LIVE_UPDATE_ARTWORK_SIZE)
+                    // Notification code reads pixels (accent colour, rounding); HARDWARE bitmaps forbid that.
+                    .allowHardware(false)
+                    .build()
+            ).image?.toBitmap()?.let { bitmap ->
+                if (bitmap.config == Bitmap.Config.HARDWARE) bitmap.copy(Bitmap.Config.ARGB_8888, false) else bitmap
+            }
+        }.getOrNull()
+    }
+    private var bluetoothLyricEnabled = false
+    private var bluetoothLyricTranslationEnabled = true
+    private var bluetoothLyricPronunciationEnabled = false
+    private var lyriconTranslationEnabled = true
+    private var lyriconPronunciationEnabled = false
+    private var samsungFloatingLyricTranslationEnabled = false
+    private var statusBarAllowPhoneticEnabled = false
+    private var tickerHideNotificationEnabled = false
+    private var liveUpdateLyricEnabled = false
+    private var liveUpdateLyricMode = SettingsManager.LIVE_UPDATE_LYRIC_MODE_ORIGINAL
+    private var liveUpdateLyricDisplayMode = SettingsManager.LIVE_UPDATE_LYRIC_DISPLAY_MODE_COMPACT
+    private var liveUpdateLyricSecondaryMode = SettingsManager.LIVE_UPDATE_LYRIC_SECONDARY_MODE_SONG
+    private var xiaomiSuperIslandLyricEnabled = false
+    private var desktopLyricHideWhenPausedEnabled = false
+    private var desktopLyricStatusBarModeEnabled = false
+    private var desktopLyricStatusBarHideWhenPausedEnabled = false
+    private var superLyricTranslationEnabled = true
+    private var superLyricPronunciationEnabled = false
+    private var lyricSourceMode = SettingsManager.LYRIC_SOURCE_AUTO
+    private var lyricOffsetOverrides = emptyMap<String, Long>()
+    private var lyricBlacklistRules = emptyList<LyricBlacklistRule>()
+    private var hideLyricExtraInfo = true
+    private var lyricOpeningTemplate = ""
+    private var lyricOpeningAsFallback = false
+    private var appliedDecoderMode: Int? = null
+    private var appliedLyricSourceMode: Int? = null
+    private var previousButtonAction = SettingsManager.PREVIOUS_BUTTON_PREVIOUS
+    private var pausedSwitchMode = SettingsManager.PAUSED_SWITCH_MODE_KEEP_PAUSED
+    private var manualSeekAfterPreviousButton = false
+    private var lastBluetoothLyricPayload: Pair<String, String?>? = null
+    private var bluetoothLyricRetryJob: Job? = null
+    private var externalLyricResendJob: Job? = null
+    private var loadedLyricSongKey: String? = null
+    private var lastLyricPositionSongKey: String? = null
+    private var lastLyricPositionMs: Long = 0L
+    private var suppressLeadingZeroLyric = false
+    private var lastAbRepeatLoopAtMs = 0L
+    private var activeResumeCategoryKey: String? = null
+    private val _playbackSourceKey = MutableStateFlow<String?>(null)
+    val playbackSourceKey: StateFlow<String?> = _playbackSourceKey.asStateFlow()
+
+    /** Return lyrics only when the list belongs to the currently playing song. */
+    private fun loadedLyricsForCurrentSong(): List<LyricLine> {
+        val songKey = currentSong.value?.lyricIdentityKey() ?: return emptyList()
+        return _lyrics.value.takeIf { _lyricsSongKey.value == songKey }.orEmpty()
+    }
+
+    init {
+        com.ella.music.data.PlaybackSourceNavigation.attach(getApplication())
+        _playbackSourceKey.value = com.ella.music.data.PlaybackSourceNavigation.resolvedSourceKey()
+        playerManager.connect()
+        startPositionUpdates()
+        observeCurrentSong()
+        prewarmTimelineWaveforms()
+        observeWebDavMetadataRevision()
+        observePlayState()
+        initLyricon()
+        initTicker()
+        initLiveUpdateLyric()
+        initXiaomiSuperIslandLyric()
+        initDesktopLyric()
+        initSuperLyric()
+        initLyricGetter()
+        initLyricPageTranslation()
+        initBluetoothLyric()
+        playbackSettingsBridge.initShuffleMode()
+        playbackSettingsBridge.initShufflePolicies()
+        playbackSettingsBridge.initPlayNextMode()
+        initPreviousButtonAction()
+        initPausedSwitchMode()
+        playbackSettingsBridge.initResumePlaybackPosition()
+        initDecoderMode()
+        playbackSettingsBridge.initAudioFocusMode()
+        playbackSettingsBridge.initPlaybackOutputSettings()
+        playbackSettingsBridge.initReplayGain()
+        initLyricSourceMode()
+        initLyricLineBlacklist()
+        initLyricExtraInfoFilter()
+        initLyricHeaderTagFilter()
+        initLyricOffsetOverrides()
+        initLyricOpeningTemplate()
+        playbackSettingsBridge.initBluetoothAutoPlay()
+        playbackSettingsBridge.initExternalPlaybackSync()
+        lazyOnlineQueueController.observePlaybackEnd()
+    }
+
+    private fun initLyricon() {
+        viewModelScope.launch {
+            val enabled = settingsManager.lyriconEnabled.first()
+            lyriconTranslationEnabled = settingsManager.lyriconTranslation.first()
+            lyriconPronunciationEnabled = settingsManager.lyriconPronunciation.first()
+            if (lyriconTranslationEnabled && lyriconPronunciationEnabled) {
+                lyriconTranslationEnabled = false
+                settingsManager.setLyriconTranslation(false)
+            }
+            lyriconBridge.setSecondaryMode(currentLyriconSecondaryMode())
+            lyriconBridge.setEnabled(enabled)
+            if (enabled) resendExternalLyrics()
+        }
+        viewModelScope.launch {
+            settingsManager.lyriconTranslation.distinctUntilChanged().collect { enabled ->
+                lyriconTranslationEnabled = enabled
+                if (enabled && lyriconPronunciationEnabled) {
+                    lyriconPronunciationEnabled = false
+                    settingsManager.setLyriconPronunciation(false)
+                }
+                lyriconBridge.setSecondaryMode(currentLyriconSecondaryMode())
+                if (lyriconBridge.isEnabled()) resendExternalLyrics(force = true)
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.lyriconPronunciation.distinctUntilChanged().collect { enabled ->
+                lyriconPronunciationEnabled = enabled
+                if (enabled && lyriconTranslationEnabled) {
+                    lyriconTranslationEnabled = false
+                    settingsManager.setLyriconTranslation(false)
+                }
+                lyriconBridge.setSecondaryMode(currentLyriconSecondaryMode())
+                if (lyriconBridge.isEnabled()) resendExternalLyrics(force = true)
+            }
+        }
+    }
+
+    private fun initTicker() {
+        viewModelScope.launch {
+            val enabled = settingsManager.tickerEnabled.first()
+            val hideNotification = true
+            if (settingsManager.tickerHideNotification.first() != hideNotification) {
+                settingsManager.setTickerHideNotification(hideNotification)
+            }
+            tickerHideNotificationEnabled = hideNotification
+            samsungFloatingLyricTranslationEnabled = settingsManager.samsungFloatingLyricTranslation.first()
+            statusBarAllowPhoneticEnabled = settingsManager.statusBarAllowPhonetic.first()
+            tickerBridge.setHideNotification(hideNotification)
+            tickerBridge.setHeadsUpLyricsEnabled(settingsManager.tickerHeadsUpLyrics.first())
+            tickerBridge.setEnabled(enabled)
+            if (enabled) resendTickerLyric()
+        }
+        viewModelScope.launch {
+            settingsManager.tickerHideNotification.distinctUntilChanged().collect { enabled ->
+                if (!enabled) {
+                    settingsManager.setTickerHideNotification(true)
+                    return@collect
+                }
+                tickerHideNotificationEnabled = true
+                tickerBridge.setHideNotification(true)
+                lastTickerPayload = null
+                if (tickerBridge.isEnabled()) resendTickerLyric(force = true)
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.tickerHeadsUpLyrics.distinctUntilChanged().collect { enabled ->
+                tickerBridge.setHeadsUpLyricsEnabled(enabled)
+                lastTickerPayload = null
+                if (tickerBridge.isEnabled()) resendTickerLyric(force = true)
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.samsungFloatingLyricTranslation.distinctUntilChanged().collect { enabled ->
+                samsungFloatingLyricTranslationEnabled = enabled
+                if (samsungFloatingLyricTranslationEnabled && statusBarAllowPhoneticEnabled) {
+                    statusBarAllowPhoneticEnabled = false
+                    settingsManager.setStatusBarAllowPhonetic(false)
+                }
+                lastTickerPayload = null
+                if (tickerBridge.isEnabled()) resendTickerLyric()
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.statusBarAllowPhonetic.distinctUntilChanged().collect { enabled ->
+                statusBarAllowPhoneticEnabled = enabled
+                if (enabled && samsungFloatingLyricTranslationEnabled) {
+                    samsungFloatingLyricTranslationEnabled = false
+                    settingsManager.setSamsungFloatingLyricTranslation(false)
+                }
+                lastTickerPayload = null
+                if (tickerBridge.isEnabled()) resendTickerLyric(force = true)
+            }
+        }
+    }
+
+    private fun initLiveUpdateLyric() {
+        viewModelScope.launch {
+            liveUpdateLyricEnabled = settingsManager.liveUpdateLyricEnabled.first()
+            liveUpdateLyricMode = settingsManager.liveUpdateLyricMode.first()
+            liveUpdateLyricDisplayMode = settingsManager.liveUpdateLyricDisplayMode.first()
+            liveUpdateLyricSecondaryMode = settingsManager.liveUpdateLyricSecondaryMode.first()
+            liveLyricNotificationBridge.setEnabled(liveUpdateLyricEnabled)
+            if (liveUpdateLyricEnabled) resendLiveUpdateLyric(force = true)
+        }
+        viewModelScope.launch {
+            settingsManager.liveUpdateLyricEnabled.distinctUntilChanged().collect { enabled ->
+                liveUpdateLyricEnabled = enabled
+                lastLiveUpdateLyricPayload = null
+                liveLyricNotificationBridge.setEnabled(enabled)
+                if (enabled) resendLiveUpdateLyric(force = true) else liveLyricNotificationBridge.clear()
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.liveUpdateLyricMode.distinctUntilChanged().collect { mode ->
+                liveUpdateLyricMode = mode
+                lastLiveUpdateLyricPayload = null
+                if (liveUpdateLyricEnabled) resendLiveUpdateLyric(force = true)
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.liveUpdateLyricDisplayMode.distinctUntilChanged().collect { mode ->
+                liveUpdateLyricDisplayMode = mode
+                lastLiveUpdateLyricPayload = null
+                if (liveUpdateLyricEnabled) resendLiveUpdateLyric(force = true)
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.liveUpdateLyricSecondaryMode.distinctUntilChanged().collect { mode ->
+                liveUpdateLyricSecondaryMode = mode
+                lastLiveUpdateLyricPayload = null
+                if (liveUpdateLyricEnabled) resendLiveUpdateLyric(force = true)
+            }
+        }
+    }
+
+    private fun initXiaomiSuperIslandLyric() {
+        viewModelScope.launch {
+            settingsManager.xiaomiSuperIslandSettings.distinctUntilChanged().collect { settings ->
+                xiaomiSuperIslandLyricBridge.setSettings(settings)
+                if (xiaomiSuperIslandLyricEnabled) resendXiaomiSuperIslandLyric()
+            }
+        }
+        viewModelScope.launch {
+            xiaomiSuperIslandLyricEnabled = settingsManager.xiaomiSuperIslandLyricEnabled.first()
+            xiaomiSuperIslandLyricBridge.setEnabled(xiaomiSuperIslandLyricEnabled)
+            if (xiaomiSuperIslandLyricEnabled) resendXiaomiSuperIslandLyric()
+        }
+        viewModelScope.launch {
+            settingsManager.xiaomiSuperIslandLyricEnabled.distinctUntilChanged().collect { enabled ->
+                xiaomiSuperIslandLyricEnabled = enabled
+                xiaomiSuperIslandLyricBridge.setEnabled(enabled)
+                if (enabled) resendXiaomiSuperIslandLyric()
+            }
+        }
+    }
+
+    private fun initDesktopLyric() {
+        viewModelScope.launch {
+            desktopLyricStatusBarModeEnabled = settingsManager.desktopLyricStatusBarMode.first()
+            desktopLyricHideWhenPausedEnabled = settingsManager.desktopLyricHideWhenPaused.first()
+            desktopLyricStatusBarHideWhenPausedEnabled = settingsManager.desktopLyricStatusBarHideWhenPaused.first()
+        }
+        viewModelScope.launch {
+            settingsManager.desktopLyricEnabled.distinctUntilChanged().collect { enabled ->
+                desktopLyricBridge.setEnabled(enabled)
+                if (enabled) {
+                    resendDesktopLyric()
+                }
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.desktopLyricHideWhenPaused.distinctUntilChanged().collect { enabled ->
+                desktopLyricHideWhenPausedEnabled = enabled
+                if (!desktopLyricStatusBarModeEnabled && enabled && !isPlaying.value) {
+                    desktopLyricBridge.clearLyric()
+                } else {
+                    resendDesktopLyric()
+                }
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.desktopLyricStatusBarMode.distinctUntilChanged().collect { statusBarMode ->
+                desktopLyricStatusBarModeEnabled = statusBarMode
+                if (activeDesktopLyricHideWhenPaused() && !isPlaying.value) desktopLyricBridge.clearLyric()
+                else resendDesktopLyric()
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.desktopLyricStatusBarHideWhenPaused.distinctUntilChanged().collect { enabled ->
+                desktopLyricStatusBarHideWhenPausedEnabled = enabled
+                if (desktopLyricStatusBarModeEnabled && enabled && !isPlaying.value) desktopLyricBridge.clearLyric()
+                else resendDesktopLyric()
+            }
+        }
+    }
+
+    private fun activeDesktopLyricHideWhenPaused(): Boolean =
+        if (desktopLyricStatusBarModeEnabled) desktopLyricStatusBarHideWhenPausedEnabled
+        else desktopLyricHideWhenPausedEnabled
+
+    private fun initSuperLyric() {
+        viewModelScope.launch {
+            val enabled = settingsManager.superLyricEnabled.first()
+            superLyricTranslationEnabled = settingsManager.superLyricTranslation.first()
+            superLyricPronunciationEnabled = settingsManager.superLyricPronunciation.first()
+            if (superLyricTranslationEnabled && superLyricPronunciationEnabled) {
+                superLyricTranslationEnabled = false
+                settingsManager.setSuperLyricTranslation(false)
+            }
+            superLyricBridge.setSecondaryMode(currentSuperLyricSecondaryMode())
+            superLyricBridge.setEnabled(enabled)
+            if (enabled) resendSuperLyric()
+        }
+        viewModelScope.launch {
+            settingsManager.superLyricTranslation.distinctUntilChanged().collect { enabled ->
+                superLyricTranslationEnabled = enabled
+                if (enabled && superLyricPronunciationEnabled) {
+                    superLyricPronunciationEnabled = false
+                    settingsManager.setSuperLyricPronunciation(false)
+                }
+                superLyricBridge.setSecondaryMode(currentSuperLyricSecondaryMode())
+                if (superLyricBridge.isEnabled()) resendSuperLyric(force = true)
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.superLyricPronunciation.distinctUntilChanged().collect { enabled ->
+                superLyricPronunciationEnabled = enabled
+                if (enabled && superLyricTranslationEnabled) {
+                    superLyricTranslationEnabled = false
+                    settingsManager.setSuperLyricTranslation(false)
+                }
+                superLyricBridge.setSecondaryMode(currentSuperLyricSecondaryMode())
+                if (superLyricBridge.isEnabled()) resendSuperLyric(force = true)
+            }
+        }
+    }
+
+    private fun initLyricGetter() {
+        viewModelScope.launch {
+            settingsManager.lyricGetterEnabled.distinctUntilChanged().collect { enabled ->
+                lyricGetterBridge.setEnabled(enabled)
+                if (enabled) resendLyricGetter(force = true)
+            }
+        }
+    }
+
+    private fun currentLyriconSecondaryMode(): LyriconBridge.SecondaryMode =
+        lyriconSecondaryMode(
+            translationEnabled = lyriconTranslationEnabled,
+            pronunciationEnabled = lyriconPronunciationEnabled
+        )
+
+    private fun currentSuperLyricSecondaryMode(): SuperLyricBridge.SecondaryMode =
+        superLyricSecondaryMode(
+            translationEnabled = superLyricTranslationEnabled,
+            pronunciationEnabled = superLyricPronunciationEnabled
+        )
+
+    private fun initBluetoothLyric() {
+        viewModelScope.launch {
+            bluetoothLyricTranslationEnabled = settingsManager.bluetoothLyricTranslation.first()
+            bluetoothLyricPronunciationEnabled = settingsManager.bluetoothLyricPronunciation.first()
+            if (bluetoothLyricTranslationEnabled && bluetoothLyricPronunciationEnabled) {
+                bluetoothLyricTranslationEnabled = false
+                settingsManager.setBluetoothLyricTranslation(false)
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.bluetoothLyricEnabled.distinctUntilChanged().collect { enabled ->
+                bluetoothLyricEnabled = enabled
+                lastBluetoothLyricPayload = null
+
+                if (enabled) {
+                    resendBluetoothLyric()
+                } else {
+                    bluetoothLyricRetryJob?.cancel()
+                    playerManager.clearBluetoothLyric()
+                }
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.bluetoothLyricTranslation.distinctUntilChanged().collect { enabled ->
+                bluetoothLyricTranslationEnabled = enabled
+                if (enabled && bluetoothLyricPronunciationEnabled) {
+                    bluetoothLyricPronunciationEnabled = false
+                    settingsManager.setBluetoothLyricPronunciation(false)
+                }
+                lastBluetoothLyricPayload = null
+                if (bluetoothLyricEnabled) resendBluetoothLyric(force = true)
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.bluetoothLyricPronunciation.distinctUntilChanged().collect { enabled ->
+                bluetoothLyricPronunciationEnabled = enabled
+                if (enabled && bluetoothLyricTranslationEnabled) {
+                    bluetoothLyricTranslationEnabled = false
+                    settingsManager.setBluetoothLyricTranslation(false)
+                }
+                lastBluetoothLyricPayload = null
+                if (bluetoothLyricEnabled) resendBluetoothLyric(force = true)
+            }
+        }
+    }
+
+    private fun initPreviousButtonAction() {
+        viewModelScope.launch {
+            settingsManager.previousButtonAction.distinctUntilChanged().collect { action ->
+                previousButtonAction = action.coerceIn(
+                    SettingsManager.PREVIOUS_BUTTON_PREVIOUS,
+                    SettingsManager.PREVIOUS_BUTTON_REPLAY_CURRENT
+                )
+            }
+        }
+    }
+
+    private fun initPausedSwitchMode() {
+        viewModelScope.launch {
+            settingsManager.pausedSwitchMode.distinctUntilChanged().collect { mode ->
+                pausedSwitchMode = mode.coerceIn(
+                    SettingsManager.PAUSED_SWITCH_MODE_KEEP_PAUSED,
+                    SettingsManager.PAUSED_SWITCH_MODE_PLAY
+                )
+            }
+        }
+    }
+
+    private fun initDecoderMode() {
+        viewModelScope.launch {
+            settingsManager.decoderMode.collect { mode ->
+                if (appliedDecoderMode == null) {
+                    appliedDecoderMode = mode
+                    return@collect
+                }
+                if (appliedDecoderMode == mode) return@collect
+                appliedDecoderMode = mode
+                if (mode != DECODER_MODE_AUTO) {
+                    PlaybackService.decoderModeOverride.value = null
+                }
+                playerManager.recreatePlaybackService()
+                AppLogStore.info(getApplication(), "PlayerDecoder", "Decoder mode changed to $mode")
+            }
+        }
+    }
+
+    private fun initLyricSourceMode() {
+        viewModelScope.launch {
+            settingsManager.lyricSourceMode.distinctUntilChanged().collect { mode ->
+                val safeMode = mode.coerceIn(SettingsManager.LYRIC_SOURCE_AUTO, SettingsManager.LYRIC_SOURCE_EMBEDDED)
+                if (appliedLyricSourceMode == null) {
+                    appliedLyricSourceMode = safeMode
+                    lyricSourceMode = safeMode
+                    return@collect
+                }
+                if (appliedLyricSourceMode == safeMode) return@collect
+                appliedLyricSourceMode = safeMode
+                lyricSourceMode = safeMode
+                currentSong.value?.let { reloadLyrics(it, force = true) }
+            }
+        }
+    }
+
+    private fun initLyricOffsetOverrides() {
+        viewModelScope.launch {
+            settingsManager.lyricOffsetOverrides.distinctUntilChanged().collect { overrides ->
+                lyricOffsetOverrides = overrides
+                applyCurrentLyricOffset(notifyExternal = true)
+            }
+        }
+    }
+
+    private fun initLyricLineBlacklist() {
+        viewModelScope.launch {
+            var initialized = false
+            settingsManager.lyricLineBlacklist.distinctUntilChanged().collect { rules ->
+                lyricBlacklistRules = rules.map(::LyricBlacklistRule)
+                if (!initialized) {
+                    initialized = true
+                    applyCurrentLyricOffset(notifyExternal = false)
+                    return@collect
+                }
+                applyCurrentLyricOffset(notifyExternal = true)
+            }
+        }
+    }
+
+    private fun initLyricExtraInfoFilter() {
+        viewModelScope.launch {
+            var initialized = false
+            settingsManager.hideLyricExtraInfo.distinctUntilChanged().collect { enabled ->
+                hideLyricExtraInfo = enabled
+                if (!initialized) {
+                    initialized = true
+                    applyCurrentLyricOffset(notifyExternal = false)
+                    return@collect
+                }
+                applyCurrentLyricOffset(notifyExternal = true)
+            }
+        }
+    }
+
+    private fun initLyricOpeningTemplate() {
+        viewModelScope.launch {
+            var initialized = false
+            combine(
+                settingsManager.lyricOpeningTemplate,
+                settingsManager.lyricOpeningAsFallback
+            ) { template, fallback ->
+                template to fallback
+            }.distinctUntilChanged().collect { (template, fallback) ->
+                lyricOpeningTemplate = template
+                lyricOpeningAsFallback = fallback
+                if (!initialized) {
+                    initialized = true
+                    applyCurrentLyricOffset(notifyExternal = false)
+                    return@collect
+                }
+                applyCurrentLyricOffset(notifyExternal = true)
+            }
+        }
+    }
+
+    private fun initLyricHeaderTagFilter() {
+        viewModelScope.launch {
+            var initialized = false
+            settingsManager.ignoreLyricHeaderTags.distinctUntilChanged().collect {
+                if (!initialized) {
+                    initialized = true
+                    return@collect
+                }
+                currentSong.value?.let { song -> reloadLyrics(song, force = true) }
+            }
+        }
+    }
+
+    private fun sendBluetoothLyric(index: Int, lyrics: List<LyricLine>) {
+        if (!bluetoothLyricEnabled) return
+        if (!playerManager.isPlaying.value) return
+
+        val payload = lyrics.bluetoothPayloadAt(
+            index = index,
+            includeTranslation = bluetoothLyricTranslationEnabled,
+            includePronunciation = bluetoothLyricPronunciationEnabled
+        ) ?: return
+        if (payload == lastBluetoothLyricPayload) return
+
+        if (playerManager.updateBluetoothLyric(payload.first, payload.second)) {
+            lastBluetoothLyricPayload = payload
+            bluetoothLyricRetryJob?.cancel()
+        } else {
+            scheduleBluetoothLyricRetry()
+        }
+    }
+
+    private fun resendBluetoothLyric(force: Boolean = false) {
+        if (!bluetoothLyricEnabled || !isPlaying.value) return
+
+        val index = _currentLyricIndex.value
+        val currentLyrics = loadedLyricsForCurrentSong()
+        if (currentLyrics.isEmpty()) return
+        val payload = currentLyrics.bluetoothPayloadAt(
+            index = index,
+            includeTranslation = bluetoothLyricTranslationEnabled,
+            includePronunciation = bluetoothLyricPronunciationEnabled
+        ) ?: return
+        if (!force && payload == lastBluetoothLyricPayload) return
+
+        if (playerManager.updateBluetoothLyric(payload.first, payload.second, force = force)) {
+            lastBluetoothLyricPayload = payload
+            bluetoothLyricRetryJob?.cancel()
+        } else {
+            scheduleBluetoothLyricRetry()
+        }
+    }
+
+    private fun scheduleBluetoothLyricRetry() {
+        bluetoothLyricRetryJob?.cancel()
+        val scheduledSongKey = currentSong.value?.lyricIdentityKey()
+        bluetoothLyricRetryJob = viewModelScope.launch {
+            delay(MediaNotificationLyricPatchPolicy.MIN_PATCH_INTERVAL_MS)
+            if (currentSong.value?.lyricIdentityKey() != scheduledSongKey) return@launch
+            if (!bluetoothLyricEnabled || !isPlaying.value) return@launch
+            resendBluetoothLyric(force = true)
+        }
+    }
+
+    private fun startPositionUpdates() {
+        if (positionUpdateJob?.isActive == true) return
+        positionUpdateJob = viewModelScope.launch {
+            while (isActive) {
+                runCatching {
+                    playerManager.updatePosition()
+                    enforceAbRepeat()
+                    updateCurrentLyricIndex()
+                    PlaybackWidgetUpdater.updateLyrics(
+                        context = getApplication<Application>(),
+                        song = currentSong.value,
+                        line = loadedLyricsForCurrentSong().getOrNull(_currentLyricIndex.value),
+                        positionMs = playerManager.currentPosition.value,
+                        isPlaying = isPlaying.value
+                    )
+                    updatePlaybackStats()
+                    updateSleepTimer()
+
+                    if (lyriconBridge.isEnabled()) {
+                        lyriconBridge.sendPosition(playerManager.currentPosition.value)
+                    }
+                    updateDesktopLyricFrame()
+                }.onFailure { error ->
+                    AppLogStore.warn(
+                        getApplication(),
+                        "PlayerPosition",
+                        "Position update loop iteration failed; keeping ticker alive",
+                        error
+                    )
+                }
+
+                delay(PLAYBACK_POSITION_UPDATE_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun prewarmTimelineWaveforms() {
+        viewModelScope.launch(Dispatchers.IO) {
+            combine(currentSong, settingsManager.playerProgressStyle) { song, style ->
+                song.takeIf { style != SettingsManager.PLAYER_PROGRESS_STYLE_GLOW }
+            }.distinctUntilChangedBy { it?.let { song -> "${song.path}|${song.fileSize}|${song.dateModified}" } }
+                .collectLatest { song ->
+                    if (song == null) return@collectLatest
+                    com.ella.music.data.RawWaveformCache.loadOrScanResult(getApplication(), song)
+                    // Only one speculative decode, after the current track has its waveform.
+                    nextSong.value?.takeIf { it.path != song.path }?.let { next ->
+                        com.ella.music.data.RawWaveformCache.loadOrScanResult(getApplication(), next)
+                    }
+                }
+        }
+    }
+
+    private fun observeCurrentSong() {
+        viewModelScope.launch {
+            playerManager.currentSong.collectLatest { song ->
+                if (song == null) {
+                    _abRepeatState.value = AbRepeatState()
+                    // Queue reorder / repeat-mode changes can emit a transient null. Wait before
+                    // wiping lyrics so a flicker does not blank the player and lyric page.
+                    delay(280L)
+                    if (playerManager.currentSong.value != null) return@collectLatest
+                    loadedLyricSongKey = null
+                    _lyricsSongKey.value = null
+                    liveUpdateArtwork = null
+                    suppressLeadingZeroLyric = false
+                    _lyricsLoading.value = false
+                    _rawLyrics.value = emptyList()
+                    _lyrics.value = emptyList()
+                    _currentLyricOffsetMs.value = 0L
+                    _currentLyricIndex.value = -1
+                    PlaybackWidgetUpdater.clearLyrics(getApplication<Application>())
+                    clearExternalLyrics(clearLyricon = true, clearSuperLyricSong = true)
+                    return@collectLatest
+                }
+                // Playlist records created before WebDAV metadata hydration may still contain
+                // only the remote filename. Direct playback resolves the same URL before it
+                // enters the player, but an old playlist can bypass that path. Resolve the
+                // active occurrence here as well so its embedded cover/lyrics cache is ready
+                // before the first lyric and artwork lookup.
+                val activeSong = if (song.isWebDavRemoteSong()) {
+                    val resolved = withContext(Dispatchers.IO) {
+                        repository.resolveSongForPlayback(song)
+                    }
+                    if (playerManager.currentSong.value?.path != song.path) {
+                        return@collectLatest
+                    }
+                    if (resolved != song) {
+                        playerManager.updateCurrentSongMetadata(resolved)
+                    }
+                    resolved
+                } else {
+                    song
+                }
+                val songKey = activeSong.lyricIdentityKey()
+                if (_abRepeatState.value.songKey != songKey) {
+                    _abRepeatState.value = AbRepeatState()
+                }
+                recordCategoryResume(activeSong)
+                // The source belongs to this queue occurrence. Looking it up by playlist identity
+                // made duplicate entries overwrite each other (e.g. the same song queued from a
+                // playlist and then from an album) and sent navigation to the wrong page.
+                val songSource = activeSong.playbackSourceKey
+                _playbackSourceKey.value = songSource
+                com.ella.music.data.PlaybackSourceNavigation.updateSource(songSource)
+                viewModelScope.launch(Dispatchers.IO) {
+                    val source = ListeningHistorySource.fromPreference(settingsManager.listeningHistorySource.first())
+                    if (source.usesLastFm) {
+                        lastFmHistoryStore.updateNowPlaying(activeSong)
+                    }
+                }
+                val loadedKey = activeSong.lyricIdentityKey()
+                if (_lyricsSongKey.value != loadedKey) {
+                    // Keep the backing list for a possible transient controller emission, but
+                    // invalidate its presentation immediately so the previous song's lines can
+                    // never be rendered under the new title while the async lookup is running.
+                    _lyricsSongKey.value = null
+                    _currentLyricIndex.value = -1
+                }
+                if (loadedLyricSongKey == loadedKey &&
+                    _lyricsSongKey.value == loadedKey &&
+                    _lyrics.value.isNotEmpty()
+                ) {
+                    updateCurrentLyricIndex()
+                    return@collectLatest
+                }
+                suppressLeadingZeroLyric = true
+                _lyricsLoading.value = true
+                // Retain the previous lines in the backing state while the replacement arrives;
+                // _lyricsSongKey keeps them hidden from the page and bridges during this window.
+                val songLyrics = try {
+                    repository.getLyrics(activeSong, lyricSourceMode)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    AppLogStore.warn(
+                        getApplication(),
+                        "PlayerLyrics",
+                        "Failed to load lyrics for ${activeSong.title}",
+                        error
+                    )
+                    emptyList()
+                }
+                val notificationArtwork = try {
+                    withContext(Dispatchers.IO) {
+                        repository.getCoverArtBitmap(
+                            song = activeSong,
+                            maxSize = LIVE_UPDATE_ARTWORK_SIZE,
+                            usage = CoverUsage.Notification
+                        ) ?: remoteNotificationArtwork(activeSong)
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    AppLogStore.warn(
+                        getApplication(),
+                        "PlayerLyrics",
+                        "Failed to load notification artwork for ${activeSong.title}",
+                        error
+                    )
+                    null
+                }
+                if (playerManager.currentSong.value?.lyricIdentityKey() != loadedKey) {
+                    return@collectLatest
+                }
+                liveUpdateArtwork = notificationArtwork
+                loadedLyricSongKey = loadedKey
+                setLoadedLyrics(activeSong, songLyrics, notifyExternal = false)
+                _lyricsLoading.value = false
+                val displayedLyrics = loadedLyricsForCurrentSong()
+
+                if (lyriconBridge.isEnabled()) {
+                    lyriconBridge.sendSong(activeSong, displayedLyrics)
+                }
+                if (displayedLyrics.isEmpty()) {
+                    clearExternalLyrics(clearLyricon = false, clearSuperLyricSong = false)
+                } else {
+                    scheduleExternalLyricResend()
+                }
+            }
+        }
+    }
+
+    private fun observeWebDavMetadataRevision() {
+        viewModelScope.launch {
+            repository.webDavMetadataRevision.collect {
+                if (it == 0L) return@collect
+                val current = playerManager.currentSong.value ?: return@collect
+                if (!current.isWebDavRemoteSong()) return@collect
+                val enriched = repository.songs.value.firstOrNull { song -> song.path == current.path } ?: current
+                if (playerManager.currentSong.value?.path != current.path) return@collect
+                if (enriched != current) {
+                    playerManager.updateCurrentSongMetadata(enriched)
+                }
+                // Hydration may only have populated the remote cache. Force embedded/sidecar
+                // lyric lookup and format availability to run again.
+                reloadLyrics(enriched, force = true)
+            }
+        }
+    }
+
+    private fun observePlayState() {
+        viewModelScope.launch {
+            playerManager.isPlaying.collect { playing ->
+                if (lastSentPlayingState != playing) {
+                    lastSentPlayingState = playing
+                    lyriconBridge.sendPlaybackState(playing)
+                    if (!playing) {
+                        seekExternalLyricSyncJob?.cancel()
+                        seekExternalLyricSyncJob = null
+                        tickerBridge.clearLyric()
+                        liveLyricNotificationBridge.clear()
+                        lastLiveUpdateLyricPayload = null
+                        xiaomiSuperIslandLyricBridge.onPlaybackPaused()
+                        if (activeDesktopLyricHideWhenPaused()) {
+                            desktopLyricBridge.clearLyric()
+                        } else {
+                            resendDesktopLyric()
+                        }
+                        superLyricBridge.sendStop()
+                        lyricGetterBridge.clearLyric()
+                        playerManager.clearBluetoothLyric()
+                        lastBluetoothLyricPayload = null
+                        bluetoothLyricRetryJob?.cancel()
+                    } else {
+                        viewModelScope.launch { resendExternalLyrics(force = true) }
+                        resendBluetoothLyric(force = true)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun sendSuperLyricAt(index: Int, lyrics: List<LyricLine>) {
+        if (!superLyricBridge.isEnabled() || !isPlaying.value) return
+
+        val line = lyrics.getOrNull(index) ?: return
+        superLyricBridge.sendLyric(
+            line = line,
+            positionMs = currentPosition.value,
+            showTranslation = _showLyricTranslation.value && superLyricTranslationEnabled
+        )
+    }
+
+    private fun updateCurrentLyricIndex() {
+        val songKey = currentSong.value?.lyricIdentityKey()
+        if (songKey == null || _lyricsSongKey.value != songKey) {
+            // The backing list may still contain the previous song while the replacement is being
+            // fetched. Never advance/send that list against the new song's position.
+            if (_currentLyricIndex.value != -1) _currentLyricIndex.value = -1
+            liveLyricNotificationBridge.clear()
+            lastLiveUpdateLyricPayload = null
+            lastLyricPositionSongKey = songKey
+            lastLyricPositionMs = playerManager.currentPosition.value
+            return
+        }
+        val currentLyrics = _lyrics.value
+        if (currentLyrics.isEmpty()) {
+            liveLyricNotificationBridge.clear()
+            lastLiveUpdateLyricPayload = null
+            lastLyricPositionSongKey = songKey
+            lastLyricPositionMs = playerManager.currentPosition.value
+            return
+        }
+
+        val position = playerManager.currentPosition.value
+        val previousPosition = if (lastLyricPositionSongKey == songKey) lastLyricPositionMs else position
+        val effectivePosition = if (
+            isPlaying.value &&
+            previousPosition > position &&
+            previousPosition - position <= LYRIC_POSITION_BACKWARD_DRIFT_TOLERANCE_MS
+        ) {
+            previousPosition
+        } else {
+            position
+        }
+        val loopedToStart = playerManager.repeatMode.value == Player.REPEAT_MODE_ONE &&
+            previousPosition > 1_500L &&
+            effectivePosition <= 750L &&
+            previousPosition - effectivePosition > 1_500L
+
+        val indexResult = currentLyricIndexAt(
+            positionMs = effectivePosition,
+            lyrics = currentLyrics,
+            suppressLeadingZero = suppressLeadingZeroLyric
+        )
+        val index = indexResult.index
+        if (!indexResult.suppressedLeadingZero) {
+            suppressLeadingZeroLyric = false
+        }
+        if (loopedToStart && index < 0 && _currentLyricIndex.value >= 0) {
+            _currentLyricIndex.value = -1
+        }
+        if (index != _currentLyricIndex.value) {
+            _currentLyricIndex.value = index
+
+            if (index >= 0 && index < currentLyrics.size) {
+                sendTickerLyric(index, currentLyrics)
+                sendBluetoothLyric(index, currentLyrics)
+                sendSuperLyricAt(index, currentLyrics)
+                sendLyricGetterAt(index, currentLyrics)
+            }
+        }
+        if (index >= 0 && index < currentLyrics.size) {
+            // Word-timed lyrics can change while the line index remains stable. The Live Update
+            // helper deduplicates unchanged results, so this stays a 10 Hz calculation rather
+            // than a 10 Hz notification stream.
+            sendLiveUpdateLyric(index, currentLyrics, effectivePosition)
+            sendXiaomiSuperIslandLyric(index, currentLyrics, effectivePosition)
+        }
+        lastLyricPositionSongKey = songKey
+        lastLyricPositionMs = effectivePosition
+    }
+
+    private suspend fun updatePlaybackStats() {
+        playbackStatsTracker.update(
+            nowMs = SystemClock.elapsedRealtime(),
+            song = currentSong.value,
+            isPlaying = isPlaying.value,
+            countThresholdPercent = playCountThresholdPercent.value,
+            countThresholdDurationMs = playCountThresholdDurationMs.value.toLong()
+        )
+    }
+
+    private suspend fun resendExternalLyrics(force: Boolean = false) {
+        val song = currentSong.value ?: return
+        val songKey = song.lyricIdentityKey()
+        // Guard: if lyrics are loaded for a different song, skip this resend
+        if (loadedLyricSongKey != null && loadedLyricSongKey != songKey) return
+        if (_lyricsSongKey.value != songKey || _lyrics.value.isEmpty()) {
+            val loaded = repository.getLyrics(song, lyricSourceMode)
+            if (playerManager.currentSong.value?.lyricIdentityKey() != songKey) return
+            loadedLyricSongKey = songKey
+            setLoadedLyrics(song, loaded, notifyExternal = false)
+        }
+        val songLyrics = loadedLyricsForCurrentSong()
+        // Re-verify after potential async fetch
+        if (playerManager.currentSong.value?.lyricIdentityKey() != songKey) return
+        lyriconBridge.sendSong(song, songLyrics)
+        lyriconBridge.sendPlaybackState(isPlaying.value)
+        lyriconBridge.sendPosition(currentPosition.value)
+        if (songLyrics.isEmpty()) {
+            clearExternalLyrics(clearLyricon = false, clearSuperLyricSong = false)
+            return
+        }
+        resendTickerLyric(force)
+        resendLiveUpdateLyric(force)
+        resendXiaomiSuperIslandLyric()
+        resendDesktopLyric()
+        resendSuperLyric(force)
+        resendLyricGetter(force)
+    }
+
+    private fun resendTickerLyric(force: Boolean = false) {
+        if (!tickerBridge.isEnabled() || !isPlaying.value) return
+        if (force) lastTickerPayload = null
+        val index = _currentLyricIndex.value
+        val currentLyrics = loadedLyricsForCurrentSong()
+        if (currentLyrics.isEmpty()) return
+        sendTickerLyric(index, currentLyrics)
+    }
+
+    private fun resendLiveUpdateLyric(force: Boolean = false) {
+        if (!liveUpdateLyricEnabled || !isPlaying.value) return
+        if (force) lastLiveUpdateLyricPayload = null
+        val currentLyrics = loadedLyricsForCurrentSong()
+        if (currentLyrics.isEmpty()) return
+        sendLiveUpdateLyric(
+            index = _currentLyricIndex.value,
+            lyrics = currentLyrics,
+            positionMs = effectiveLyricPositionMs()
+        )
+    }
+
+    private fun resendXiaomiSuperIslandLyric() {
+        if (!xiaomiSuperIslandLyricEnabled || !isPlaying.value) return
+        val currentLyrics = loadedLyricsForCurrentSong()
+        if (currentLyrics.isEmpty()) return
+        sendXiaomiSuperIslandLyric(
+            index = _currentLyricIndex.value,
+            lyrics = currentLyrics,
+            positionMs = effectiveLyricPositionMs()
+        )
+    }
+
+    private fun sendXiaomiSuperIslandLyric(
+        index: Int,
+        lyrics: List<LyricLine>,
+        positionMs: Long
+    ) {
+        if (!xiaomiSuperIslandLyricEnabled || !isPlaying.value) return
+        val song = currentSong.value ?: return
+        val line = lyrics.getOrNull(index) ?: return
+        xiaomiSuperIslandLyricBridge.sendLyric(
+            song = song,
+            line = line,
+            positionMs = positionMs,
+            durationMs = duration.value,
+            artwork = liveUpdateArtwork
+        )
+    }
+
+    private fun sendLiveUpdateLyric(index: Int, lyrics: List<LyricLine>, positionMs: Long) {
+        if (!liveUpdateLyricEnabled || !playerManager.isPlaying.value) return
+        val song = currentSong.value ?: return
+        val line = lyrics.getOrNull(index) ?: return
+        val display = buildLiveLyricNotificationText(
+            line = line,
+            mode = liveUpdateLyricMode,
+            positionMs = positionMs
+        ) ?: return
+        val notificationLyric = if (
+            liveUpdateLyricDisplayMode == SettingsManager.LIVE_UPDATE_LYRIC_DISPLAY_MODE_FULL
+        ) {
+            display.fullLyric
+        } else {
+            display.lyric
+        }
+        val preserveFullLyric =
+            liveUpdateLyricDisplayMode == SettingsManager.LIVE_UPDATE_LYRIC_DISPLAY_MODE_FULL
+        // Full-line mode is intended for lock-screen/AOD surfaces. Do not keep feeding the
+        // word-timed window and current word into the compact chip in this mode: Xiaomi AOD can
+        // show the complete sentence, while word-level updates would make it jump on every word.
+        val notificationCompactLyric = if (preserveFullLyric) {
+            notificationLyric
+        } else {
+            display.compactLyric
+        }
+        val secondaryLyric = buildLiveLyricSecondaryText(line, liveUpdateLyricSecondaryMode)
+        val payload = LiveLyricNotificationState(
+            songKey = song.lyricIdentityKey(),
+            lineIndex = index,
+            wordIndex = if (preserveFullLyric) -1 else display.wordIndex,
+            mode = liveUpdateLyricMode,
+            displayMode = liveUpdateLyricDisplayMode,
+            secondaryMode = liveUpdateLyricSecondaryMode,
+            lyric = notificationLyric,
+            compactLyric = notificationCompactLyric,
+            allowLongCompactLyric = if (preserveFullLyric) false else display.allowLongCompactLyric,
+            preserveCompactLyric = preserveFullLyric,
+            secondaryLyric = secondaryLyric
+        )
+        if (payload == lastLiveUpdateLyricPayload) return
+        lastLiveUpdateLyricPayload = payload
+        liveLyricNotificationBridge.sendLyric(
+            songTitle = song.title.ifBlank { song.fileName },
+            lyric = notificationLyric,
+            compactLyric = notificationCompactLyric,
+            allowLongCompactLyric = if (preserveFullLyric) false else display.allowLongCompactLyric,
+            preserveCompactLyric = preserveFullLyric,
+            secondaryLyric = secondaryLyric,
+            artwork = liveUpdateArtwork
+        )
+    }
+
+    private var desktopInterludeLyrics: List<LyricLine>? = null
+    private var desktopInterludeWindows = emptyList<com.ella.music.ui.player.AppleMusicInterlude>()
+
+    private fun desktopInterludeAt(lyrics: List<LyricLine>, position: Long): com.ella.music.ui.player.AppleMusicInterlude? {
+        if (desktopInterludeLyrics !== lyrics) {
+            desktopInterludeLyrics = lyrics
+            desktopInterludeWindows = lyrics.interludes()
+        }
+        return desktopInterludeWindows.firstOrNull { it.isActiveAt(position) }
+    }
+
+    private fun resendDesktopLyric() {
+        if (!desktopLyricBridge.isEnabled()) return
+        if (activeDesktopLyricHideWhenPaused() && !isPlaying.value) return
+        val index = _currentLyricIndex.value
+        val currentLyrics = loadedLyricsForCurrentSong()
+        if (currentLyrics.isEmpty()) return
+        desktopLyricBridge.sendLyric(
+            line = currentLyrics.getOrNull(index),
+            positionMs = effectiveLyricPositionMs(),
+            showTranslation = _showLyricTranslation.value,
+            showPronunciation = _showLyricPronunciation.value,
+            interlude = desktopInterludeAt(currentLyrics, effectiveLyricPositionMs())
+        )
+    }
+
+    private fun updateDesktopLyricFrame() {
+        if (!desktopLyricBridge.isEnabled()) return
+        if (activeDesktopLyricHideWhenPaused() && !isPlaying.value) return
+        val index = _currentLyricIndex.value
+        val currentLyrics = loadedLyricsForCurrentSong()
+        val position = effectiveLyricPositionMs()
+        desktopLyricBridge.sendLyric(
+            currentLyrics.getOrNull(index), position,
+            _showLyricTranslation.value, _showLyricPronunciation.value,
+            desktopInterludeAt(currentLyrics, position)
+        )
+    }
+
+    /**
+     * The lyric page and Live Update already use [lastLyricPositionMs], which filters the small
+     * backwards samples emitted by the player position ticker.  Desktop lyrics animate from each
+     * received position anchor, so feeding them the raw value makes a single backwards sample
+     * visibly replay the current words. Keep all lyric surfaces on the same effective position;
+     * a real seek updates this value immediately in [applySeekSideEffects].
+     */
+    private fun effectiveLyricPositionMs(): Long {
+        val songKey = currentSong.value?.lyricIdentityKey()
+        return if (songKey != null && songKey == lastLyricPositionSongKey) {
+            lastLyricPositionMs
+        } else {
+            playerManager.currentPosition.value
+        }
+    }
+
+    private fun resendSuperLyric(force: Boolean = false) {
+        if (!superLyricBridge.isEnabled() || !isPlaying.value) return
+        val index = _currentLyricIndex.value
+        val line = loadedLyricsForCurrentSong().getOrNull(index) ?: return
+        superLyricBridge.sendLyric(line, currentPosition.value, _showLyricTranslation.value && superLyricTranslationEnabled, force)
+    }
+
+    private fun sendLyricGetterAt(index: Int, lyrics: List<LyricLine>) {
+        if (!lyricGetterBridge.isEnabled() || !isPlaying.value) return
+        lyricGetterBridge.sendLyric(lyrics.getOrNull(index))
+    }
+
+    private fun resendLyricGetter(force: Boolean = false) {
+        if (!lyricGetterBridge.isEnabled() || !isPlaying.value) return
+        lyricGetterBridge.sendLyric(loadedLyricsForCurrentSong().getOrNull(_currentLyricIndex.value), force)
+    }
+
+    private fun setLoadedLyrics(
+        song: Song,
+        rawLyrics: List<LyricLine>,
+        notifyExternal: Boolean
+    ) {
+        // Do not expose the old list while the new list is being transformed. The key is set
+        // again only after the display-time offset/blacklist pipeline has completed.
+        _lyricsSongKey.value = null
+        _currentLyricIndex.value = -1
+        _rawLyrics.value = rawLyrics
+        applyCurrentLyricOffset(song = song, notifyExternal = notifyExternal)
+        _lyricsSongKey.value = song.lyricIdentityKey()
+    }
+
+    private fun applyCurrentLyricOffset(
+        song: Song? = currentSong.value,
+        notifyExternal: Boolean = false
+    ) {
+        if (song == null) {
+            _lyricsSongKey.value = null
+            _currentLyricOffsetMs.value = 0L
+            val nextLyrics = _rawLyrics.value.preparedForDisplay()
+            if (_lyrics.value != nextLyrics) {
+                _lyrics.value = nextLyrics
+                _currentLyricIndex.value = -1
+            }
+            return
+        }
+        val offsetMs = lyricOffsetOverrides[song.lyricIdentityKey()] ?: 0L
+        _currentLyricOffsetMs.value = offsetMs
+        val nextLyrics = _rawLyrics.value
+            .filterBlacklistedLyricLines()
+            .shiftedBy(offsetMs)
+            .withOpeningMetadataLine(song, lyricOpeningTemplate, lyricOpeningAsFallback)
+            .withImplicitLineEndTimes()
+        val lyricsChanged = _lyrics.value != nextLyrics
+        if (lyricsChanged) {
+            _lyrics.value = nextLyrics
+            _currentLyricIndex.value = -1
+            suppressLeadingZeroLyric = true
+            updateCurrentLyricIndex()
+            lastTickerPayload = null
+            lastLiveUpdateLyricPayload = null
+            lastBluetoothLyricPayload = null
+        }
+        if (!notifyExternal) return
+        if (lyriconBridge.isEnabled()) lyriconBridge.sendSong(song, loadedLyricsForCurrentSong())
+        superLyricBridge.sendSong(song)
+        if (loadedLyricsForCurrentSong().isEmpty()) {
+            clearExternalLyrics(clearLyricon = false, clearSuperLyricSong = false)
+        } else {
+            resendTickerLyric(force = true)
+            resendLiveUpdateLyric(force = true)
+            resendDesktopLyric()
+            resendSuperLyric(force = true)
+            resendLyricGetter(force = true)
+            resendBluetoothLyric(force = true)
+            scheduleExternalLyricResend()
+        }
+    }
+
+    private fun scheduleExternalLyricResend() {
+        externalLyricResendJob?.cancel()
+        val scheduledSongKey = currentSong.value?.lyricIdentityKey()
+        externalLyricResendJob = viewModelScope.launch {
+            repeat(3) { attempt ->
+                delay(350L + attempt * 550L)
+                // Skip if song changed since scheduling
+                if (currentSong.value?.lyricIdentityKey() != scheduledSongKey) return@launch
+                resendExternalLyrics(force = true)
+                resendBluetoothLyric(force = true)
+                resendLyricGetter(force = true)
+            }
+        }
+    }
+
+    private fun List<LyricLine>.filterBlacklistedLyricLines(): List<LyricLine> =
+        filterBlacklistedLyricLines(lyricBlacklistRules, hideLyricExtraInfo)
+
+    private fun List<LyricLine>.preparedForDisplay(): List<LyricLine> =
+        preparedForDisplay(lyricBlacklistRules, hideLyricExtraInfo)
+
+    private fun clearExternalLyrics(clearLyricon: Boolean, clearSuperLyricSong: Boolean) {
+        externalLyricResendJob?.cancel()
+        bluetoothLyricRetryJob?.cancel()
+        lastTickerPayload = null
+        lastLiveUpdateLyricPayload = null
+        lastBluetoothLyricPayload = null
+        tickerBridge.clearLyric()
+        liveLyricNotificationBridge.clear()
+        xiaomiSuperIslandLyricBridge.clear()
+        desktopLyricBridge.clearLyric()
+        lyricGetterBridge.clearLyric()
+        playerManager.clearBluetoothLyric()
+        if (clearLyricon) lyriconBridge.clearSong()
+        if (clearSuperLyricSong) {
+            superLyricBridge.destroy()
+        } else {
+            superLyricBridge.sendStop()
+        }
+    }
+
+    private fun initLyricPageTranslation() {
+        viewModelScope.launch {
+            settingsManager.lyricPageTranslation.distinctUntilChanged().collect { enabled ->
+                _showLyricTranslation.value = enabled
+            }
+        }
+    }
+
+    fun setPlaylist(
+        songs: List<Song>,
+        startIndex: Int = 0,
+        resumeCategoryKey: String? = null,
+        songSources: Map<String, String>? = null
+    ) {
+        lazyOnlineQueueController.clear()
+        if (!songSources.isNullOrEmpty()) {
+            com.ella.music.data.PlaybackSourceNavigation.recordSongSources(songSources)
+        }
+        if (songs.isEmpty()) {
+            activeResumeCategoryKey = resumeCategoryKey?.takeIf { it.isNotBlank() }
+            _playbackSourceKey.value = null
+            com.ella.music.data.PlaybackSourceNavigation.updateSource(null)
+            return
+        }
+        val sourceAwareSongs = songs.withPlaybackSources(
+            songSources = songSources,
+            fallbackSource = resumeCategoryKey
+        )
+        val safeStartIndex = startIndex.coerceIn(sourceAwareSongs.indices)
+        val queueSource = sourceAwareSongs[safeStartIndex].playbackSourceKey
+        activeResumeCategoryKey = resumeCategoryKey?.takeIf { it.isNotBlank() }
+        _playbackSourceKey.value = queueSource
+        com.ella.music.data.PlaybackSourceNavigation.updateSource(queueSource)
+        sourceAwareSongs.getOrNull(safeStartIndex)?.let(::recordCategoryResume)
+        playerManager.setPlaylist(sourceAwareSongs, safeStartIndex)
+    }
+
+    fun setShuffledPlaylist(
+        songs: List<Song>,
+        startIndex: Int = 0,
+        resumeCategoryKey: String? = null,
+        songSources: Map<String, String>? = null,
+        preserveOrder: Boolean = false
+    ) {
+        if (songs.isEmpty()) {
+            activeResumeCategoryKey = resumeCategoryKey?.takeIf { it.isNotBlank() }
+            _playbackSourceKey.value = null
+            com.ella.music.data.PlaybackSourceNavigation.updateSource(null)
+            return
+        }
+        val randomStartIndex = if (!preserveOrder && songs.size > 1 && startIndex == 0) songs.indices.random()
+        else startIndex.coerceIn(songs.indices)
+        lazyOnlineQueueController.clear()
+        if (!songSources.isNullOrEmpty()) {
+            com.ella.music.data.PlaybackSourceNavigation.recordSongSources(songSources)
+        }
+        val sourceAwareSongs = songs.withPlaybackSources(
+            songSources = songSources,
+            fallbackSource = resumeCategoryKey
+        )
+        val queueSource = sourceAwareSongs[randomStartIndex].playbackSourceKey
+        activeResumeCategoryKey = resumeCategoryKey?.takeIf { it.isNotBlank() }
+        _playbackSourceKey.value = queueSource
+        com.ella.music.data.PlaybackSourceNavigation.updateSource(queueSource)
+        recordCategoryResume(sourceAwareSongs[randomStartIndex])
+        playerManager.setPlaylistForShuffleAll(sourceAwareSongs, randomStartIndex, preserveOrder)
+    }
+
+    private fun recordCategoryResume(song: Song) {
+        val categoryKey = activeResumeCategoryKey ?: return
+        CategoryResumeStore.getInstance(getApplication()).record(categoryKey, song)
+    }
+
+    fun setLazyOnlinePlaylist(
+        songs: List<Song>,
+        startIndex: Int,
+        resolvedStartSong: Song,
+        resolver: suspend (Song) -> Song
+    ) {
+        activeResumeCategoryKey = null
+        _playbackSourceKey.value = null
+        com.ella.music.data.PlaybackSourceNavigation.updateSource(null)
+        playerManager.setQueueLocked(false)
+        lazyOnlineQueueController.setQueue(
+            songs = songs,
+            startIndex = startIndex,
+            resolvedStartSong = resolvedStartSong,
+            resolver = resolver
+        )
+    }
+
+    fun playSong(song: Song) {
+        playerManager.playSong(song)
+    }
+
+    /** Plays a home-history item as an independent selection, not as any browse category. */
+    fun playSongUncategorized(song: Song) {
+        lazyOnlineQueueController.clear()
+        activeResumeCategoryKey = null
+        _playbackSourceKey.value = null
+        val navigation = com.ella.music.data.PlaybackSourceNavigation
+        navigation.clearSourceForSong(song.playlistIdentityKey())
+        navigation.updateSource(null)
+        playerManager.setPlaylist(listOf(song.copy(playbackSourceKey = "")), 0)
+    }
+
+    fun playRestoredQueue() {
+        playerManager.play()
+    }
+
+    fun hasSavedPlaybackQueue(): Boolean = playerManager.hasSavedQueue()
+
+    fun togglePlayPause() = playerManager.togglePlayPause()
+    fun pauseForMusicVideo() = playerManager.pause()
+    fun resumeAfterMusicVideo() = playerManager.play()
+    fun skipToNext() {
+        val wasPaused = !playWhenReady.value
+        val shouldPlayOnSwitch = wasPaused && pausedSwitchMode == SettingsManager.PAUSED_SWITCH_MODE_PLAY
+        val targetPlayState = if (wasPaused) shouldPlayOnSwitch else playWhenReady.value
+        if (!lazyOnlineQueueController.playOffset(1, shouldPlay = targetPlayState)) {
+            playerManager.skipToNext(autoPlayIfPaused = shouldPlayOnSwitch)
+        }
+    }
+
+    fun skipToPrevious() {
+        val wasPaused = !playWhenReady.value
+        val shouldPlayOnSwitch = wasPaused && pausedSwitchMode == SettingsManager.PAUSED_SWITCH_MODE_PLAY
+        if (shouldReplayCurrentFromPreviousButton()) {
+            playerManager.restartCurrent(autoPlayIfPaused = shouldPlayOnSwitch)
+            return
+        }
+        manualSeekAfterPreviousButton = false
+        val targetPlayState = if (wasPaused) shouldPlayOnSwitch else playWhenReady.value
+        if (!lazyOnlineQueueController.playOffset(-1, shouldPlay = targetPlayState)) {
+            playerManager.skipToPrevious(autoPlayIfPaused = shouldPlayOnSwitch)
+        }
+    }
+
+    /**
+     * Always move to the previous track, ignoring the "previous button replays current song"
+     * preference. Used by the landscape cover-wall swipe, where the gesture unambiguously means
+     * "go to that cover" rather than "restart this one".
+     */
+    fun skipToPreviousTrack() {
+        manualSeekAfterPreviousButton = false
+        val wasPaused = !playWhenReady.value
+        val shouldPlayOnSwitch = wasPaused && pausedSwitchMode == SettingsManager.PAUSED_SWITCH_MODE_PLAY
+        val targetPlayState = if (wasPaused) shouldPlayOnSwitch else playWhenReady.value
+        if (!lazyOnlineQueueController.playOffset(-1, shouldPlay = targetPlayState)) {
+            playerManager.skipToPrevious(autoPlayIfPaused = shouldPlayOnSwitch)
+        }
+    }
+
+    private fun shouldReplayCurrentFromPreviousButton(): Boolean {
+        if (manualSeekAfterPreviousButton) {
+            manualSeekAfterPreviousButton = false
+            return false
+        }
+        return shouldReplayFromPreviousButton(
+            manualSeekAfterPreviousButton = false,
+            previousButtonAction = previousButtonAction,
+            currentPositionMs = currentPosition.value
+        )
+    }
+
+    fun seekTo(positionMs: Long) {
+        val target = playerManager.seekTo(positionMs) ?: return
+        applySeekSideEffects(target)
+    }
+
+    fun seekToProgress(progress: Float, fallbackDurationMs: Long) {
+        val target = playerManager.seekToProgress(progress, fallbackDurationMs) ?: return
+        applySeekSideEffects(target)
+    }
+
+    private fun applySeekSideEffects(positionMs: Long) {
+        manualSeekAfterPreviousButton = true
+        lastLyricPositionSongKey = currentSong.value?.lyricIdentityKey()
+        lastLyricPositionMs = positionMs
+
+        val lyrics = loadedLyricsForCurrentSong()
+        val index = currentLyricIndexAt(
+            positionMs = positionMs,
+            lyrics = lyrics,
+            suppressLeadingZero = positionMs in 0L until LEADING_ZERO_LYRIC_SUPPRESSION_MS
+        ).index
+        _currentLyricIndex.value = index
+        scheduleSeekExternalLyricSync(positionMs)
+    }
+
+    /**
+     * A seek is a UI-critical controller command.  The Lyricon/SuperLyric publishers can make
+     * synchronous IPC calls, so issuing them for every tap on the lyric page used to leave those
+     * calls queued ahead of the next pause.  Coalesce a burst and publish only its final target.
+     */
+    private fun scheduleSeekExternalLyricSync(positionMs: Long) {
+        if (!lyriconBridge.isEnabled() && !superLyricBridge.isEnabled()) return
+        seekExternalLyricSyncJob?.cancel()
+        seekExternalLyricSyncJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(SEEK_EXTERNAL_LYRIC_SYNC_DEBOUNCE_MS)
+            lyriconBridge.seekTo(positionMs)
+            if (!isPlaying.value || !superLyricBridge.isEnabled()) return@launch
+            val line = loadedLyricsForCurrentSong().getOrNull(_currentLyricIndex.value) ?: return@launch
+            superLyricBridge.sendLyric(
+                line = line,
+                positionMs = positionMs,
+                showTranslation = _showLyricTranslation.value && superLyricTranslationEnabled
+            )
+        }
+    }
+
+    fun toggleShuffle() = playerManager.toggleShuffle()
+    fun toggleRepeat() = playerManager.toggleRepeat()
+    fun toggleQueueLock() = playerManager.toggleQueueLock()
+    fun setShuffleMode(mode: Int) {
+        viewModelScope.launch {
+            settingsManager.setShuffleMode(mode)
+            playerManager.setShuffleMode(mode)
+        }
+    }
+
+    fun setDisableSequentialPlayback(enabled: Boolean) {
+        playerManager.setDisableSequentialPlayback(enabled)
+        viewModelScope.launch { settingsManager.setDisableSequentialPlayback(enabled) }
+    }
+
+    fun setPlayNextMode(mode: Int) {
+        viewModelScope.launch {
+            settingsManager.setPlayNextMode(mode)
+            playerManager.setPlayNextMode(mode)
+        }
+    }
+
+    fun setPreviousButtonAction(action: Int) {
+        previousButtonAction = action.coerceIn(
+            SettingsManager.PREVIOUS_BUTTON_PREVIOUS,
+            SettingsManager.PREVIOUS_BUTTON_REPLAY_CURRENT
+        )
+        viewModelScope.launch {
+            settingsManager.setPreviousButtonAction(previousButtonAction)
+        }
+    }
+
+    fun setPausedSwitchMode(mode: Int) {
+        pausedSwitchMode = mode.coerceIn(
+            SettingsManager.PAUSED_SWITCH_MODE_KEEP_PAUSED,
+            SettingsManager.PAUSED_SWITCH_MODE_PLAY
+        )
+        viewModelScope.launch {
+            settingsManager.setPausedSwitchMode(pausedSwitchMode)
+        }
+    }
+
+    fun setResumePlaybackPositionEnabled(enabled: Boolean) {
+        playerManager.setResumePlaybackPositionEnabled(enabled)
+    }
+
+    fun setDecoderMode(mode: Int) {
+        viewModelScope.launch {
+            val safeMode = mode.coerceIn(0, 2)
+            settingsManager.setDecoderMode(safeMode)
+            if (appliedDecoderMode != safeMode) {
+                appliedDecoderMode = safeMode
+                PlaybackService.decoderModeOverride.value = null
+                playerManager.recreatePlaybackService()
+                AppLogStore.info(getApplication(), "PlayerDecoder", "Decoder mode changed to $safeMode")
+            }
+        }
+    }
+    fun addToPlaylist(song: Song) {
+        addToPlaylist(listOf(song))
+    }
+    fun addToPlaylist(songs: List<Song>, songSources: Map<String, String>? = null) {
+        if (queueLocked.value) return
+        lazyOnlineQueueController.clear()
+        val sourceAwareSongs = songs.withPlaybackSources(
+            songSources = songSources,
+            fallbackSource = com.ella.music.data.PlaybackSourceNavigation.activeScreen()
+                .takeIf { songSources.isNullOrEmpty() }
+        )
+        recordIncomingSongSources(songSources)
+        playerManager.addToPlaylist(sourceAwareSongs)
+    }
+
+    fun playNext(song: Song) {
+        playNext(listOf(song))
+    }
+
+    fun playNext(songs: List<Song>, songSources: Map<String, String>? = null) {
+        if (queueLocked.value) return
+        lazyOnlineQueueController.clear()
+        val sourceAwareSongs = songs.withPlaybackSources(
+            songSources = songSources,
+            fallbackSource = com.ella.music.data.PlaybackSourceNavigation.activeScreen()
+                .takeIf { songSources.isNullOrEmpty() }
+        )
+        recordIncomingSongSources(songSources)
+        playerManager.playNext(sourceAwareSongs)
+    }
+
+    private fun recordIncomingSongSources(songSources: Map<String, String>?) {
+        if (!songSources.isNullOrEmpty()) {
+            com.ella.music.data.PlaybackSourceNavigation.recordSongSources(songSources)
+        }
+    }
+
+    /** Attach source metadata to queue occurrences without changing the library's Song objects. */
+    private fun List<Song>.withPlaybackSources(
+        songSources: Map<String, String>?,
+        fallbackSource: String?
+    ): List<Song> = map { song ->
+        val songKey = song.playlistIdentityKey()
+        val source = when {
+            songSources?.containsKey(songKey) == true ->
+                songSources[songKey]?.takeIf {
+                    com.ella.music.data.PlaybackSourceNavigation.isNavigableSourceKey(it)
+                } ?: ""
+            com.ella.music.data.PlaybackSourceNavigation.isNavigableSourceKey(fallbackSource) ->
+                fallbackSource?.trim()
+            song.playbackSourceKey == null -> null
+            else -> song.playbackSourceKey.takeIf {
+                com.ella.music.data.PlaybackSourceNavigation.isNavigableSourceKey(it)
+            } ?: ""
+        }
+        if (source == song.playbackSourceKey) song
+        else song.copy(playbackSourceKey = source)
+    }
+
+    /** Re-establish the media controller if the playback session was torn down in the background. */
+    fun ensurePlayerConnected() {
+        // A controller can advance while the app is backgrounded without causing a new UI
+        // composition. Reconcile its current item on resume so the lyric collector sees the same
+        // song as the playback service before the player page is shown again.
+        playerManager.ensureConnected(refreshStateIfConnected = true)
+        startPositionUpdates()
+        val song = currentSong.value ?: return
+        val songKey = song.lyricIdentityKey()
+        if (_lyricsSongKey.value != songKey && !_lyricsLoading.value) {
+            viewModelScope.launch { reloadLyrics(song, force = false) }
+        }
+    }
+
+    fun livePositionMs(): Long = playerManager.livePositionMs()
+
+    fun playQueueIndex(index: Int) {
+        if (!lazyOnlineQueueController.playIndex(index)) playerManager.playQueueIndex(index)
+    }
+
+    fun removeFromPlaylist(index: Int) {
+        if (queueLocked.value) return
+        lazyOnlineQueueController.clear()
+        playerManager.removeFromPlaylist(index)
+    }
+
+    fun movePlaylistItem(fromIndex: Int, toIndex: Int) {
+        if (queueLocked.value) return
+        lazyOnlineQueueController.clear()
+        playerManager.movePlaylistItem(fromIndex, toIndex)
+    }
+
+    fun randomizePlaylistOrder(): Boolean {
+        if (queueLocked.value) return false
+        lazyOnlineQueueController.clear()
+        return playerManager.randomizePlaylistOrder()
+    }
+
+    fun clearPlaylist() {
+        if (queueLocked.value) return
+        lazyOnlineQueueController.clear()
+        playerManager.clearPlaylist()
+    }
+
+    fun requestLocateCurrentSong() {
+        _locateCurrentSongRequest.value += 1
+    }
+
+    fun cyclePlaybackMode() {
+        playerManager.cyclePlaybackMode()
+    }
+
+    fun toggleAbRepeat() {
+        val song = currentSong.value ?: return
+        val songKey = song.lyricIdentityKey()
+        val positionMs = livePositionMs().coerceAtLeast(0L)
+        val current = _abRepeatState.value.takeIf { it.songKey == songKey } ?: AbRepeatState()
+        when (current.phase) {
+            AbRepeatPhase.IDLE -> {
+                _abRepeatState.value = AbRepeatState(
+                    phase = AbRepeatPhase.A_SET,
+                    songKey = songKey,
+                    startMs = positionMs
+                )
+            }
+            AbRepeatPhase.A_SET -> {
+                val startMs = current.startMs ?: positionMs
+                if (positionMs - startMs < AB_REPEAT_MIN_LENGTH_MS) return
+                _abRepeatState.value = AbRepeatState(
+                    phase = AbRepeatPhase.ACTIVE,
+                    songKey = songKey,
+                    startMs = startMs,
+                    endMs = positionMs
+                )
+                lastAbRepeatLoopAtMs = SystemClock.elapsedRealtime()
+                playerManager.seekTo(startMs)
+            }
+            AbRepeatPhase.ACTIVE -> {
+                _abRepeatState.value = AbRepeatState()
+            }
+        }
+    }
+
+    fun getCoverArtBitmap(song: Song) = repository.getCoverArtBitmap(song, 1200, CoverUsage.Player)
+
+    fun getOriginalCoverModel(song: Song): Any? = repository.getOriginalCoverModel(song)
+
+    fun getAudioInfo(song: Song) = repository.getAudioInfo(song)
+
+    fun getSongTagInfo(song: Song) = repository.getSongTagInfo(song)
+
+    private fun enforceAbRepeat() {
+        val state = _abRepeatState.value
+        if (state.phase != AbRepeatPhase.ACTIVE || !isPlaying.value) return
+
+        val songKey = currentSong.value?.lyricIdentityKey()
+        if (songKey == null || songKey != state.songKey) {
+            _abRepeatState.value = AbRepeatState()
+            return
+        }
+
+        val startMs = state.startMs ?: return
+        val endMs = state.endMs ?: return
+        if (endMs <= startMs || playerManager.currentPosition.value < endMs) return
+
+        val nowMs = SystemClock.elapsedRealtime()
+        if (nowMs - lastAbRepeatLoopAtMs < AB_REPEAT_LOOP_GUARD_MS) return
+        lastAbRepeatLoopAtMs = nowMs
+        playerManager.seekTo(startMs)
+    }
+
+    fun setShowLyrics(show: Boolean) {
+        _showLyrics.value = show
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        playerManager.setPlaybackParameters(speed, playbackPitch.value)
+    }
+
+    fun setPlaybackPitch(pitch: Float) {
+        playerManager.setPlaybackParameters(playbackSpeed.value, pitch)
+    }
+
+    fun setLyricSourceMode(mode: Int) {
+        viewModelScope.launch {
+            _preferTtmlLyrics.value = null
+            settingsManager.setLyricSourceMode(mode)
+            lyricSourceMode = mode.coerceIn(SettingsManager.LYRIC_SOURCE_AUTO, SettingsManager.LYRIC_SOURCE_EMBEDDED)
+            appliedLyricSourceMode = lyricSourceMode
+            currentSong.value?.let { reloadLyrics(it, force = true) }
+        }
+    }
+
+    fun setLyricFormatPreference(preferTtml: Boolean) {
+        viewModelScope.launch {
+            _preferTtmlLyrics.value = preferTtml
+            currentSong.value?.let { reloadLyrics(it, force = true) }
+        }
+    }
+
+    fun setCurrentLyricOffsetMs(offsetMs: Long) {
+        val song = currentSong.value ?: return
+        val safeOffset = offsetMs.coerceIn(-5000L, 5000L)
+        viewModelScope.launch {
+            settingsManager.setLyricOffsetOverride(song.lyricIdentityKey(), safeOffset)
+        }
+    }
+
+    fun clearOnlineMetadataCache() {
+        repository.clearRemoteMetadataCache()
+    }
+
+    fun refreshCurrentSongAfterExternalEdit(updatedFromLibrary: Song?) {
+        if (currentSong.value == null) return
+        viewModelScope.launch {
+            refreshCurrentSongAfterExternalEditNow(updatedFromLibrary, awaitArtwork = false)
+        }
+    }
+
+    suspend fun writeMetadataWithoutInterruptingPlayback(
+        song: Song,
+        write: suspend () -> Result<Song?>
+    ): Result<Song?> {
+        val pauseToken = try {
+            playerManager.pauseForMetadataWrite(song)
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            return Result.failure(error)
+        }
+        return try {
+            val result = write()
+            if (result.isSuccess && pauseToken != null &&
+                currentSong.value?.lyricIdentityKey() == song.lyricIdentityKey()
+            ) {
+                refreshCurrentSongAfterExternalEditNow(
+                    updatedFromLibrary = result.getOrNull(),
+                    awaitArtwork = true
+                )
+            }
+            result
+        } finally {
+            playerManager.resumeAfterMetadataWrite(pauseToken)
+        }
+    }
+
+    private suspend fun refreshCurrentSongAfterExternalEditNow(
+        updatedFromLibrary: Song?,
+        awaitArtwork: Boolean
+    ) {
+        val current = currentSong.value ?: return
+        val updated = updatedFromLibrary
+            ?.takeIf { it.lyricIdentityKey() == current.lyricIdentityKey() }
+            ?: repository.refreshSongAfterExternalEdit(current)
+            ?: current
+        repository.clearMetadataCache(current)
+        repository.clearMetadataCache(updated)
+        if (awaitArtwork) {
+            playerManager.updateCurrentSongMetadataAndAwaitArtwork(updated)
+        } else {
+            playerManager.updateCurrentSongMetadata(updated)
+        }
+        reloadLyrics(updated, force = true)
+    }
+
+    fun reloadCurrentLyrics() {
+        val song = currentSong.value ?: return
+        viewModelScope.launch { reloadLyrics(song, force = true) }
+    }
+
+    fun toggleCurrentSongFavorite() {
+        val song = currentSong.value ?: return
+        viewModelScope.launch {
+            if (song.onlineSource == SettingsManager.LIBRARY_SOURCE_NETEASE) {
+                runCatching { com.ella.music.data.netease.NeteaseLibraryStore.getInstance(getApplication()).toggleFavorite(song) }
+                    .onFailure { error ->
+                        if (error is CancellationException) throw error
+                        android.widget.Toast.makeText(getApplication(), getApplication<Application>().getString(com.ella.music.R.string.netease_sync_failed), android.widget.Toast.LENGTH_SHORT).show()
+                    }
+            } else if (openSubsonicCollectionsStore.isManagedFavorite(song)) {
+                runCatching { openSubsonicCollectionsStore.toggleFavorite(song) }
+            } else {
+                playlistStore.toggleFavorite(song)
+            }
+        }
+    }
+
+    fun isFavorite(song: Song?): Boolean =
+        song?.playlistIdentityKey()?.let { it in favoriteSongKeys.value } == true
+
+    private suspend fun reloadLyrics(song: Song, force: Boolean = false) {
+        val songKey = song.lyricIdentityKey()
+        if (currentSong.value?.lyricIdentityKey() != songKey) return
+        _lyricsSongKey.value = null
+        _currentLyricIndex.value = -1
+        _lyricsLoading.value = true
+        lastTickerPayload = null
+        lastLiveUpdateLyricPayload = null
+        lastBluetoothLyricPayload = null
+        bluetoothLyricRetryJob?.cancel()
+        val songLyrics = try {
+            val availability = repository.getLyricFormatAvailability(song)
+            _lyricFormatAvailability.value = availability
+            val formatOverride = _preferTtmlLyrics.value.takeIf { availability.hasBoth }
+            if (!availability.hasBoth) _preferTtmlLyrics.value = null
+            if (formatOverride != null) {
+                repository.reloadLyricsByFormat(song, formatOverride)
+            } else if (force) {
+                repository.reloadLyrics(song, lyricSourceMode)
+            } else {
+                repository.getLyrics(song, lyricSourceMode)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            AppLogStore.warn(
+                getApplication(),
+                "PlayerLyrics",
+                "Failed to reload lyrics for ${song.title}",
+                error
+            )
+            if (currentSong.value?.lyricIdentityKey() == songKey) {
+                loadedLyricSongKey = songKey
+                setLoadedLyrics(song, emptyList(), notifyExternal = false)
+                _lyricsLoading.value = false
+            }
+            return
+        }
+        if (currentSong.value?.lyricIdentityKey() != songKey) return
+        loadedLyricSongKey = songKey
+        setLoadedLyrics(song, songLyrics, notifyExternal = false)
+        _lyricsLoading.value = false
+        val displayedLyrics = loadedLyricsForCurrentSong()
+        if (lyriconBridge.isEnabled()) lyriconBridge.sendSong(song, displayedLyrics)
+        superLyricBridge.sendSong(song)
+        if (displayedLyrics.isEmpty()) {
+            clearExternalLyrics(clearLyricon = false, clearSuperLyricSong = false)
+        } else {
+            if (tickerBridge.isEnabled()) resendTickerLyric(force = true)
+            if (liveUpdateLyricEnabled) resendLiveUpdateLyric(force = true)
+            if (desktopLyricBridge.isEnabled()) resendDesktopLyric()
+            if (superLyricBridge.isEnabled()) resendSuperLyric(force = true)
+            if (lyricGetterBridge.isEnabled()) resendLyricGetter(force = true)
+            if (bluetoothLyricEnabled) resendBluetoothLyric(force = true)
+            scheduleExternalLyricResend()
+        }
+    }
+
+    fun startSleepTimer(
+        minutes: Int,
+        stopAfterCurrentWhenExpired: Boolean = false
+    ) {
+        sleepTimerController.start(minutes, stopAfterCurrentWhenExpired)
+    }
+
+    fun setStopAfterCurrentEnabled(enabled: Boolean) {
+        sleepTimerController.setStopAfterCurrentEnabled(enabled)
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimerController.cancel()
+    }
+
+    private fun updateSleepTimer() {
+        sleepTimerController.update()
+    }
+
+    fun setLyricPageTranslation(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setLyricPageTranslation(enabled)
+            _showLyricTranslation.value = enabled
+        }
+    }
+
+    fun setLyricPagePronunciation(enabled: Boolean) {
+        _showLyricPronunciation.value = enabled
+        resendDesktopLyric()
+    }
+
+    fun setLyriconEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setLyriconEnabled(enabled)
+            lyriconBridge.setEnabled(enabled)
+            if (enabled) {
+                currentSong.value?.let { song ->
+                    lyriconBridge.sendSong(song, loadedLyricsForCurrentSong())
+                    lyriconBridge.sendPlaybackState(isPlaying.value)
+                }
+            }
+        }
+    }
+
+    fun setLyriconTranslation(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setLyriconTranslation(enabled)
+            lyriconTranslationEnabled = enabled
+            if (enabled && lyriconPronunciationEnabled) {
+                lyriconPronunciationEnabled = false
+                settingsManager.setLyriconPronunciation(false)
+            }
+            lyriconBridge.setSecondaryMode(currentLyriconSecondaryMode())
+            if (lyriconBridge.isEnabled()) resendExternalLyrics(force = true)
+        }
+    }
+
+    fun setTickerEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setTickerEnabled(enabled)
+            if (enabled) {
+                settingsManager.setTickerHideNotification(true)
+                tickerHideNotificationEnabled = true
+            }
+            tickerBridge.setHideNotification(true)
+            tickerBridge.setHeadsUpLyricsEnabled(settingsManager.tickerHeadsUpLyrics.first())
+            tickerBridge.setEnabled(enabled)
+            lastTickerPayload = null
+            if (enabled) resendTickerLyric()
+        }
+    }
+
+    fun setLiveUpdateLyricEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setLiveUpdateLyricEnabled(enabled)
+            liveUpdateLyricEnabled = enabled
+            lastLiveUpdateLyricPayload = null
+            liveLyricNotificationBridge.setEnabled(enabled)
+            if (enabled) resendLiveUpdateLyric(force = true) else liveLyricNotificationBridge.clear()
+        }
+    }
+
+    fun setXiaomiSuperIslandLyricEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setXiaomiSuperIslandLyricEnabled(enabled)
+            xiaomiSuperIslandLyricEnabled = enabled
+            xiaomiSuperIslandLyricBridge.setEnabled(enabled)
+            if (enabled) resendXiaomiSuperIslandLyric()
+        }
+    }
+
+    fun setLiveUpdateLyricMode(mode: Int) {
+        viewModelScope.launch {
+            settingsManager.setLiveUpdateLyricMode(mode)
+            liveUpdateLyricMode = mode.coerceIn(
+                SettingsManager.LIVE_UPDATE_LYRIC_MODE_ORIGINAL,
+                SettingsManager.LIVE_UPDATE_LYRIC_MODE_PRONUNCIATION
+            )
+            lastLiveUpdateLyricPayload = null
+            if (liveUpdateLyricEnabled) resendLiveUpdateLyric(force = true)
+        }
+    }
+
+    fun setLiveUpdateLyricDisplayMode(mode: Int) {
+        viewModelScope.launch {
+            settingsManager.setLiveUpdateLyricDisplayMode(mode)
+            liveUpdateLyricDisplayMode = mode.coerceIn(
+                SettingsManager.LIVE_UPDATE_LYRIC_DISPLAY_MODE_COMPACT,
+                SettingsManager.LIVE_UPDATE_LYRIC_DISPLAY_MODE_FULL
+            )
+            lastLiveUpdateLyricPayload = null
+            if (liveUpdateLyricEnabled) resendLiveUpdateLyric(force = true)
+        }
+    }
+
+    fun setLiveUpdateLyricSecondaryMode(mode: Int) {
+        viewModelScope.launch {
+            settingsManager.setLiveUpdateLyricSecondaryMode(mode)
+            liveUpdateLyricSecondaryMode = mode.coerceIn(
+                SettingsManager.LIVE_UPDATE_LYRIC_SECONDARY_MODE_SONG,
+                SettingsManager.LIVE_UPDATE_LYRIC_SECONDARY_MODE_PRONUNCIATION
+            )
+            lastLiveUpdateLyricPayload = null
+            if (liveUpdateLyricEnabled) resendLiveUpdateLyric(force = true)
+        }
+    }
+
+    fun setTickerHideNotification(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setTickerHideNotification(true)
+            tickerHideNotificationEnabled = true
+            tickerBridge.setHideNotification(true)
+            lastTickerPayload = null
+            if (tickerBridge.isEnabled()) resendTickerLyric(force = true)
+        }
+    }
+
+    fun setTickerHeadsUpLyrics(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setTickerHeadsUpLyrics(enabled)
+            tickerBridge.setHeadsUpLyricsEnabled(enabled)
+            lastTickerPayload = null
+            if (tickerBridge.isEnabled()) resendTickerLyric(force = true)
+        }
+    }
+
+    fun setSamsungFloatingLyricTranslation(enabled: Boolean) {
+        viewModelScope.launch {
+            val safeEnabled = enabled
+            settingsManager.setSamsungFloatingLyricTranslation(safeEnabled)
+            samsungFloatingLyricTranslationEnabled = safeEnabled
+            if (safeEnabled && statusBarAllowPhoneticEnabled) {
+                statusBarAllowPhoneticEnabled = false
+                settingsManager.setStatusBarAllowPhonetic(false)
+            }
+            lastTickerPayload = null
+            if (tickerBridge.isEnabled()) resendTickerLyric()
+        }
+    }
+
+    fun setStatusBarAllowPhonetic(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setStatusBarAllowPhonetic(enabled)
+            statusBarAllowPhoneticEnabled = enabled
+            if (enabled && samsungFloatingLyricTranslationEnabled) {
+                samsungFloatingLyricTranslationEnabled = false
+                settingsManager.setSamsungFloatingLyricTranslation(false)
+            }
+            lastTickerPayload = null
+            if (tickerBridge.isEnabled()) resendTickerLyric(force = true)
+        }
+    }
+
+    fun setLyriconPronunciation(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setLyriconPronunciation(enabled)
+            lyriconPronunciationEnabled = enabled
+            if (enabled && lyriconTranslationEnabled) {
+                lyriconTranslationEnabled = false
+                settingsManager.setLyriconTranslation(false)
+            }
+            lyriconBridge.setSecondaryMode(currentLyriconSecondaryMode())
+            if (lyriconBridge.isEnabled()) resendExternalLyrics(force = true)
+        }
+    }
+
+    fun setDesktopLyricEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setDesktopLyricEnabled(enabled)
+            desktopLyricBridge.setEnabled(enabled)
+            if (enabled) resendDesktopLyric()
+        }
+    }
+
+    fun setDesktopLyricHideWhenPaused(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setDesktopLyricHideWhenPaused(enabled)
+            desktopLyricHideWhenPausedEnabled = enabled
+            desktopLyricBridge.applySettings()
+            if (!desktopLyricStatusBarModeEnabled && enabled && !isPlaying.value) {
+                desktopLyricBridge.clearLyric()
+            } else {
+                resendDesktopLyric()
+            }
+        }
+    }
+
+    fun applyDesktopLyricSettings() {
+        desktopLyricBridge.applySettings()
+        resendDesktopLyric()
+    }
+
+    fun setSuperLyricEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setSuperLyricEnabled(enabled)
+            superLyricBridge.setEnabled(enabled)
+            if (enabled) {
+                currentSong.value?.let { superLyricBridge.sendSong(it) }
+                resendSuperLyric()
+            }
+        }
+    }
+
+    fun setLyricGetterEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setLyricGetterEnabled(enabled)
+            lyricGetterBridge.setEnabled(enabled)
+            if (enabled) resendLyricGetter(force = true)
+        }
+    }
+
+    fun setSuperLyricTranslation(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setSuperLyricTranslation(enabled)
+            superLyricTranslationEnabled = enabled
+            if (enabled && superLyricPronunciationEnabled) {
+                superLyricPronunciationEnabled = false
+                settingsManager.setSuperLyricPronunciation(false)
+            }
+            superLyricBridge.setSecondaryMode(currentSuperLyricSecondaryMode())
+            if (superLyricBridge.isEnabled()) resendSuperLyric(force = true)
+        }
+    }
+
+    fun setSuperLyricPronunciation(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setSuperLyricPronunciation(enabled)
+            superLyricPronunciationEnabled = enabled
+            if (enabled && superLyricTranslationEnabled) {
+                superLyricTranslationEnabled = false
+                settingsManager.setSuperLyricTranslation(false)
+            }
+            superLyricBridge.setSecondaryMode(currentSuperLyricSecondaryMode())
+            if (superLyricBridge.isEnabled()) resendSuperLyric(force = true)
+        }
+    }
+
+    fun setBluetoothLyricEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setBluetoothLyricEnabled(enabled)
+            bluetoothLyricEnabled = enabled
+            lastBluetoothLyricPayload = null
+
+            if (enabled) {
+                resendBluetoothLyric()
+            } else {
+                bluetoothLyricRetryJob?.cancel()
+                playerManager.clearBluetoothLyric()
+            }
+        }
+    }
+
+    fun setBluetoothLyricTranslation(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setBluetoothLyricTranslation(enabled)
+            bluetoothLyricTranslationEnabled = enabled
+            if (enabled && bluetoothLyricPronunciationEnabled) {
+                bluetoothLyricPronunciationEnabled = false
+                settingsManager.setBluetoothLyricPronunciation(false)
+            }
+            lastBluetoothLyricPayload = null
+            if (bluetoothLyricEnabled) resendBluetoothLyric(force = true)
+        }
+    }
+
+    fun setBluetoothLyricPronunciation(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setBluetoothLyricPronunciation(enabled)
+            bluetoothLyricPronunciationEnabled = enabled
+            if (enabled && bluetoothLyricTranslationEnabled) {
+                bluetoothLyricTranslationEnabled = false
+                settingsManager.setBluetoothLyricTranslation(false)
+            }
+            lastBluetoothLyricPayload = null
+            if (bluetoothLyricEnabled) resendBluetoothLyric(force = true)
+        }
+    }
+
+    private fun sendTickerLyric(index: Int, lyrics: List<LyricLine>) {
+        if (!tickerBridge.isEnabled() || !playerManager.isPlaying.value) return
+
+        val payload = lyrics.lyricPayloadAt(index, samsungFloatingLyricTranslationEnabled) ?: return
+        if (payload == lastTickerPayload) return
+
+        lastTickerPayload = payload
+        val pronunciation = if (statusBarAllowPhoneticEnabled) {
+            lyrics.getOrNull(index)?.pronunciation?.takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
+        tickerBridge.sendLyric(payload.first, payload.second, pronunciation)
+    }
+
+    override fun onCleared() {
+        val pendingStatsFlush = playbackStatsTracker.takePendingFlush()
+        if (pendingStatsFlush != null) {
+            cleanupScope.launch {
+                playbackStatsStore.addListenTime(
+                    song = pendingStatsFlush.song,
+                    listenedMs = pendingStatsFlush.listenedMs,
+                    historyEntryId = pendingStatsFlush.historyEntryId
+                )
+            }
+        }
+        super.onCleared()
+        externalLyricResendJob?.cancel()
+        positionUpdateJob?.cancel()
+        seekExternalLyricSyncJob?.cancel()
+        sleepTimerController.dispose()
+        tickerBridge.clearLyric()
+        liveLyricNotificationBridge.clear()
+        xiaomiSuperIslandLyricBridge.destroy()
+        lyricGetterBridge.clearLyric()
+        superLyricBridge.destroy()
+        lyriconBridge.destroy()
+        playerManager.disconnect()
+    }
+}

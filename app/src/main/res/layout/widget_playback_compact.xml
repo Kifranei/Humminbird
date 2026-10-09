@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_playback_background">
+
+    <ImageView
+        android:id="@+id/widget_background_art"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/widget_playback_background"
+        android:clipToOutline="true"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/widget_playback_background" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="6dp">
+
+        <ImageView
+            android:id="@+id/widget_cover"
+            android:layout_width="54dp"
+            android:layout_height="54dp"
+            android:contentDescription="@string/widget_album_cover"
+            android:scaleType="centerCrop"
+            android:src="@drawable/widget_default_cover" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="#FFFFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_artist"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="#C7FFFFFF"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/widget_lyric"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="#E6FFFFFF"
+                android:textSize="10sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/widget_album"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/widget_position"
+                    android:text="0:00"
+                    android:layout_width="32dp"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="9sp" />
+
+                <Chronometer
+                    android:id="@+id/widget_running_position"
+                    android:visibility="gone"
+                    android:layout_width="32dp"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="9sp" />
+
+                <ProgressBar
+                    android:id="@+id/widget_progress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="0dp"
+                    android:layout_height="3dp"
+                    android:layout_marginHorizontal="4dp"
+                    android:layout_weight="1"
+                    android:indeterminate="false"
+                    android:max="1000"
+                    android:progress="0"
+                    android:progressDrawable="@drawable/widget_progress" />
+
+                <TextView
+                    android:id="@+id/widget_duration"
+                    android:layout_width="32dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:text="@string/widget_zero_time"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="9sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/widget_previous"
+            android:layout_width="34dp"
+            android:layout_height="42dp"
+            android:contentDescription="@string/common_previous"
+            android:padding="7dp"
+            android:src="@drawable/ic_widget_skip_previous" />
+
+        <ImageView
+            android:id="@+id/widget_play_pause"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:background="@drawable/widget_control_circle"
+            android:contentDescription="@string/common_play"
+            android:padding="9dp"
+            android:src="@drawable/ic_widget_play" />
+
+        <ImageView
+            android:id="@+id/widget_next"
+            android:layout_width="34dp"
+            android:layout_height="42dp"
+            android:contentDescription="@string/common_next"
+            android:padding="7dp"
+            android:src="@drawable/ic_widget_skip_next" />
+    </LinearLayout>
+</FrameLayout>

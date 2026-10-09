@@ -1,0 +1,350 @@
+package com.ella.music.ui.folder
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.ella.music.R
+import com.ella.music.data.model.Song
+import com.ella.music.data.webdav.WebDavItem
+import com.ella.music.data.webdav.WebDavHeader
+import com.ella.music.ui.components.EllaMiuixAction
+import com.ella.music.ui.components.EllaMiuixActionRow
+import com.ella.music.ui.components.EllaMiuixBottomSheet
+import top.yukonga.miuix.kmp.basic.TextField
+import com.ella.music.ui.components.LocalSettingsCardFrosting
+import com.ella.music.ui.components.frostedCardColor
+import com.ella.music.ui.components.frostedCardModifier
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.icon.extended.Add
+import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.icon.extended.Folder
+import top.yukonga.miuix.kmp.icon.extended.Play
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import java.util.Locale
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun WebDavItemRow(
+    item: WebDavItem,
+    onClick: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onLongClick: () -> Unit = {}
+) {
+    val frosting = LocalSettingsCardFrosting.current
+    val baseModifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 12.dp, vertical = 4.dp)
+        .combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
+    val cardModifier = frostedCardModifier(modifier = baseModifier, cornerRadius = 16.dp, frosting = frosting)
+    Card(
+        modifier = cardModifier,
+        cornerRadius = 16.dp,
+        colors = CardDefaults.defaultColors(color = frostedCardColor(frosting = frosting, defaultAlpha = 0.42f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = MiuixIcons.Regular.Folder,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+            ) {
+                Text(
+                    text = item.name,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = if (item.isDirectory) stringResource(R.string.webdav_item_directory) else item.mimeType.ifBlank { stringResource(R.string.webdav_remote_audio) },
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                )
+            }
+            IconButton(onClick = onClick) {
+                Icon(
+                    imageVector = if (item.isDirectory) MiuixIcons.Basic.ArrowRight else MiuixIcons.Regular.Play,
+                    contentDescription = if (item.isDirectory) stringResource(R.string.common_open) else stringResource(R.string.common_play),
+                    tint = MiuixTheme.colorScheme.onSurface
+                )
+            }
+            if (!item.isDirectory) {
+                IconButton(onClick = onAddToQueue) {
+                    Icon(
+                        imageVector = MiuixIcons.Regular.Add,
+                        contentDescription = stringResource(R.string.common_add_to_queue),
+                        tint = MiuixTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun WebDavSettingsDialog(
+    url: String,
+    username: String,
+    password: String,
+    customHeaders: List<WebDavHeader>,
+    onUrlChange: (String) -> Unit,
+    onUsernameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onCustomHeadersChange: (List<WebDavHeader>) -> Unit,
+    testStatus: String?,
+    onDismiss: () -> Unit,
+    onTest: () -> Unit,
+    onSave: () -> Unit,
+    onClear: () -> Unit
+) {
+    EllaMiuixBottomSheet(
+        show = true,
+        title = stringResource(R.string.webdav_library_title),
+        onDismissRequest = onDismiss
+    ) {
+        Column(
+            modifier = Modifier.padding(bottom = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 480.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                WebDavTextField(stringResource(R.string.webdav_url), url, onUrlChange)
+                WebDavTextField(stringResource(R.string.webdav_username), username, onUsernameChange)
+                WebDavTextField(
+                    label = stringResource(R.string.webdav_password),
+                    value = password,
+                    onValueChange = onPasswordChange,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Text(
+                    text = stringResource(R.string.webdav_custom_headers),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MiuixTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = stringResource(R.string.webdav_custom_headers_hint),
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                )
+                customHeaders.forEachIndexed { index, header ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        WebDavTextField(
+                            label = stringResource(R.string.webdav_header_name),
+                            value = header.name,
+                            onValueChange = { name ->
+                                onCustomHeadersChange(
+                                    customHeaders.toMutableList().also {
+                                        it[index] = header.copy(name = name)
+                                    }
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        WebDavTextField(
+                            label = stringResource(R.string.webdav_header_value),
+                            value = header.value,
+                            onValueChange = { value ->
+                                onCustomHeadersChange(
+                                    customHeaders.toMutableList().also {
+                                        it[index] = header.copy(value = value)
+                                    }
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = {
+                                onCustomHeadersChange(customHeaders.filterIndexed { i, _ -> i != index })
+                            }
+                        ) {
+                            Icon(
+                                imageVector = MiuixIcons.Regular.Delete,
+                                contentDescription = stringResource(R.string.common_delete),
+                                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+                EllaMiuixListLikeAddHeaderButton(
+                    text = stringResource(R.string.webdav_add_header),
+                    onClick = {
+                        onCustomHeadersChange(customHeaders + WebDavHeader(name = "User-Agent", value = ""))
+                    }
+                )
+                if (!testStatus.isNullOrBlank()) {
+                    Text(
+                        text = testStatus,
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.primary
+                    )
+                }
+            }
+            EllaMiuixActionRow(
+                actions = listOf(
+                    EllaMiuixAction(text = stringResource(R.string.common_remove), onClick = onClear),
+                    EllaMiuixAction(text = stringResource(R.string.common_cancel), onClick = onDismiss),
+                    EllaMiuixAction(text = stringResource(R.string.common_test), onClick = onTest),
+                    EllaMiuixAction(text = stringResource(R.string.common_save), onClick = onSave, primary = true)
+                ),
+                spacing = 8.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun EllaMiuixListLikeAddHeaderButton(
+    text: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            imageVector = MiuixIcons.Regular.Add,
+            contentDescription = text,
+            tint = MiuixTheme.colorScheme.primary,
+            modifier = Modifier.size(22.dp)
+        )
+        Text(
+            text = text,
+            fontSize = 14.sp,
+            color = MiuixTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+internal fun WebDavTextField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    modifier: Modifier = Modifier.fillMaxWidth()
+) {
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = label,
+        singleLine = true,
+        visualTransformation = visualTransformation,
+        modifier = modifier
+    )
+}
+
+internal fun WebDavItem.toRemoteSong(): Song {
+    val title = name.substringBeforeLast('.', name)
+    val stableId = kotlin.math.abs(url.hashCode().toLong()).takeIf { it != 0L } ?: 1L
+    val playbackUrl = runCatching { com.ella.music.data.webdav.WebDavClient.normalizeFileUrl(url) }.getOrDefault(url)
+    return Song(
+        id = stableId,
+        title = title,
+        artist = "",
+        album = "",
+        albumId = 0L,
+        duration = 0L,
+        path = playbackUrl,
+        fileName = name,
+        fileSize = size,
+        mimeType = mimeType.substringBefore(';').trim().lowercase(Locale.ROOT)
+    )
+}
+
+@Composable
+internal fun WebDavFolderActionSheet(
+    title: String,
+    onDismiss: () -> Unit,
+    onFavorite: () -> Unit,
+    onCreatePlaylist: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onAddToQueue: () -> Unit
+) {
+    EllaMiuixBottomSheet(
+        show = true,
+        enableNestedScroll = false,
+        title = title,
+        onDismissRequest = onDismiss
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            com.ella.music.ui.components.EllaMiuixMenuItem(
+                text = stringResource(R.string.webdav_folder_add_to_favorites),
+                onClick = onFavorite
+            )
+            com.ella.music.ui.components.EllaMiuixMenuItem(
+                text = stringResource(R.string.webdav_folder_create_playlist),
+                onClick = onCreatePlaylist
+            )
+            com.ella.music.ui.components.EllaMiuixMenuItem(
+                text = stringResource(R.string.song_more_add_to_playlist),
+                onClick = onAddToPlaylist
+            )
+            com.ella.music.ui.components.EllaMiuixMenuItem(
+                text = stringResource(R.string.common_add_to_queue),
+                onClick = onAddToQueue
+            )
+        }
+    }
+}
+
+internal fun String.toFolderSettingList(): List<String> =
+    split('；', ';')
+        .map { it.trim() }
+        .filter { it.isNotBlank() }

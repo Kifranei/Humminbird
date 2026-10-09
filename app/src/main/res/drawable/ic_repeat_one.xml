@@ -1,0 +1,30 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp"
+    android:height="30dp"
+    android:viewportWidth="44"
+    android:viewportHeight="44">
+    <!-- Xiaomi HyperOS media-control glyph: 功能=单曲循环, 状态=常态 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M12,19 C12,16.7909 13.7909,15 16,15 H28" />
+    <path
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd"
+        android:pathData="M26,12.7488 V17.2513 C26,17.6648 26.3543,18 26.7914,18 C26.9531,18 27.1109,17.9531 27.2436,17.8657 L30.6608,15.6144 C31.0195,15.3781 31.1077,14.9115 30.858,14.5722 C30.8044,14.4994 30.7377,14.4363 30.6608,14.3856 L27.2436,12.1344 C26.885,11.8981 26.3917,11.9816 26.142,12.3209 C26.0495,12.4465 26,12.5958 26,12.7488 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd"
+        android:pathData="M17,26.7488 V31.2513 C17,31.6648 16.6457,32 16.2086,32 C16.0469,32 15.8891,31.9531 15.7564,31.8657 L12.3392,29.6144 C11.9805,29.3781 11.8923,28.9115 12.142,28.5722 C12.1956,28.4994 12.2623,28.4363 12.3392,28.3856 L15.7564,26.1344 C16.115,25.8981 16.6083,25.9816 16.858,26.3209 C16.9505,26.4465 17,26.5958 17,26.7488 Z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M31,25 C31,27.2091 29.2091,29 27,29 H15" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M20.8753,24.8382 H22.4861 V19 H20.8753 L19.5,19.9791 V21.4154 L20.7993,20.501 H20.8753 V24.8382 Z" />
+</vector>

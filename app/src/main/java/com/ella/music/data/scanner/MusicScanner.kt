@@ -1,0 +1,575 @@
+package com.ella.music.data.scanner
+
+import android.content.Context
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.provider.DocumentsContract
+import android.provider.MediaStore
+import android.util.Log
+import com.ella.music.data.SettingsManager
+import com.ella.music.data.metadata.AudioTagInfo
+import com.ella.music.data.metadata.LyricoAudioTagReaderWriter
+import com.ella.music.data.LibraryNormalizer
+import com.ella.music.data.model.Album
+import com.ella.music.data.model.Song
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import java.io.File
+
+class MusicScanner(private val context: Context) {
+    private val audioTagReader = LyricoAudioTagReaderWriter(context)
+
+    companion object {
+        private const val TAG = "MusicScanner"
+
+        private val DEFAULT_EXCLUDE_FOLDERS = listOf(
+            "/storage/emulated/0/Music/Recordings"
+        )
+        private val AUDIO_EXTENSIONS = supportedAudioFileExtensions
+    }
+
+    suspend fun enumerateAudioFiles(
+        includeFolders: List<String> = emptyList(),
+        excludeFolders: List<String> = emptyList(),
+        filesystemFallbackFolders: List<String> = includeFolders,
+        filterVideoFiles: Boolean = true,
+        refreshMediaStore: Boolean = false
+    ): List<MediaStoreAudioItem> = withContext(Dispatchers.IO) {
+        // Normal refreshes stay incremental. A whole-tree MediaScanner pass is reserved for the
+        // explicit/full scan path below; byte stamps in MusicRepository catch edits whose mtime
+        // was preserved without turning every tap on “scan” into an index rebuild.
+        // A user pull-to-refresh is the deliberate exception: downloaders can finish a file on
+        // disk before MediaStore has published its row, so index the storage roots first.
+        if (refreshMediaStore) {
+            MediaStoreLibraryIndexer.refreshIndexedAudio(
+                context = context,
+                folders = filesystemFallbackFolders
+            )
+        }
+        val items = queryMediaStoreAudioItems(
+            includeFolders = includeFolders,
+            excludeFolders = excludeFolders,
+            verifyFileSnapshot = false
+        )
+        val fallbackItems = filesystemFallbackAudioItems(
+            includeFolders = filesystemFallbackFolders,
+            excludeFolders = excludeFolders,
+            existingPaths = items.map { it.path }.toSet()
+        )
+        val indexedItems = discoverUnindexedCustomFolderItems(
+            includeFolders = filesystemFallbackFolders,
+            excludeFolders = excludeFolders,
+            existingPaths = (items + fallbackItems).map { it.path }.toSet()
+        )
+        val filteredItems = items.filterNot { filterVideoFiles && isVideoFile(it.path, it.mimeType) }
+        val filteredFallbackItems = (fallbackItems + indexedItems)
+            .filterNot { filterVideoFiles && isVideoFile(it.path, it.mimeType) }
+        val (merged, stats) = mergeMediaStoreAndFilesystemItems(filteredItems, filteredFallbackItems)
+        val snapshotted = merged.map { it.withLocalFileSnapshot() }
+        Log.i(
+            TAG,
+            "enumerateAudioFiles mediaStore=${stats.mediaStoreItemCount} filesystemFallback=${stats.filesystemFallbackItemCount} merged=${stats.mergedItemCount}"
+        )
+        snapshotted
+    }
+
+    fun isVideoFile(path: String, mimeType: String): Boolean {
+        if (mimeType.substringBefore(';').trim().startsWith("video/", ignoreCase = true)) return true
+        if (!path.substringAfterLast('.', "").equals("mp4", ignoreCase = true)) return false
+        return runCatching {
+            MediaMetadataRetriever().useCompat { retriever ->
+                retriever.setDataSource(path)
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO)
+                    .equals("yes", ignoreCase = true)
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun queryMediaStoreAudioItems(
+        includeFolders: List<String>,
+        excludeFolders: List<String>,
+        verifyFileSnapshot: Boolean
+    ): List<MediaStoreAudioItem> {
+        val items = mutableListOf<MediaStoreAudioItem>()
+        val normalizedIncludeFolders = includeFolders.mapNotNull { it.normalizedFolderPath() }
+        val normalizedExcludeFolders = (DEFAULT_EXCLUDE_FOLDERS + excludeFolders).mapNotNull { it.normalizedFolderPath() }
+        val projection = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.ALBUM,
+            MediaStore.Audio.Media.ALBUM_ID,
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.DATA,
+            MediaStore.Audio.Media.DISPLAY_NAME,
+            MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.MIME_TYPE,
+            MediaStore.Audio.Media.DATE_ADDED,
+            MediaStore.Audio.Media.DATE_MODIFIED,
+            MediaStore.Audio.Media.TRACK,
+            MediaStore.Audio.Media.RELATIVE_PATH,
+            MediaStore.MediaColumns.VOLUME_NAME
+        )
+        val seenKeys = HashSet<String>()
+        val basicProjection = projection.copyOf(projection.size - 2)
+        MediaStoreLibraryIndexer.audioCollectionUris(context).forEach { collection ->
+            runCatching {
+                context.contentResolver.query(collection, projection, null, null, null)
+                    ?: context.contentResolver.query(collection, basicProjection, null, null, null)
+            }.recoverCatching {
+                context.contentResolver.query(collection, basicProjection, null, null, null)
+            }.onFailure { error ->
+                Log.w(TAG, "MediaStore query failed for $collection", error)
+            }.getOrNull()?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+                val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+                val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+                val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+                val albumIdCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+                val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+                val dataCol = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+                val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+                val dateAddedCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+                val dateModifiedCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_MODIFIED)
+                val trackCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+                val relativePathCol = cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+                val volumeNameCol = cursor.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
+
+                while (cursor.moveToNext()) {
+                    val displayName = cursor.getString(nameCol).orEmpty()
+                    val path = MediaStoreLibraryIndexer.reconstructStoragePath(
+                        data = if (dataCol >= 0) cursor.getString(dataCol) else null,
+                        relativePath = if (relativePathCol >= 0) cursor.getString(relativePathCol) else null,
+                        displayName = displayName,
+                        volumeName = if (volumeNameCol >= 0) cursor.getString(volumeNameCol) else null
+                    )
+                    if (path.isEmpty()) continue
+                    val pathKey = path.normalizedAudioPathKey()
+                    if (pathKey.isBlank() || !seenKeys.add(pathKey)) continue
+                    if (!path.isAllowedByFolderFilters(normalizedIncludeFolders, normalizedExcludeFolders)) continue
+
+                    val rawTrackNumber = cursor.getInt(trackCol)
+                    val mediaStoreSize = cursor.getLong(sizeCol).coerceAtLeast(0L)
+                    if (!isMediaStoreAudioCandidate(path, mediaStoreSize)) continue
+
+                    val file = if (verifyFileSnapshot) File(path) else null
+                    // Scoped storage can hide files from File.exists() even when MediaStore
+                    // still has a valid row. Only drop the row when the path is obviously gone
+                    // from a location the process can actually observe.
+                    if (file != null && file.parentFile?.canRead() == true && !file.exists()) continue
+
+                    val mediaStoreModified = cursor.getLong(dateModifiedCol).takeIf { it > 0L }?.times(1000L) ?: 0L
+
+                    items += MediaStoreAudioItem(
+                        id = cursor.getLong(idCol),
+                        title = cursor.getString(titleCol).orEmpty(),
+                        artist = cursor.getString(artistCol).orEmpty(),
+                        album = cursor.getString(albumCol).orEmpty(),
+                        albumId = cursor.getLong(albumIdCol),
+                        duration = cursor.getLong(durationCol),
+                        path = path,
+                        fileName = displayName,
+                        fileSize = file?.length()?.takeIf { it > 0L } ?: mediaStoreSize,
+                        mimeType = cursor.getString(mimeCol).orEmpty(),
+                        dateAdded = cursor.getLong(dateAddedCol) * 1000L,
+                        dateModified = file?.lastModified()?.takeIf { it > 0L } ?: mediaStoreModified,
+                        trackNumber = rawTrackNumber.normalizedTrackNumber(),
+                        discNumber = rawTrackNumber.normalizedDiscNumber()
+                    )
+                }
+            }
+        }
+        return items
+    }
+
+    internal fun filesystemFallbackAudioItems(
+        includeFolders: List<String>,
+        excludeFolders: List<String>,
+        existingPaths: Set<String> = emptySet()
+    ): List<MediaStoreAudioItem> {
+        if (includeFolders.isEmpty()) return emptyList()
+        val normalizedIncludeFolders = includeFolders.mapNotNull { it.normalizedFolderPath() }
+        if (normalizedIncludeFolders.isEmpty()) return emptyList()
+        val normalizedExcludeFolders = (DEFAULT_EXCLUDE_FOLDERS + excludeFolders).mapNotNull { it.normalizedFolderPath() }
+        val existingKeys = existingPaths.mapTo(HashSet()) { it.normalizedAudioPathKey() }
+        val fallback = mutableListOf<MediaStoreAudioItem>()
+        includeFolders
+            .asSequence()
+            .filterNot { it == "__ella_no_custom_folder__" }
+            .map { File(it) }
+            .filter { it.exists() && it.isDirectory }
+            .distinctBy { it.absolutePath.normalizedAudioPathKey() }
+            .forEach { root ->
+                runCatching {
+                    root.walkTopDown()
+                        .onEnter { dir ->
+                            dir.absolutePath.isAllowedByFolderFilters(normalizedIncludeFolders, normalizedExcludeFolders)
+                        }
+                        .filter { file ->
+                            file.isFile &&
+                                file.extension.lowercase() in AUDIO_EXTENSIONS &&
+                                file.absolutePath.isAllowedByFolderFilters(normalizedIncludeFolders, normalizedExcludeFolders)
+                        }
+                        .forEach { file ->
+                            val path = file.absolutePath
+                            val key = path.normalizedAudioPathKey()
+                            if (key.isBlank() || key in existingKeys) return@forEach
+                            existingKeys += key
+                            fallback += file.toFallbackAudioItem()
+                        }
+                }.onFailure { error ->
+                    Log.w(TAG, "Filesystem fallback scan failed for ${root.absolutePath}", error)
+                }
+            }
+        return fallback
+    }
+
+    /**
+     * Primary custom folders are stored as File paths, but Android 11+ often hides newly copied
+     * files from [File.walkTopDown]. Use the persisted SAF tree to list them, ask MediaStore to
+     * index the missing paths, then re-query.
+     */
+    private suspend fun discoverUnindexedCustomFolderItems(
+        includeFolders: List<String>,
+        excludeFolders: List<String>,
+        existingPaths: Set<String>
+    ): List<MediaStoreAudioItem> {
+        if (includeFolders.isEmpty() || includeFolders.all { it == "__ella_no_custom_folder__" }) {
+            return emptyList()
+        }
+        val existingKeys = existingPaths.mapTo(HashSet()) { it.normalizedAudioPathKey() }
+        val safPaths = listSafPrimaryAudioPaths(
+            includeFolders = includeFolders,
+            excludeFolders = excludeFolders
+        ).filter { it.normalizedAudioPathKey() !in existingKeys }
+        if (safPaths.isEmpty()) return emptyList()
+        requestMediaStoreScan(safPaths)
+        val afterScan = queryMediaStoreAudioItems(
+            includeFolders = includeFolders,
+            excludeFolders = excludeFolders,
+            verifyFileSnapshot = false
+        ).filter { it.path.normalizedAudioPathKey() !in existingKeys }
+        if (afterScan.isNotEmpty()) return afterScan
+        return safPaths.mapNotNull { path ->
+            File(path).takeIf { it.isFile && it.length() > 0L }?.toFallbackAudioItem()
+        }
+    }
+
+    private fun listSafPrimaryAudioPaths(
+        includeFolders: List<String>,
+        excludeFolders: List<String>
+    ): List<String> {
+        val normalizedInclude = includeFolders.mapNotNull { it.normalizedFolderPath() }
+        if (normalizedInclude.isEmpty()) return emptyList()
+        val normalizedExclude = (DEFAULT_EXCLUDE_FOLDERS + excludeFolders).mapNotNull { it.normalizedFolderPath() }
+        val trees = resolvePrimaryTreeUris(includeFolders)
+        if (trees.isEmpty()) return emptyList()
+        val paths = LinkedHashSet<String>()
+        trees.forEach { treeUri ->
+            val documentId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
+                ?: return@forEach
+            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId)
+            collectSafPrimaryAudioPaths(
+                treeUri = treeUri,
+                childrenUri = childrenUri,
+                includeFolders = normalizedInclude,
+                excludeFolders = normalizedExclude,
+                into = paths
+            )
+        }
+        return paths.toList()
+    }
+
+    private fun resolvePrimaryTreeUris(includeFolders: List<String>): List<Uri> {
+        val persisted = context.contentResolver.persistedUriPermissions.map { it.uri }
+        val reconstructed = includeFolders.mapNotNull { folder ->
+            storagePathToPrimaryDocumentId(folder)?.let { documentId ->
+                DocumentsContract.buildTreeDocumentUri(
+                    "com.android.externalstorage.documents",
+                    documentId
+                )
+            }
+        }
+        return (persisted + reconstructed)
+            .distinctBy { it.toString() }
+            .filter { uri ->
+                val treePath = runCatching { DocumentsContract.getTreeDocumentId(uri) }
+                    .getOrNull()
+                    ?.let(::primaryDocumentIdToStoragePath)
+                    ?.normalizedFolderPath()
+                if (treePath == null) {
+                    persisted.any { it.toString() == uri.toString() }
+                } else {
+                    includeFolders.mapNotNull { it.normalizedFolderPath() }.any { folder ->
+                        folder == treePath || folder.startsWith("$treePath/") || treePath.startsWith("$folder/")
+                    }
+                }
+            }
+    }
+
+    private fun collectSafPrimaryAudioPaths(
+        treeUri: Uri,
+        childrenUri: Uri,
+        includeFolders: List<String>,
+        excludeFolders: List<String>,
+        into: MutableSet<String>
+    ) {
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE
+        )
+        runCatching {
+            context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                val docIdCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val mimeCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                while (cursor.moveToNext()) {
+                    val docId = cursor.getString(docIdCol) ?: continue
+                    val name = cursor.getString(nameCol).orEmpty()
+                    val mimeType = cursor.getString(mimeCol).orEmpty()
+                    if (mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
+                        val subChildren = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
+                        collectSafPrimaryAudioPaths(treeUri, subChildren, includeFolders, excludeFolders, into)
+                        continue
+                    }
+                    val ext = name.substringAfterLast('.', "").lowercase()
+                    if (ext !in AUDIO_EXTENSIONS) continue
+                    val path = primaryDocumentIdToStoragePath(docId) ?: continue
+                    if (!path.isAllowedByFolderFilters(includeFolders, excludeFolders)) continue
+                    into += path
+                }
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "SAF listing failed for $treeUri", error)
+        }
+    }
+
+    private suspend fun requestMediaStoreScan(paths: List<String>) {
+        MediaStoreLibraryIndexer.refreshIndexedAudio(
+            context = context,
+            folders = emptyList(),
+            extraPaths = paths
+        )
+    }
+
+    /**
+     * Scan audio files from a SAF document tree URI (e.g. USB drive).
+     * Returns a list of songs found recursively under the given URI.
+     */
+    suspend fun scanUsbFolder(
+        treeUri: Uri,
+        minDurationMs: Long = 0,
+        deepMetadata: Boolean = false,
+        onProgress: ((Int) -> Unit)? = null
+    ): List<Song> = withContext(Dispatchers.IO) {
+        val songs = mutableListOf<Song>()
+        try {
+            val documentId = android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+            val childrenUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(
+                treeUri, documentId
+            )
+            scanDocumentTreeRecursive(
+                context, treeUri, childrenUri, songs, minDurationMs, deepMetadata, onProgress
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "USB folder scan failed for $treeUri", e)
+        }
+        songs
+    }
+
+    private fun scanDocumentTreeRecursive(
+        context: Context,
+        rootTreeUri: Uri,
+        childrenUri: Uri,
+        songs: MutableList<Song>,
+        minDurationMs: Long,
+        deepMetadata: Boolean,
+        onProgress: ((Int) -> Unit)?
+    ) {
+        val projection = arrayOf(
+            android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE,
+            android.provider.DocumentsContract.Document.COLUMN_SIZE,
+            android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED
+        )
+        try {
+            context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                val docIdCol = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameCol = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val mimeCol = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE)
+                val sizeCol = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_SIZE)
+                val modifiedCol = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+
+                while (cursor.moveToNext()) {
+                    val docId = cursor.getString(docIdCol) ?: continue
+                    val name = cursor.getString(nameCol) ?: continue
+                    val mimeType = cursor.getString(mimeCol) ?: ""
+                    val size = cursor.getLong(sizeCol)
+                    val lastModified = cursor.getLong(modifiedCol) * 1000L
+
+                    if (mimeType == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) {
+                        val subChildrenUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(
+                            rootTreeUri, docId
+                        )
+                        scanDocumentTreeRecursive(
+                            context, rootTreeUri, subChildrenUri, songs, minDurationMs, deepMetadata, onProgress
+                        )
+                        continue
+                    }
+
+                    val ext = name.substringAfterLast('.', "").lowercase()
+                    if (ext !in AUDIO_EXTENSIONS) continue
+
+                    val songUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(rootTreeUri, docId)
+                    var title = name.substringBeforeLast('.')
+                    var artist = ""
+                    var album = ""
+                    var albumArtist = ""
+                    var genre = ""
+                    var year = ""
+                    var composer = ""
+                    var arranger = ""
+                    var lyricist = ""
+                    var duration = 0L
+                    var trackNumber = 0
+                    var discNumber = 0
+                    var albumId = 0L
+
+                    if (deepMetadata || title.isBlank()) {
+                        try {
+                            context.contentResolver.openFileDescriptor(songUri, "r")?.use { pfd ->
+                                val retriever = MediaMetadataRetriever()
+                                try {
+                                    retriever.setDataSource(pfd.fileDescriptor)
+                                    val metaTitle = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                                    val metaArtist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                                    val metaAlbum = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                                    val metaDuration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                                    if (!metaTitle.isNullOrBlank()) title = metaTitle
+                                    if (!metaArtist.isNullOrBlank()) artist = metaArtist
+                                    if (!metaAlbum.isNullOrBlank()) album = metaAlbum
+                                    if (metaDuration != null) duration = metaDuration.toLongOrNull() ?: 0L
+                                } finally {
+                                    retriever.release()
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Metadata extraction failed for USB file $name", e)
+                        }
+                    }
+
+                    title = title.cleanTagText().ifBlank { name.substringBeforeLast('.') }
+                    artist = LibraryNormalizer.cleanedArtistText(artist).ifBlank { "Unknown Artist" }
+                    album = LibraryNormalizer.cleanedAlbumText(album).ifBlank { "Unknown Album" }
+
+                    if (duration > 0 && duration >= minDurationMs) {
+                        val stableId = kotlin.math.abs(songUri.hashCode().toLong()).takeIf { it != 0L } ?: 1L
+                        songs.add(
+                            Song(
+                                id = stableId,
+                                title = title,
+                                artist = artist,
+                                album = album,
+                                albumId = albumId,
+                                duration = duration,
+                                path = songUri.toString(),
+                                fileName = name,
+                                fileSize = size,
+                                mimeType = mimeType.substringBefore(';').trim().lowercase(),
+                                dateAdded = System.currentTimeMillis(),
+                                dateModified = lastModified,
+                                trackNumber = trackNumber,
+                                discNumber = discNumber,
+                                albumArtist = albumArtist,
+                                genre = genre,
+                                year = year,
+                                composer = composer,
+                                arranger = arranger,
+                                lyricist = lyricist
+                            )
+                        )
+                        onProgress?.invoke(songs.size)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error scanning SAF document tree", e)
+        }
+    }
+
+    /**
+     * Check if a SAF URI is still accessible (USB drive connected).
+     */
+    fun isUsbUriAccessible(uri: Uri): Boolean {
+        return try {
+            val docUri = if (android.provider.DocumentsContract.isTreeUri(uri)) {
+                android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                    uri,
+                    android.provider.DocumentsContract.getTreeDocumentId(uri)
+                )
+            } else {
+                uri
+            }
+            context.contentResolver.query(docUri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)?.use { true } ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun extractCoverArt(path: String): ByteArray? {
+        val file = File(path)
+        if (!file.exists()) return null
+
+        val audioFileArt = readEmbeddedCoverBlocking(path)
+            ?: com.ella.music.data.metadata.EmbeddedArtworkReader.extractCoverArt(path)
+        if (audioFileArt != null) return audioFileArt
+
+        return runCatching {
+            MediaMetadataRetriever().useCompat { retriever ->
+                retriever.setDataSource(path)
+                retriever.embeddedPicture
+            }
+        }.onFailure {
+            Log.w(TAG, "Retriever cover art extraction failed for $path", it)
+        }.getOrNull()
+    }
+
+    fun extractReplayGain(path: String, mode: Int = SettingsManager.REPLAY_GAIN_AUTO): Float? {
+        return try {
+            val file = File(path)
+            if (!file.exists()) return null
+            readTagsBlocking(path)
+                ?.let { tagInfo ->
+                    tagInfo.replayGainForMode(mode)
+                }
+                ?.let { return it }
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "ReplayGain extraction failed for $path", e)
+            null
+        }
+    }
+
+    fun getAlbumArtUri(albumId: Long): Uri =
+        com.ella.music.data.repository.mediaStoreAlbumArtUri(albumId)
+            ?: Uri.EMPTY
+
+    private fun readTagsBlocking(path: String): AudioTagInfo? =
+        runBlocking(Dispatchers.IO) {
+            runCatching { audioTagReader.readTags(path) }
+                .onFailure { Log.d(TAG, "lyrico-audiotag tag read failed for $path", it) }
+                .getOrNull()
+        }
+
+    private fun readEmbeddedCoverBlocking(path: String): ByteArray? =
+        runBlocking(Dispatchers.IO) {
+            runCatching { audioTagReader.readEmbeddedCover(path)?.bytes }
+                .onFailure { Log.d(TAG, "lyrico-audiotag artwork unavailable for $path", it) }
+                .getOrNull()
+        }
+}

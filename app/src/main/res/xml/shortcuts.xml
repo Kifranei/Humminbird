@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="library"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_library"
+        android:shortcutShortLabel="@string/shortcut_library_short"
+        android:shortcutLongLabel="@string/shortcut_library_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.ella.music"
+            android:targetClass="com.ella.music.MainActivity">
+            <extra android:name="ella_shortcut_route" android:value="library" />
+            <extra android:name="halcyon_shortcut_route" android:value="library" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="search"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_search"
+        android:shortcutShortLabel="@string/shortcut_search_short"
+        android:shortcutLongLabel="@string/shortcut_search_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.ella.music"
+            android:targetClass="com.ella.music.MainActivity">
+            <extra android:name="ella_shortcut_route" android:value="library_search" />
+            <extra android:name="halcyon_shortcut_route" android:value="library_search" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="play"
+        android:enabled="true"
+        android:icon="@drawable/ic_player_play"
+        android:shortcutShortLabel="@string/shortcut_play_short"
+        android:shortcutLongLabel="@string/shortcut_play_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.ella.music"
+            android:targetClass="com.ella.music.MainActivity">
+            <extra android:name="ella_shortcut_action" android:value="play" />
+            <extra android:name="halcyon_shortcut_action" android:value="play" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shuffle_all"
+        android:enabled="true"
+        android:icon="@drawable/ic_shuffle"
+        android:shortcutShortLabel="@string/shortcut_shuffle_all_short"
+        android:shortcutLongLabel="@string/shortcut_shuffle_all_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.ella.music"
+            android:targetClass="com.ella.music.MainActivity">
+            <extra android:name="ella_shortcut_action" android:value="shuffle_all" />
+            <extra android:name="halcyon_shortcut_action" android:value="shuffle_all" />
+        </intent>
+    </shortcut>
+
+</shortcuts>

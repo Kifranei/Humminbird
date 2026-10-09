@@ -1,0 +1,661 @@
+package com.ella.music.ui.components
+
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RadialGradient
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
+import com.ella.music.data.model.LyricLine
+import com.ella.music.data.model.LyricWord
+import com.ella.music.data.model.primaryEndMs
+import com.ella.music.ui.player.createAppleFlowFrameBitmap
+import com.ella.music.ui.player.scaledForFlowSource
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+
+internal class LyricVideoRenderer(
+    private val cover: Bitmap?,
+    private val lines: List<LyricLine>,
+    private val includeTranslation: Boolean,
+    typeface: Typeface? = null,
+    private val includeOriginal: Boolean = true,
+    private val includePronunciation: Boolean = true,
+    private val effect: LyricVideoEffect = LyricVideoEffect.Particle
+) {
+    companion object {
+        const val VIDEO_SIZE = 1080
+        const val FPS = 30
+        private const val FADE_IN_MS = 200L
+        private const val HOLD_AFTER_MS = 300L
+        const val DISSOLVE_MS = 600L
+        private const val FEATHER_WIDTH = 80f
+        private const val MAIN_TEXT_SIZE = 72f
+        private const val TRANS_TEXT_SIZE = 36f
+        private const val TRANS_GAP = 24f
+        private const val DIM_ALPHA = 120
+    }
+
+    private data class BackgroundAssets(
+        val gradientColors: IntArray
+    )
+
+    private val flowCover = cover?.scaledForFlowSource()
+    private val backgroundAssets: BackgroundAssets = prepareBackgroundAssets()
+    private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val overlayPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val mainPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = MAIN_TEXT_SIZE
+        this.typeface = typeface?.let { Typeface.create(it, Typeface.BOLD) }
+            ?: Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        setShadowLayer(12f, 0f, 4f, Color.argb(120, 0, 0, 0))
+    }
+    private val dimPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(DIM_ALPHA, 255, 255, 255)
+        textSize = MAIN_TEXT_SIZE
+        this.typeface = typeface?.let { Typeface.create(it, Typeface.BOLD) }
+            ?: Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        setShadowLayer(12f, 0f, 4f, Color.argb(80, 0, 0, 0))
+    }
+    private val transPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(200, 255, 255, 255)
+        textSize = TRANS_TEXT_SIZE
+        this.typeface = typeface ?: Typeface.DEFAULT
+        setShadowLayer(8f, 0f, 3f, Color.argb(80, 0, 0, 0))
+    }
+    private val dimTransPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(120, 255, 255, 255)
+        textSize = TRANS_TEXT_SIZE
+        this.typeface = typeface ?: Typeface.DEFAULT
+        setShadowLayer(8f, 0f, 3f, Color.argb(48, 0, 0, 0))
+    }
+    private val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    private data class VideoWordInfo(
+        val word: LyricWord,
+        val text: String,
+        val x: Float,
+        val y: Float,
+        val w: Float,
+        val visualLine: Int
+    )
+
+    private data class LineTimeline(
+        val line: LyricLine,
+        val startMs: Long,
+        val karaokeEndMs: Long,
+        val holdEndMs: Long,
+        val dissolveEndMs: Long,
+        val translation: String?
+    )
+
+    private val timelines: List<LineTimeline> = buildTimelines()
+
+    private val lineStartTimes = timelines.map { it.startMs }
+
+    val totalDurationMs: Long
+        get() = if (timelines.isEmpty()) 0L else timelines.last().dissolveEndMs
+
+    private fun buildTimelines(): List<LineTimeline> {
+        if (lines.isEmpty()) return emptyList()
+        val result = mutableListOf<LineTimeline>()
+        val globalStartMs = lines.first().timeMs
+        for (i in lines.indices) {
+            val line = lines[i]
+            val nextLine = lines.getOrNull(i + 1)
+            val relativeStart = line.timeMs - globalStartMs
+            val lineEndMs = line.primaryEndMs(nextLine = nextLine)
+            val karaokeEnd = lineEndMs - globalStartMs
+            val holdEnd = karaokeEnd + HOLD_AFTER_MS
+            val dissolveEnd = holdEnd + DISSOLVE_MS
+            val translation = if (includeTranslation) line.translation?.takeIf { it.isNotBlank() } else null
+            result.add(LineTimeline(line, relativeStart, karaokeEnd, holdEnd, dissolveEnd, translation))
+        }
+        return result
+    }
+
+    fun totalFrames(): Int = ((totalDurationMs * FPS) / 1000).toInt().coerceAtLeast(1)
+
+    private var activeDissolveEffect: LyricVideoDissolveEffect? = null
+    private var particleLineIndex = -1
+    private var dissolveFrame = 0
+    private var textBitmapCache: Bitmap? = null
+
+    fun drawFrame(canvas: Canvas, frameIndex: Int) {
+        val timeMs = (frameIndex * 1000L) / FPS
+        drawDynamicBackground(canvas, timeMs)
+
+        val activeIndex = lyricVideoActiveLineIndex(lineStartTimes, timeMs).takeIf { it >= 0 } ?: return
+        val activeTimeline = timelines[activeIndex]
+        val nextTimeline = timelines.getOrNull(activeIndex + 1)
+        if (isLyricVideoInterLineGap(
+                timeMs = timeMs,
+                karaokeEndMs = activeTimeline.karaokeEndMs,
+                nextLineStartMs = nextTimeline?.startMs
+            )
+        ) {
+            // The previous line remains the timeline anchor through a short gap, but its karaoke
+            // sweep has finished. Keep it dim until the next line starts instead of briefly
+            // presenting the whole sentence as newly highlighted.
+            clearParticleEffect()
+            drawLyricLine(
+                canvas = canvas,
+                timeline = activeTimeline,
+                timeMs = timeMs,
+                alpha = 1f,
+                scale = 1f,
+                completed = true
+            )
+            return
+        }
+        // Only the current sentence owns the text layer. An outgoing effect must never
+        // be replayed over the next sentence, including its translation.
+        if (particleLineIndex != activeIndex) clearParticleEffect()
+        when (lyricVideoDissolveState(timeMs, activeTimeline.holdEndMs, activeTimeline.dissolveEndMs)) {
+            LyricVideoDissolveState.Dissolving -> {
+                drawDissolvingLine(canvas, activeTimeline, activeIndex, timeMs)
+                return
+            }
+            LyricVideoDissolveState.Finished -> {
+                clearParticleEffect()
+                return
+            }
+            LyricVideoDissolveState.Pending -> clearParticleEffect()
+        }
+
+        when {
+            timeMs < activeTimeline.startMs + FADE_IN_MS -> {
+                val progress = ((timeMs - activeTimeline.startMs).toFloat() / FADE_IN_MS).coerceIn(0f, 1f)
+                val easedProgress = easeOutCubic(progress)
+                drawLyricLine(
+                    canvas = canvas,
+                    timeline = activeTimeline,
+                    timeMs = timeMs,
+                    alpha = 0.58f + 0.42f * easedProgress,
+                    scale = 0.92f + 0.08f * easedProgress,
+                    translateY = (1f - easedProgress) * 32f
+                )
+            }
+            timeMs < activeTimeline.karaokeEndMs || timeMs < activeTimeline.holdEndMs -> {
+                drawLyricLine(canvas, activeTimeline, timeMs, alpha = 1f, scale = 1f)
+            }
+            else -> {
+                drawLyricLine(canvas, activeTimeline, timeMs, alpha = 1f, scale = 1f)
+            }
+        }
+    }
+
+    private fun drawDissolvingLine(
+        canvas: Canvas,
+        timeline: LineTimeline,
+        lineIndex: Int,
+        timeMs: Long
+    ) {
+        if (particleLineIndex != lineIndex) {
+            particleLineIndex = lineIndex
+            dissolveFrame = 0
+            val textBmp = renderLineToBitmap(timeline)
+            textBitmapCache?.recycle()
+            textBitmapCache = textBmp
+            val drawY = calculateLineY(timeline)
+            val drawX = calculateLineX(timeline, textBmp.width)
+            activeDissolveEffect = when (effect) {
+                LyricVideoEffect.Particle -> LyricVideoParticleEffect(
+                    textBitmap = textBmp,
+                    destX = drawX,
+                    destY = drawY,
+                    totalFrames = LyricVideoParticleEffect.DISSOLVE_FRAMES
+                )
+                LyricVideoEffect.Neon -> LyricVideoNeonDissolve(
+                    textBitmap = textBmp,
+                    destX = drawX,
+                    destY = drawY
+                )
+                LyricVideoEffect.Glitch -> LyricVideoGlitchDissolve(
+                    textBitmap = textBmp,
+                    destX = drawX,
+                    destY = drawY
+                )
+                LyricVideoEffect.Fade -> LyricVideoFadeDissolve(
+                    textBitmap = textBmp,
+                    destX = drawX,
+                    destY = drawY
+                )
+            }
+        }
+        activeDissolveEffect?.let {
+            val targetFrame = (((timeMs - timeline.holdEndMs) * FPS) / 1000).toInt() + 1
+            if (targetFrame < dissolveFrame) {
+                it.reset()
+                dissolveFrame = 0
+            }
+            while (dissolveFrame < targetFrame && !it.isFinished) {
+                it.advanceFrame()
+                dissolveFrame++
+            }
+            it.draw(canvas)
+        }
+    }
+
+    private fun clearParticleEffect() {
+        activeDissolveEffect = null
+        particleLineIndex = -1
+        dissolveFrame = 0
+        textBitmapCache?.recycle()
+        textBitmapCache = null
+    }
+
+    private fun drawLyricLine(
+        canvas: Canvas,
+        timeline: LineTimeline,
+        timeMs: Long,
+        alpha: Float,
+        scale: Float,
+        translateY: Float = 0f,
+        completed: Boolean = false
+    ) {
+        val line = timeline.line
+        val text = line.text.ifBlank { line.backgroundText.orEmpty() }
+        if (text.isBlank()) return
+
+        val textWidth = (VIDEO_SIZE * 0.84f).toInt()
+        val mainLayoutPaint = if (completed) dimPaint else mainPaint
+        val translationLayoutPaint = if (completed) dimTransPaint else transPaint
+        val mainLayout = buildVideoLayout(text, mainLayoutPaint, textWidth)
+        val transLayout = timeline.translation?.let { buildVideoLayout(it, translationLayoutPaint, textWidth) }
+
+        val totalHeight = mainLayout.height + (transLayout?.let { it.height + TRANS_GAP } ?: 0f)
+        val startY = (VIDEO_SIZE - totalHeight) / 2f
+        val startX = (VIDEO_SIZE - textWidth) / 2f
+
+        canvas.save()
+        if (translateY != 0f) {
+            canvas.translate(0f, translateY)
+        }
+        if (scale != 1f) {
+            canvas.scale(scale, scale, VIDEO_SIZE / 2f, VIDEO_SIZE / 2f)
+        }
+
+        val saveAlpha = canvas.saveLayerAlpha(0f, 0f, VIDEO_SIZE.toFloat(), VIDEO_SIZE.toFloat(), (alpha * 255).toInt())
+
+        if (line.words.isNotEmpty()) {
+            drawKaraokeText(
+                canvas = canvas,
+                line = line,
+                timeline = timeline,
+                timeMs = timeMs,
+                startX = startX,
+                startY = startY,
+                availableWidth = textWidth.toFloat(),
+                allowProgress = !completed
+            )
+        } else {
+            drawStaticText(canvas, mainLayout, startX, startY)
+        }
+
+        transLayout?.let {
+            val transY = startY + mainLayout.height + TRANS_GAP
+            drawStaticLayout(canvas, it, transPaint, startX, transY)
+        }
+
+        canvas.restoreToCount(saveAlpha)
+        canvas.restore()
+    }
+
+    private fun drawKaraokeText(
+        canvas: Canvas,
+        line: LyricLine,
+        timeline: LineTimeline,
+        timeMs: Long,
+        startX: Float,
+        startY: Float,
+        availableWidth: Float,
+        allowProgress: Boolean
+    ) {
+        val globalStartMs = lines.first().timeMs
+        val absoluteTimeMs = timeMs + globalStartMs
+        val words = line.words
+        val wordInfos = layoutWords(words, mainPaint, startX, startY + (-mainPaint.fontMetrics.ascent), availableWidth)
+        if (wordInfos.isEmpty()) return
+
+        for (info in wordInfos) {
+            canvas.drawText(info.text, info.x, info.y, dimPaint)
+        }
+
+        if (!allowProgress) return
+
+        val sweepFraction = calculateSweepFraction(words, absoluteTimeMs, mainPaint)
+        if (sweepFraction <= 0f) return
+
+        val lineGroups = wordInfos.groupBy { it.visualLine }.toSortedMap()
+        val lineWidths = lineGroups.mapValues { (_, infos) -> infos.sumOf { it.w.toDouble() }.toFloat() }
+        val totalW = lineWidths.values.sumOf { it.toDouble() }.toFloat()
+        if (totalW <= 0f) return
+
+        val sungWidth = sweepFraction.coerceIn(0f, 1f) * totalW
+        val fmTop = mainPaint.fontMetrics.top
+        val fmBottom = mainPaint.fontMetrics.bottom
+        var lineCumBefore = 0f
+
+        for ((_, lineWords) in lineGroups) {
+            if (lineWords.isEmpty()) continue
+            val lineStartX = lineWords.first().x
+            val lineEndX = lineWords.last().x + lineWords.last().w
+            val lineW = lineEndX - lineStartX
+            val lineY = lineWords.first().y
+            val mTop = lineY + fmTop - 4f
+            val mBottom = lineY + fmBottom + 4f
+            val lineCumAfter = lineCumBefore + lineW
+            if (sungWidth <= lineCumBefore) break
+
+            val effectiveSungInLine = (sungWidth - lineCumBefore).coerceIn(0f, lineW)
+            val sweepX = lineStartX + effectiveSungInLine
+            val effectiveFeatherPx = min(FEATHER_WIDTH, lineEndX - sweepX)
+            val featherStart = (sweepX - effectiveFeatherPx).coerceAtLeast(lineStartX)
+
+            val saveCount = canvas.saveLayer(lineStartX, mTop, lineEndX, mBottom, null)
+            for (info in lineWords) {
+                canvas.drawText(info.text, info.x, info.y, mainPaint)
+            }
+            val maskColors = intArrayOf(
+                Color.argb(255, 0, 0, 0),
+                Color.argb(255, 0, 0, 0),
+                Color.argb(0, 0, 0, 0),
+                Color.argb(0, 0, 0, 0)
+            )
+            val maskPositions = floatArrayOf(
+                0f,
+                ((featherStart - lineStartX) / lineW).coerceIn(0f, 1f),
+                ((sweepX - lineStartX) / lineW).coerceIn(0f, 1f),
+                1f
+            )
+            maskPaint.shader = LinearGradient(
+                lineStartX, 0f, lineEndX, 0f,
+                maskColors, maskPositions, Shader.TileMode.CLAMP
+            )
+            maskPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+            canvas.drawRect(lineStartX, mTop, lineEndX, mBottom, maskPaint)
+            maskPaint.xfermode = null
+            maskPaint.shader = null
+            canvas.restoreToCount(saveCount)
+            lineCumBefore = lineCumAfter
+        }
+    }
+
+    private fun calculateSweepFraction(
+        words: List<LyricWord>,
+        positionMs: Long,
+        paint: TextPaint
+    ): Float {
+        if (words.isEmpty()) return 0f
+        var completedWidth = 0f
+        var totalWidth = 0f
+        for (word in words) {
+            val wordWidth = paint.measureText(word.text)
+            totalWidth += wordWidth
+            when {
+                positionMs >= word.endMs -> completedWidth += wordWidth
+                positionMs > word.startMs -> {
+                    val wordProgress = ((positionMs - word.startMs).toFloat() /
+                        (word.endMs - word.startMs).coerceAtLeast(1L)).coerceIn(0f, 1f)
+                    completedWidth += wordWidth * wordProgress
+                }
+            }
+        }
+        return if (totalWidth > 0f) completedWidth / totalWidth else 0f
+    }
+
+    private fun layoutWords(
+        words: List<LyricWord>,
+        paint: TextPaint,
+        startX: Float,
+        baseline: Float,
+        availableWidth: Float
+    ): List<VideoWordInfo> {
+        val infos = mutableListOf<VideoWordInfo>()
+        val lineSpacing = paint.fontSpacing
+        var cursorX = startX
+        var cursorY = baseline
+        var visualLine = 0
+
+        for (word in words) {
+            val rawText = word.text
+            var wordText = if (cursorX == startX) rawText.trimStart() else rawText
+            if (wordText.isBlank()) continue
+            var wordW = paint.measureText(wordText)
+            if (cursorX + wordW > startX + availableWidth && cursorX > startX) {
+                cursorX = startX
+                cursorY += lineSpacing
+                visualLine++
+                wordText = rawText.trimStart()
+                if (wordText.isBlank()) continue
+                wordW = paint.measureText(wordText)
+            }
+            infos.add(VideoWordInfo(word, wordText, cursorX, cursorY, wordW, visualLine))
+            cursorX += wordW
+        }
+
+        if (infos.isEmpty()) return infos
+        val lineOffsets = infos.groupBy { it.visualLine }.mapValues { (_, lineInfos) ->
+            val lineStart = lineInfos.minOf { it.x }
+            val lineEnd = lineInfos.maxOf { it.x + it.w }
+            startX + (availableWidth - (lineEnd - lineStart)) / 2f - lineStart
+        }
+        return infos.map { info ->
+            info.copy(x = info.x + (lineOffsets[info.visualLine] ?: 0f))
+        }
+    }
+
+    private fun drawStaticText(canvas: Canvas, layout: StaticLayout, x: Float, y: Float) {
+        canvas.save()
+        canvas.translate(x, y)
+        layout.draw(canvas)
+        canvas.restore()
+    }
+
+    private fun drawStaticLayout(canvas: Canvas, layout: StaticLayout, paint: TextPaint, x: Float, y: Float) {
+        canvas.save()
+        canvas.translate(x, y)
+        layout.draw(canvas)
+        canvas.restore()
+    }
+
+    private fun renderLineToBitmap(timeline: LineTimeline): Bitmap {
+        val text = timeline.line.text.ifBlank { timeline.line.backgroundText.orEmpty() }
+        val textWidth = (VIDEO_SIZE * 0.84f).toInt()
+        val mainLayout = buildVideoLayout(text, dimPaint, textWidth)
+        val transLayout = timeline.translation?.let { buildVideoLayout(it, dimTransPaint, textWidth) }
+        val totalHeight = (mainLayout.height + (transLayout?.let { it.height + TRANS_GAP } ?: 0f)).roundToInt()
+        val bmp = Bitmap.createBitmap(textWidth, totalHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.save()
+        c.translate(0f, 0f)
+        mainLayout.draw(c)
+        c.restore()
+        transLayout?.let {
+            c.save()
+            c.translate(0f, mainLayout.height + TRANS_GAP)
+            it.draw(c)
+            c.restore()
+        }
+        return bmp
+    }
+
+    private fun calculateLineY(timeline: LineTimeline): Float {
+        val text = timeline.line.text.ifBlank { timeline.line.backgroundText.orEmpty() }
+        val textWidth = (VIDEO_SIZE * 0.84f).toInt()
+        val mainLayout = buildVideoLayout(text, mainPaint, textWidth)
+        val transLayout = timeline.translation?.let { buildVideoLayout(it, transPaint, textWidth) }
+        val totalHeight = mainLayout.height + (transLayout?.let { it.height + TRANS_GAP } ?: 0f)
+        return (VIDEO_SIZE - totalHeight) / 2f
+    }
+
+    private fun calculateLineX(timeline: LineTimeline, bitmapWidth: Int): Float {
+        return (VIDEO_SIZE - bitmapWidth) / 2f
+    }
+
+    private fun buildVideoLayout(text: String, paint: TextPaint, width: Int): StaticLayout {
+        return StaticLayout.Builder.obtain(text, 0, text.length, paint, max(1, width))
+            .setAlignment(Layout.Alignment.ALIGN_CENTER)
+            .setLineSpacing(8f, 1f)
+            .setIncludePad(true)
+            .build()
+    }
+
+    private fun prepareBackgroundAssets(): BackgroundAssets {
+        val fallbackGradient = intArrayOf(
+            Color.rgb(42, 46, 72),
+            Color.rgb(27, 31, 54),
+            Color.rgb(14, 17, 30)
+        )
+        val localCover = flowCover ?: return BackgroundAssets(gradientColors = fallbackGradient)
+        val colors = sampleFlowingBackgroundColors(localCover)
+        return BackgroundAssets(
+            gradientColors = intArrayOf(colors[0], colors[1], colors[2])
+        )
+    }
+
+    private fun drawDynamicBackground(canvas: Canvas, timeMs: Long) {
+        val size = VIDEO_SIZE.toFloat()
+        val localCover = flowCover
+        if (localCover != null) {
+            val base = backgroundAssets.gradientColors.first()
+            val flowFrame = createAppleFlowFrameBitmap(
+                cover = localCover,
+                viewportW = VIDEO_SIZE,
+                viewportH = VIDEO_SIZE,
+                timeMs = timeMs,
+                densityDpi = 320,
+                blur = 60f,
+                washPrimaryArgb = Color.argb(
+                    86,
+                    (Color.red(base) * 0.72f).roundToInt(),
+                    (Color.green(base) * 0.72f).roundToInt(),
+                    (Color.blue(base) * 0.72f).roundToInt()
+                ),
+                washSecondaryArgb = Color.argb(46, 0, 0, 0)
+            )
+            canvas.drawBitmap(
+                flowFrame,
+                null,
+                RectF(0f, 0f, size, size),
+                backgroundPaint.apply { isFilterBitmap = true }
+            )
+            flowFrame.recycle()
+        } else {
+            backgroundPaint.shader = LinearGradient(
+                0f,
+                0f,
+                size,
+                size,
+                backgroundAssets.gradientColors,
+                null,
+                Shader.TileMode.CLAMP
+            )
+            canvas.drawRect(0f, 0f, size, size, backgroundPaint)
+            backgroundPaint.shader = null
+        }
+
+        overlayPaint.color = Color.parseColor("#52000000")
+        canvas.drawRect(0f, 0f, size, size, overlayPaint)
+        overlayPaint.color = Color.parseColor("#1A000000")
+        canvas.drawRect(0f, 0f, size, size, overlayPaint)
+
+        overlayPaint.shader = LinearGradient(
+            0f,
+            0f,
+            0f,
+            size,
+            intArrayOf(
+                Color.argb(62, 0, 0, 0),
+                Color.argb(108, 0, 0, 0),
+                Color.argb(154, 0, 0, 0)
+            ),
+            floatArrayOf(0f, 0.55f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, 0f, size, size, overlayPaint)
+        overlayPaint.shader = null
+
+        overlayPaint.shader = RadialGradient(
+            size * 0.5f,
+            size * 0.42f,
+            size * 0.82f,
+            intArrayOf(
+                Color.TRANSPARENT,
+                Color.argb(54, 0, 0, 0),
+                Color.argb(118, 0, 0, 0)
+            ),
+            floatArrayOf(0f, 0.72f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, 0f, size, size, overlayPaint)
+        overlayPaint.shader = null
+    }
+
+    private fun sampleFlowingBackgroundColors(bitmap: Bitmap): IntArray {
+        val points = listOf(
+            0.16f to 0.18f,
+            0.74f to 0.20f,
+            0.54f to 0.52f,
+            0.20f to 0.78f,
+            0.82f to 0.72f,
+            0.52f to 0.26f,
+            0.66f to 0.88f
+        )
+        return points.map { (fx, fy) ->
+            val x = (bitmap.width * fx).toInt().coerceIn(0, bitmap.width - 1)
+            val y = (bitmap.height * fy).toInt().coerceIn(0, bitmap.height - 1)
+            bitmap.getPixel(x, y).boostFlowingColor()
+        }.toIntArray()
+    }
+
+    fun recycle() {
+        if (flowCover !== cover) flowCover?.recycle()
+        clearParticleEffect()
+    }
+
+    private fun easeOutCubic(value: Float): Float {
+        val clamped = value.coerceIn(0f, 1f)
+        return 1f - (1f - clamped) * (1f - clamped) * (1f - clamped)
+    }
+}
+
+internal fun lyricVideoActiveLineIndex(startTimesMs: List<Long>, timeMs: Long): Int =
+    startTimesMs.indexOfLast { timeMs >= it }
+
+internal enum class LyricVideoDissolveState { Pending, Dissolving, Finished }
+
+internal fun lyricVideoDissolveState(
+    timeMs: Long,
+    holdEndMs: Long,
+    dissolveEndMs: Long
+): LyricVideoDissolveState = when {
+    timeMs < holdEndMs -> LyricVideoDissolveState.Pending
+    timeMs < dissolveEndMs -> LyricVideoDissolveState.Dissolving
+    else -> LyricVideoDissolveState.Finished
+}
+
+internal fun isLyricVideoInterLineGap(
+    timeMs: Long,
+    karaokeEndMs: Long,
+    nextLineStartMs: Long?
+): Boolean = nextLineStartMs != null && timeMs >= karaokeEndMs && timeMs < nextLineStartMs
+
+private fun Int.boostFlowingColor(): Int {
+    val hsv = FloatArray(3)
+    Color.colorToHSV(this, hsv)
+    hsv[1] = (hsv[1] * 1.55f).coerceIn(0.40f, 1f)
+    hsv[2] = (hsv[2] * 1.16f).coerceIn(0.48f, 1f)
+    return Color.HSVToColor(hsv)
+}

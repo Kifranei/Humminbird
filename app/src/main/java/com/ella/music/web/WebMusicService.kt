@@ -1,0 +1,449 @@
+package com.ella.music.web
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.os.IBinder
+import android.provider.MediaStore
+import android.util.Log
+import com.ella.music.MainActivity
+import com.ella.music.R
+import com.ella.music.data.InputTooLargeException
+import com.ella.music.data.SettingsManager
+import com.ella.music.data.copyToBoundedOrThrow
+import com.ella.music.data.model.Song
+import com.ella.music.data.sanitizeExportFileName
+import com.ella.music.data.repository.MusicRepository
+import com.ella.music.ui.listmodel.fastIndexSection
+import com.ella.music.ui.listmodel.musicSortKey
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.cio.CIO
+import io.ktor.server.engine.EmbeddedServer
+import io.ktor.server.engine.embeddedServer
+import io.ktor.server.request.receiveStream
+import io.ktor.server.request.contentType
+import io.ktor.server.response.respondBytes
+import io.ktor.server.response.respondFile
+import io.ktor.server.response.respondOutputStream
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
+import io.ktor.server.routing.put
+import io.ktor.server.routing.routing
+import java.io.File
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.util.Collections
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
+/**
+ * Explicitly enabled, LAN-only browser player and file transfer service.
+ *
+ * This Beta intentionally has no Internet discovery or authentication. The settings screen makes
+ * that limitation visible before the user enables the service.
+ */
+class WebMusicService : Service() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + serverExceptionHandler)
+    private var server: EmbeddedServer<*, *>? = null
+    @Volatile private var destroyed = false
+
+    override fun onCreate() {
+        super.onCreate()
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Unable to enter foreground mode", error)
+            stopSelf()
+            return
+        }
+        scope.launch {
+            try {
+                startServer()
+            } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
+                failStartup(error)
+            }
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        destroyed = true
+        scope.cancel()
+        // Cleanup must outlive the service's cancelled startup job. Keep the old listener
+        // registered until it is stopped, so a new service waits for the port to be released.
+        serverScope.launch {
+            serverMutex.withLock {
+                val runningServer = server
+                server = null
+                stopServerLocked(runningServer)
+            }
+        }
+        super.onDestroy()
+    }
+
+    private suspend fun startServer() {
+        serverMutex.withLock {
+            currentCoroutineContext().ensureActive()
+            stopServerLocked(activeServer)
+            val repository = MusicRepository.getInstance(this@WebMusicService)
+            if (repository.songs.value.isEmpty()) repository.loadCachedLibrary()
+            for (attempt in 1..3) {
+                currentCoroutineContext().ensureActive()
+                var instance: EmbeddedServer<*, *>? = null
+                var started = false
+                try {
+                    instance = createServer(repository)
+                    instance.start(wait = false)
+                    currentCoroutineContext().ensureActive()
+                    server = instance
+                    activeServer = instance
+                    started = true
+                    Log.i(TAG, "Web music server started on port $PORT")
+                    return@withLock
+                } catch (error: Exception) {
+                    // CIO can wrap a bind failure in CancellationException. Retry a failed
+                    // engine, but propagate cancellation when this service was actually stopped.
+                    currentCoroutineContext().ensureActive()
+                    Log.w(TAG, "Attempt $attempt failed to start web server on port $PORT", error)
+                    if (attempt == 3) {
+                        failStartup(error)
+                        return@withLock
+                    }
+                } finally {
+                    if (!started) {
+                        withContext(NonCancellable) { stopServerLocked(instance) }
+                    }
+                }
+                delay(250)
+            }
+        }
+    }
+
+    private suspend fun failStartup(error: Exception) {
+        Log.e(TAG, "Web music server failed to start", error)
+        if (destroyed) return
+        runCatching { SettingsManager.getInstance(applicationContext).setWebMusicServerEnabled(false) }
+            .onFailure { Log.e(TAG, "Unable to reset web music setting", it) }
+        if (!destroyed) stopSelf()
+    }
+
+    private fun createServer(repository: MusicRepository) =
+        // CIO's accept job must inherit a handler: its bind failure is also thrown from a
+        // separate coroutine, which a try/catch around start() alone cannot contain.
+        serverScope.embeddedServer(CIO, host = "0.0.0.0", port = PORT) {
+                routing {
+                    get("/") {
+                        val page = assets.open(WEB_ASSET).use { it.readBytes() }
+                        call.respondBytes(page, ContentType.Text.Html)
+                    }
+                    get("/api/songs") {
+                        val query = call.request.queryParameters["q"].orEmpty().trim()
+                        val songs = repository.songs.value
+                            .asSequence()
+                            .filter { it.onlineSource.isBlank() }
+                            .filter {
+                                query.isBlank() ||
+                                    it.title.contains(query, ignoreCase = true) ||
+                                    it.artist.contains(query, ignoreCase = true) ||
+                                    it.album.contains(query, ignoreCase = true)
+                            }
+                            .take(MAX_RESULTS)
+                            .toList()
+                        call.respondText(
+                            buildJsonArray {
+                                songs.forEach { song ->
+                                    add(buildJsonObject {
+                                        put("id", song.id)
+                                        put("title", song.title)
+                                        put("artist", song.artist)
+                                        put("album", song.album)
+                                        put("duration", song.duration)
+                                        put("dateAdded", song.dateAdded)
+                                        put("cover", "/api/cover/${song.id}")
+                                        put("stream", "/api/stream/${song.id}")
+                                        put("section", song.fastIndexSection().let { if (it == "0") "#" else it })
+                                        put("sortKey", song.title.musicSortKey())
+                                    })
+                                }
+                            }.toString(),
+                            ContentType.Application.Json
+                        )
+                    }
+                    get("/api/cover/{id}") {
+                        val song = repository.findSong(call.parameters["id"])
+                            ?: return@get call.respondText("Not found", status = HttpStatusCode.NotFound)
+                        val bytes = withContext(Dispatchers.IO) {
+                            runCatching { repository.getCoverArt(song) }
+                                .getOrNull()
+                                ?.takeIf { it.isNotEmpty() }
+                                ?: readMediaStoreAlbumArt(song.albumId)?.takeIf { it.isNotEmpty() }
+                        }
+                            ?: return@get call.respondText("Not found", status = HttpStatusCode.NotFound)
+                        call.respondBytes(bytes, detectImageContentType(bytes))
+                    }
+                    get("/api/lyrics/{id}") {
+                        val song = repository.findSong(call.parameters["id"])
+                            ?: return@get call.respondText("Not found", status = HttpStatusCode.NotFound)
+                        val lyrics = repository.getLyrics(song)
+                        call.respondText(
+                            buildJsonArray {
+                                lyrics.forEach { line ->
+                                    add(buildJsonObject {
+                                        put("timeMs", line.timeMs)
+                                        put("endMs", line.endMs ?: -1L)
+                                        put("text", line.text)
+                                        line.translation?.takeIf { it.isNotBlank() }?.let { put("translation", it) }
+                                        line.pronunciation?.takeIf { it.isNotBlank() }?.let { put("pronunciation", it) }
+                                        line.backgroundText?.takeIf { it.isNotBlank() }?.let { put("backgroundText", it) }
+                                        line.backgroundTranslation?.takeIf { it.isNotBlank() }
+                                            ?.let { put("backgroundTranslation", it) }
+                                        put("words", buildJsonArray {
+                                            line.words.forEach { word ->
+                                                add(buildJsonObject {
+                                                    put("text", word.text)
+                                                    put("startMs", word.startMs)
+                                                    put("endMs", word.endMs)
+                                                })
+                                            }
+                                        })
+                                    })
+                                }
+                            }.toString(),
+                            ContentType.Application.Json
+                        )
+                    }
+                    get("/api/stream/{id}") {
+                        val song = repository.findSong(call.parameters["id"])
+                            ?: return@get call.respondText("Not found", status = HttpStatusCode.NotFound)
+                        val contentType = ContentType.parse(
+                            song.mimeType.takeIf { it.contains('/') } ?: "audio/mpeg"
+                        )
+                        val file = File(song.path)
+                        if (file.isFile) {
+                            call.respondFile(file)
+                        } else {
+                            val uri = Uri.parse(song.path)
+                            call.respondOutputStream(contentType) {
+                                contentResolver.openInputStream(uri)?.use { input -> input.copyTo(this) }
+                            }
+                        }
+                    }
+                    put("/api/upload") {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                            return@put call.respondText(
+                                "Upload requires Android 10 or later",
+                                status = HttpStatusCode.NotImplemented
+                            )
+                        }
+                        val fileName = sanitizeFileName(
+                            call.request.queryParameters["name"].orEmpty()
+                        )
+                        if (fileName.isBlank()) {
+                            return@put call.respondText(
+                                "Missing file name",
+                                status = HttpStatusCode.BadRequest
+                            )
+                        }
+                        val contentLength = call.request.headers["Content-Length"]?.toLongOrNull()
+                        if (contentLength != null && contentLength > MAX_UPLOAD_BYTES) {
+                            return@put call.respondText(
+                                "Upload exceeds the $MAX_UPLOAD_BYTES byte limit",
+                                status = HttpStatusCode.PayloadTooLarge
+                            )
+                        }
+                        val result = try {
+                            uploadSemaphore.withPermit {
+                                val uploadStream = call.receiveStream()
+                                saveUpload(fileName, call.request.contentType().toString()) {
+                                    uploadStream.use { input -> input.copyToBoundedOrThrow(it, MAX_UPLOAD_BYTES) }
+                                }
+                            }
+                        } catch (_: InputTooLargeException) {
+                            return@put call.respondText(
+                                "Upload exceeds the $MAX_UPLOAD_BYTES byte limit",
+                                status = HttpStatusCode.PayloadTooLarge
+                            )
+                        }
+                        if (result != null) {
+                            call.respondText("""{"ok":true,"name":${jsonString(fileName)}}""", ContentType.Application.Json)
+                        } else {
+                            call.respondText("Upload failed", status = HttpStatusCode.InternalServerError)
+                        }
+                    }
+                }
+        }.also { instance ->
+            // A recently closed browser connection can leave this fixed port in TIME_WAIT.
+            instance.engineConfig.reuseAddress = true
+        }
+
+    private fun MusicRepository.findSong(rawId: String?): Song? {
+        val id = rawId?.toLongOrNull() ?: return null
+        return songs.value.firstOrNull { it.id == id && it.onlineSource.isBlank() }
+    }
+
+    private fun readMediaStoreAlbumArt(albumId: Long): ByteArray? {
+        if (albumId <= 0L) return null
+        val uri = com.ella.music.data.repository.mediaStoreAlbumArtUri(albumId) ?: return null
+        return runCatching {
+            contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }.getOrNull()
+    }
+
+    private fun detectImageContentType(bytes: ByteArray): ContentType = when {
+        bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> ContentType.Image.JPEG
+        bytes.size >= 8 && bytes.copyOfRange(0, 8).contentEquals(
+            byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        ) -> ContentType.Image.PNG
+        bytes.size >= 6 && String(bytes, 0, 6, Charsets.US_ASCII) in setOf("GIF87a", "GIF89a") -> ContentType.Image.GIF
+        bytes.size >= 12 && String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF" &&
+            String(bytes, 8, 4, Charsets.US_ASCII) == "WEBP" -> ContentType.parse("image/webp")
+        else -> ContentType.Image.Any
+    }
+
+    private fun saveUpload(
+        fileName: String,
+        mimeType: String,
+        write: (java.io.OutputStream) -> Unit
+    ): Uri? {
+        val values = ContentValues().apply {
+            put(MediaStore.Audio.Media.DISPLAY_NAME, fileName)
+            put(MediaStore.Audio.Media.MIME_TYPE, mimeType.takeUnless { it == "null" } ?: "audio/*")
+            put(
+                MediaStore.Audio.Media.RELATIVE_PATH,
+                "${Environment.DIRECTORY_MUSIC}/Halcyon Web Uploads"
+            )
+            put(MediaStore.Audio.Media.IS_PENDING, 1)
+        }
+        val uri = contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
+            ?: return null
+        return try {
+            contentResolver.openOutputStream(uri, "w")?.use(write)
+                ?: error("Cannot open upload destination")
+            values.clear()
+            values.put(MediaStore.Audio.Media.IS_PENDING, 0)
+            contentResolver.update(uri, values, null, null)
+            uri
+        } catch (error: Exception) {
+            contentResolver.delete(uri, null, null)
+            if (error is java.io.IOException) throw error
+            Log.e(TAG, "Failed to save web upload", error)
+            null
+        }
+    }
+
+    private fun buildNotification(): Notification {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.web_music_beta_notification_channel),
+                NotificationManager.IMPORTANCE_LOW
+            )
+        )
+        val openApp = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        return Notification.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(getString(R.string.web_music_beta_title))
+            .setContentText(getString(R.string.web_music_beta_notification, PORT))
+            .setContentIntent(openApp)
+            .setOngoing(true)
+            .build()
+    }
+
+    companion object {
+        private const val TAG = "WebMusicService"
+        private const val CHANNEL_ID = "web_music_beta"
+        private const val NOTIFICATION_ID = 7701
+        private const val WEB_ASSET = "web_player/index.html"
+        private const val MAX_RESULTS = 1_000
+        private const val MAX_UPLOAD_BYTES = 100L * 1024L * 1024L
+        private val uploadSemaphore = Semaphore(2)
+        const val PORT = 8199
+
+        private val serverMutex = Mutex()
+        private val serverExceptionHandler = CoroutineExceptionHandler { _, error ->
+            Log.e(TAG, "Web music engine coroutine failed", error)
+        }
+        private val serverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + serverExceptionHandler)
+        @Volatile private var activeServer: EmbeddedServer<*, *>? = null
+
+        /** Called only while holding serverMutex; a stale service must never clear a newer server. */
+        private fun stopServerLocked(instance: EmbeddedServer<*, *>?) {
+            if (instance == null) return
+            runCatching { instance.stop(gracePeriodMillis = 100, timeoutMillis = 2_000) }
+                .onSuccess { Log.i(TAG, "Web music server stopped") }
+                .onFailure { Log.e(TAG, "Unable to stop web music server", it) }
+            if (activeServer === instance) activeServer = null
+        }
+
+        fun start(context: Context): Boolean = runCatching {
+            context.startForegroundService(Intent(context, WebMusicService::class.java))
+            true
+        }.onFailure { error ->
+            Log.e(TAG, "Unable to start web music service", error)
+        }.getOrDefault(false)
+
+        fun stop(context: Context) {
+            runCatching {
+                context.stopService(Intent(context, WebMusicService::class.java))
+            }.onFailure { error ->
+                Log.e(TAG, "Unable to stop web music service", error)
+            }
+        }
+
+        fun accessAddresses(): List<String> = runCatching {
+            Collections.list(NetworkInterface.getNetworkInterfaces())
+                .asSequence()
+                .filter { it.isUp && !it.isLoopback }
+                .flatMap { Collections.list(it.inetAddresses).asSequence() }
+                .filterIsInstance<Inet4Address>()
+                .filterNot { it.isLoopbackAddress }
+                .map { "http://${it.hostAddress}:$PORT/" }
+                .distinct()
+                .toList()
+        }.getOrDefault(emptyList())
+
+        private fun sanitizeFileName(value: String): String =
+            value.substringAfterLast('/').substringAfterLast('\\')
+                .sanitizeExportFileName(fallback = "upload", maxLength = 180)
+
+        private fun jsonString(value: String): String =
+            buildJsonObject { put("value", value) }.toString()
+                .removePrefix("""{"value":""")
+                .removeSuffix("}")
+    }
+}

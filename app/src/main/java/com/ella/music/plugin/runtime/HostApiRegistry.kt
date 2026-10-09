@@ -1,0 +1,61 @@
+package com.ella.music.plugin.runtime
+
+/** Host/plugin API contract shared with the current Lyrico plugin format. */
+object HostApiRegistry {
+    const val MIN_PLUGIN_API_VERSION = 1
+    const val PLUGIN_API_VERSION = 5
+    const val MIN_HOST_API_VERSION = 1
+    const val HOST_API_VERSION = 4
+
+    fun supportsPluginApiVersion(apiVersion: Int): Boolean =
+        apiVersion in MIN_PLUGIN_API_VERSION..PLUGIN_API_VERSION
+
+    fun supportsHostApiVersion(minHostApiVersion: Int): Boolean =
+        minHostApiVersion in MIN_HOST_API_VERSION..HOST_API_VERSION
+
+    val SUPPORTED_HOST_APIS = setOf(
+        "i18n.getLocale",
+        "i18n.t",
+        "app.info",
+        "app.userAgent",
+        "runtime.info",
+        "cache.get",
+        "cache.set",
+        "cache.remove",
+        "cache.clear",
+        "crypto.md5",
+        "crypto.sha256",
+        "crypto.aesEcbPkcs5EncryptBase64",
+        "crypto.aesEcbPkcs5EncryptHex",
+        "crypto.aesEcbPkcs5DecryptBase64ToText",
+        "base64.encodeText",
+        "base64.decodeText",
+        "base64.dropBytes",
+        "base64.decodeBytes",
+        "base64.encodeBytes",
+        "base64.encodeUrlText",
+        "base64.decodeUrlText",
+        "base64.encodeUrlBytes",
+        "base64.decodeUrlBytes",
+        "base64.toUrl",
+        "base64.fromUrl",
+        "bytes.xor",
+        "bytes.xorBase64",
+        "compression.inflateBytesToText",
+        "compression.inflateBase64ToText",
+        "http.getText",
+        "http.postText",
+        "http.postBytes",
+        "http.get",
+        "http.post",
+        "http.getBytes",
+        "http.postBytesResponse",
+        "log.debug",
+        "log.warn",
+        "log.error",
+        "xml.getRootAttributes",
+        "xml.findElements",
+        "xml.replaceChildrenByAttr",
+        "xml.removeElements"
+    )
+}

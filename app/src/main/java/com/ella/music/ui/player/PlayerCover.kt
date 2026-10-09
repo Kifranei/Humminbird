@@ -1,0 +1,279 @@
+package com.ella.music.ui.player
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import java.io.File
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import com.ella.music.R
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import coil3.size.Size
+import com.ella.music.data.isMediaStoreAlbumArtworkUri
+import com.ella.music.data.model.Song
+import com.ella.music.ui.components.DefaultAlbumCover
+
+@Composable
+internal fun FullBleedCover(
+    song: Song?,
+    embeddedCover: Bitmap?,
+    coverModel: Any? = null,
+    cornerRadius: Dp = 0.dp,
+    contentScale: ContentScale = ContentScale.Crop,
+    modifier: Modifier = Modifier
+) {
+    val resolvedCoverModel = coverModel ?: resolveCoverPreviewModel(song, embeddedCover)
+    Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+        if (resolvedCoverModel != null) {
+            PlayerCoverImage(
+                model = resolvedCoverModel,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale,
+                sizePx = 2048,
+                loadOriginal = true,
+                cornerRadius = cornerRadius
+            )
+        } else {
+            DefaultAlbumCover(modifier = Modifier.fillMaxSize(), fullBleed = cornerRadius == 0.dp)
+        }
+    }
+}
+
+@Composable
+internal fun SmallCover(song: Song?, embeddedCover: Bitmap?, modifier: Modifier = Modifier) {
+    AlbumArtView(
+        song = song,
+        embeddedCover = embeddedCover,
+        cornerRadius = 12.dp,
+        contentScale = ContentScale.Crop,
+        modifier = modifier.clip(RoundedCornerShape(12.dp))
+    )
+}
+
+@Composable
+internal fun PlayerCoverImage(
+    model: Any?,
+    painter: Painter? = null,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    sizePx: Int = 1200,
+    loadOriginal: Boolean = false,
+    cornerRadius: Dp = 20.dp
+) {
+    val context = LocalContext.current
+    var sourceAspectRatio by remember(model) {
+        mutableStateOf(
+            when (model) {
+                is Bitmap -> model.takeIf { it.width > 0 && it.height > 0 }?.let { it.width.toFloat() / it.height.toFloat() }
+                is ByteArray -> runCatching {
+                    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(model, 0, model.size, opts)
+                    if (opts.outWidth > 0 && opts.outHeight > 0) opts.outWidth.toFloat() / opts.outHeight.toFloat() else null
+                }.getOrNull()
+                is File -> runCatching {
+                    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(model.absolutePath, opts)
+                    if (opts.outWidth > 0 && opts.outHeight > 0) opts.outWidth.toFloat() / opts.outHeight.toFloat() else null
+                }.getOrNull()
+                else -> null
+            }
+        )
+    }
+    if (painter != null) {
+        val intrinsic = painter.intrinsicSize
+        if (intrinsic.isSpecified && intrinsic.width > 0 && intrinsic.height > 0) {
+            val aspect = intrinsic.width / intrinsic.height
+            if (aspect > 0f && aspect.isFinite()) {
+                sourceAspectRatio = aspect
+            }
+        }
+    }
+    val request = remember(context, model, sizePx, loadOriginal) {
+        coil3.request.ImageRequest.Builder(context)
+            .data(model)
+            .apply {
+                if (loadOriginal) {
+                    size(Size.ORIGINAL)
+                } else {
+                    size(sizePx)
+                }
+            }
+            .build()
+    }
+    if (model != null) {
+        val roundedContentModifier = if (cornerRadius > 0.dp && contentScale == ContentScale.Fit) {
+            Modifier.drawWithContent {
+                val aspectRatio = sourceAspectRatio
+                val contentBounds = if (aspectRatio != null && aspectRatio > 0f) {
+                    val containerAspectRatio = size.width / size.height.coerceAtLeast(1f)
+                    if (aspectRatio >= containerAspectRatio) {
+                        val contentHeight = size.width / aspectRatio
+                        val top = (size.height - contentHeight) / 2f
+                        floatArrayOf(0f, top, size.width, top + contentHeight)
+                    } else {
+                        val contentWidth = size.height * aspectRatio
+                        val left = (size.width - contentWidth) / 2f
+                        floatArrayOf(left, 0f, left + contentWidth, size.height)
+                    }
+                } else {
+                    floatArrayOf(0f, 0f, size.width, size.height)
+                }
+                val radius = cornerRadius.toPx().coerceAtMost(
+                    minOf(
+                        (contentBounds[2] - contentBounds[0]) / 2f,
+                        (contentBounds[3] - contentBounds[1]) / 2f
+                    )
+                )
+                val clipPath = Path().apply {
+                    addRoundRect(
+                        RoundRect(
+                            left = contentBounds[0],
+                            top = contentBounds[1],
+                            right = contentBounds[2],
+                            bottom = contentBounds[3],
+                            cornerRadius = CornerRadius(radius, radius)
+                        )
+                    )
+                }
+                clipPath(clipPath) { this@drawWithContent.drawContent() }
+            }
+        } else if (cornerRadius > 0.dp) {
+            Modifier.clip(RoundedCornerShape(cornerRadius))
+        } else {
+            Modifier
+        }
+        if (painter != null) {
+            Image(
+                painter = painter,
+                contentDescription = contentDescription,
+                modifier = modifier.then(roundedContentModifier),
+                contentScale = contentScale
+            )
+        } else {
+            AsyncImage(
+                model = request,
+                contentDescription = contentDescription,
+                modifier = modifier.then(roundedContentModifier),
+                contentScale = contentScale,
+                onSuccess = { state ->
+                    val image = state.result.image
+                    if (image.width > 0 && image.height > 0) {
+                        sourceAspectRatio = image.width.toFloat() / image.height.toFloat()
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+internal fun AlbumArtView(
+    song: Song?,
+    embeddedCover: Bitmap?,
+    coverModel: Any? = null,
+    artworkPainter: Painter? = null,
+    cornerRadius: Dp = 20.dp,
+    contentScale: ContentScale = ContentScale.Fit,
+    loadOriginal: Boolean = true,
+    showHiResLogo: Boolean = false,
+    hiResLogoUri: String = "",
+    modifier: Modifier = Modifier
+) {
+    val resolvedCoverModel = coverModel ?: resolveCoverPreviewModel(song, embeddedCover)
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        if (resolvedCoverModel != null) {
+            PlayerCoverImage(
+                model = resolvedCoverModel,
+                painter = artworkPainter,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale,
+                sizePx = 2048,
+                loadOriginal = loadOriginal,
+                cornerRadius = cornerRadius
+            )
+        } else {
+            DefaultAlbumCover(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(cornerRadius)),
+                fullBleed = cornerRadius == 0.dp
+            )
+        }
+        if (showHiResLogo) {
+            HiResLogoBadge(
+                logoUri = hiResLogoUri,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(10.dp)
+            )
+        }
+    }
+}
+
+internal fun resolveCoverPreviewModel(song: Song?, embeddedCover: Bitmap?): Any? {
+    val rawCover = song?.coverUrl?.takeIf { it.isNotBlank() }
+    val explicitCover = rawCover?.takeUnless { it.isMediaStoreAlbumArtworkUri() }
+    return embeddedCover ?: explicitCover ?: rawCover
+}
+
+/** Prefers the unscaled source so preview dialogs never inherit a list/player thumbnail. */
+internal fun preferredCoverPreviewModel(originalModel: Any?, decodedFallback: Any?): Any? =
+    originalModel ?: decodedFallback
+
+@Composable
+internal fun HiResLogoBadge(
+    logoUri: String,
+    modifier: Modifier = Modifier
+) {
+    if (logoUri.isNotBlank()) {
+        AsyncImage(
+            model = Uri.parse(logoUri),
+            contentDescription = null,
+            modifier = modifier.size(34.dp),
+            contentScale = ContentScale.Fit,
+        )
+        return
+    }
+
+    Image(
+        painter = painterResource(R.drawable.ic_hi_res_audio),
+        contentDescription = null,
+        modifier = modifier.size(34.dp),
+        contentScale = ContentScale.Fit
+    )
+}

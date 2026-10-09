@@ -1,0 +1,384 @@
+package com.ella.music.ui.player
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import com.ella.music.data.SettingsManager
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.ella.music.R
+import com.ella.music.data.ActionMenuIds
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
+
+internal enum class PlayerHeaderActionKind {
+    Favorite,
+    More
+}
+
+@Composable
+internal fun Modifier.playerNoIndicationClick(onClick: () -> Unit): Modifier =
+    clickable(
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+        onClick = onClick
+    )
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun Modifier.playerNoIndicationClick(
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?
+): Modifier =
+    if (onLongClick != null) {
+        combinedClickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
+    } else {
+        clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onClick
+        )
+    }
+
+@Composable
+internal fun PlayerQuickActionRow(
+    shortcutIds: List<String>,
+    onAction: (String) -> Unit,
+    onMore: () -> Unit,
+    modifier: Modifier = Modifier,
+    sleepTimerEndRealtimeMs: Long? = null
+) {
+    val timerRemaining = rememberSleepTimerRemaining(sleepTimerEndRealtimeMs)
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        shortcutIds.forEach { id ->
+            PlayerQuickAction(
+                id = id,
+                onClick = { onAction(id) },
+                caption = if (id == ActionMenuIds.TIMER) timerRemaining else null
+            )
+        }
+        PlayerQuickAction(
+            label = stringResource(R.string.player_quick_more),
+            kind = PlayerQuickActionKind.More,
+            onClick = onMore
+        )
+    }
+}
+
+@Composable
+internal fun PlayerQuickActionRow(
+    onSongInfo: () -> Unit,
+    onShareSong: () -> Unit,
+    onTimer: () -> Unit,
+    onEditMetadata: () -> Unit,
+    onMore: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        PlayerQuickAction(stringResource(R.string.player_quick_info), PlayerQuickActionKind.Info, onSongInfo)
+        PlayerQuickAction(stringResource(R.string.player_quick_share), PlayerQuickActionKind.Share, onShareSong)
+        PlayerQuickAction(stringResource(R.string.player_quick_timer), PlayerQuickActionKind.Timer, onTimer)
+        PlayerQuickAction(stringResource(R.string.player_quick_edit), PlayerQuickActionKind.Edit, onEditMetadata)
+        PlayerQuickAction(stringResource(R.string.player_quick_more), PlayerQuickActionKind.More, onMore)
+    }
+}
+
+internal enum class PlayerQuickActionKind {
+    Info,
+    Share,
+    Timer,
+    Edit,
+    More,
+    Add,
+    PlayNext,
+    Speed,
+    Equalizer
+}
+
+@Composable
+internal fun PlayerQuickAction(
+    label: String,
+    kind: PlayerQuickActionKind,
+    onClick: () -> Unit
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(42.dp)
+            .playerNoIndicationClick(onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            QuickActionIcon(
+                kind = kind,
+                color = LocalPlayerContentColor.current.copy(alpha = 0.9f),
+                modifier = Modifier.size(19.dp)
+            )
+        }
+    }
+}
+
+@Composable
+internal fun PlayerQuickAction(
+    id: String,
+    onClick: () -> Unit,
+    caption: String? = null
+) {
+    val contentColor = LocalPlayerContentColor.current.copy(alpha = 0.9f)
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(42.dp)
+            .playerNoIndicationClick(onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            com.ella.music.ui.settings.PlayerShortcutItemIcon(
+                id = id,
+                tint = contentColor,
+                modifier = Modifier.size(19.dp)
+            )
+        }
+        if (!caption.isNullOrBlank()) {
+            Text(
+                text = caption,
+                fontSize = 8.sp,
+                color = contentColor,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+    }
+}
+
+@Composable
+internal fun QuickActionIcon(
+    kind: PlayerQuickActionKind,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    if (kind == PlayerQuickActionKind.Speed) {
+        Icon(imageVector = com.ella.music.ui.components.MaterialSpeedIcon,
+            contentDescription = null, tint = color, modifier = modifier)
+        return
+    }
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.10f
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        when (kind) {
+            PlayerQuickActionKind.Info -> {
+                drawCircle(color = color, radius = size.minDimension * 0.36f, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = StrokeCap.Round))
+                drawLine(color, Offset(cx, size.height * 0.46f), Offset(cx, size.height * 0.70f), stroke, cap = StrokeCap.Round)
+                drawCircle(color = color, radius = stroke * 0.62f, center = Offset(cx, size.height * 0.32f))
+            }
+            PlayerQuickActionKind.Share -> {
+                val a = Offset(size.width * 0.26f, size.height * 0.58f)
+                val b = Offset(size.width * 0.68f, size.height * 0.30f)
+                val c = Offset(size.width * 0.70f, size.height * 0.74f)
+                drawLine(color, a, b, stroke, cap = StrokeCap.Round)
+                drawLine(color, a, c, stroke, cap = StrokeCap.Round)
+                listOf(a, b, c).forEach { drawCircle(color = color, radius = stroke * 1.35f, center = it) }
+            }
+            PlayerQuickActionKind.Timer -> {
+                drawCircle(color = color, radius = size.minDimension * 0.40f, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = StrokeCap.Round))
+                drawLine(color, Offset(cx, cy), Offset(cx, size.height * 0.30f), stroke, cap = StrokeCap.Round)
+                drawLine(color, Offset(cx, cy), Offset(size.width * 0.66f, size.height * 0.58f), stroke, cap = StrokeCap.Round)
+            }
+            PlayerQuickActionKind.Edit -> {
+                drawLine(color, Offset(size.width * 0.28f, size.height * 0.72f), Offset(size.width * 0.72f, size.height * 0.28f), stroke * 1.3f, cap = StrokeCap.Round)
+                drawLine(color, Offset(size.width * 0.22f, size.height * 0.78f), Offset(size.width * 0.40f, size.height * 0.72f), stroke, cap = StrokeCap.Round)
+            }
+            PlayerQuickActionKind.More -> {
+                listOf(0.25f, 0.5f, 0.75f).forEach { y ->
+                    drawCircle(color = color, radius = stroke * 0.95f, center = Offset(cx, size.height * y))
+                }
+            }
+            PlayerQuickActionKind.Add -> {
+                drawLine(color, Offset(size.width * 0.20f, size.height * 0.28f), Offset(size.width * 0.68f, size.height * 0.28f), stroke, cap = StrokeCap.Round)
+                drawLine(color, Offset(size.width * 0.20f, size.height * 0.48f), Offset(size.width * 0.54f, size.height * 0.48f), stroke, cap = StrokeCap.Round)
+                drawLine(color, Offset(size.width * 0.20f, size.height * 0.68f), Offset(size.width * 0.46f, size.height * 0.68f), stroke, cap = StrokeCap.Round)
+                drawLine(color, Offset(size.width * 0.74f, size.height * 0.54f), Offset(size.width * 0.74f, size.height * 0.82f), stroke, cap = StrokeCap.Round)
+                drawLine(color, Offset(size.width * 0.60f, size.height * 0.68f), Offset(size.width * 0.88f, size.height * 0.68f), stroke, cap = StrokeCap.Round)
+            }
+            PlayerQuickActionKind.PlayNext -> {
+                drawLine(color, Offset(size.width * 0.16f, size.height * 0.33f), Offset(size.width * 0.66f, size.height * 0.33f), stroke, cap = StrokeCap.Round)
+                drawLine(color, Offset(size.width * 0.16f, size.height * 0.50f), Offset(size.width * 0.66f, size.height * 0.50f), stroke, cap = StrokeCap.Round)
+                drawLine(color, Offset(size.width * 0.16f, size.height * 0.67f), Offset(size.width * 0.50f, size.height * 0.67f), stroke, cap = StrokeCap.Round)
+                val triangle = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(size.width * 0.68f, size.height * 0.52f)
+                    lineTo(size.width * 0.88f, size.height * 0.68f)
+                    lineTo(size.width * 0.68f, size.height * 0.84f)
+                    close()
+                }
+                drawPath(triangle, color = color)
+            }
+            PlayerQuickActionKind.Speed -> Unit
+            PlayerQuickActionKind.Equalizer -> {
+                val xs = listOf(0.24f, 0.50f, 0.76f)
+                val heights = listOf(0.68f, 0.42f, 0.58f)
+                xs.forEachIndexed { index, x ->
+                    drawLine(
+                        color = color,
+                        start = Offset(size.width * x, size.height * 0.22f),
+                        end = Offset(size.width * x, size.height * 0.78f),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round
+                    )
+                    drawCircle(
+                        color = color,
+                        radius = stroke * 1.35f,
+                        center = Offset(size.width * x, size.height * heights[index])
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun PlayerHeaderAction(
+    kind: PlayerHeaderActionKind,
+    selected: Boolean = false,
+    useAppleIcons: Boolean = false,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val favoriteHeartPink by remember(context) {
+        SettingsManager.getInstance(context).playerFavoriteHeartPink
+    }.collectAsState(initial = false)
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .playerNoIndicationClick(onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        when (kind) {
+            PlayerHeaderActionKind.Favorite -> {
+                val activeTint = if (!useAppleIcons && favoriteHeartPink) Color(0xFFFF4D6D) else LocalPlayerContentColor.current
+                if (useAppleIcons) {
+                    Icon(
+                        painter = painterResource(
+                            id = if (selected) R.drawable.ic_nowplaying_favorited
+                            else R.drawable.ic_nowplaying_favorite
+                        ),
+                        contentDescription = if (selected) {
+                            stringResource(R.string.common_unfavorite)
+                        } else {
+                            stringResource(R.string.common_favorite)
+                        },
+                        tint = if (selected) activeTint else LocalPlayerContentColor.current.copy(alpha = 0.92f),
+                        modifier = Modifier.size(28.dp)
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(
+                            id = if (selected) R.drawable.ic_notification_favorite_filled
+                            else R.drawable.ic_notification_favorite
+                        ),
+                        contentDescription = if (selected) {
+                            stringResource(R.string.common_unfavorite)
+                        } else {
+                            stringResource(R.string.common_favorite)
+                        },
+                        tint = if (selected) activeTint else LocalPlayerContentColor.current.copy(alpha = 0.92f),
+                        modifier = Modifier.size(25.dp)
+                    )
+                }
+            }
+            PlayerHeaderActionKind.More -> {
+                if (useAppleIcons) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_nowplaying_more),
+                        contentDescription = stringResource(R.string.player_quick_more),
+                        tint = LocalPlayerContentColor.current.copy(alpha = 0.96f),
+                        modifier = Modifier.size(28.dp)
+                    )
+                } else {
+                    QuickActionIcon(
+                        kind = PlayerQuickActionKind.More,
+                        color = LocalPlayerContentColor.current.copy(alpha = 0.96f),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun HeartIcon(
+    color: Color,
+    filled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.50f, h * 0.86f)
+            cubicTo(w * 0.18f, h * 0.60f, w * 0.04f, h * 0.42f, w * 0.10f, h * 0.24f)
+            cubicTo(w * 0.17f, h * 0.04f, w * 0.39f, h * 0.05f, w * 0.50f, h * 0.25f)
+            cubicTo(w * 0.61f, h * 0.05f, w * 0.83f, h * 0.04f, w * 0.90f, h * 0.24f)
+            cubicTo(w * 0.96f, h * 0.42f, w * 0.82f, h * 0.60f, w * 0.50f, h * 0.86f)
+            close()
+        }
+        if (filled) {
+            drawPath(path, color)
+        } else {
+            drawPath(
+                path = path,
+                color = color,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = size.minDimension * 0.09f,
+                    cap = StrokeCap.Round
+                )
+            )
+        }
+    }
+}

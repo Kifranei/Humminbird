@@ -1,0 +1,1393 @@
+package com.ella.music.ui.artist
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import androidx.compose.ui.res.stringResource
+import com.ella.music.R
+import com.ella.music.MusicVideoLauncher
+import com.ella.music.data.ArtistCoverKind
+import com.ella.music.data.CategoryResumeKeys
+import com.ella.music.data.LibraryAlbumAggregator
+import com.ella.music.data.playbackSourcesForSongs
+import com.ella.music.data.model.Song
+import com.ella.music.data.model.albumIdentityId
+import com.ella.music.data.model.playlistIdentityKey
+import com.ella.music.ui.LibrarySortUiState
+import com.ella.music.ui.components.ConfirmDangerDialog
+import com.ella.music.ui.components.CoverPreviewDialog
+import com.ella.music.ui.components.ArtistPickerContent
+import com.ella.music.ui.components.EllaMiuixBottomSheet
+import com.ella.music.ui.components.EllaCenteredLoadingIndicator
+import com.ella.music.ui.components.FastIndexBar
+import com.ella.music.ui.components.LazyListScrollIndicator
+import com.ella.music.ui.components.ScrollIndicatorListEndPadding
+import com.ella.music.ui.components.RestoreListScrollAfterSearch
+import com.ella.music.ui.components.LibraryFloatingControlsBottomPadding
+import com.ella.music.ui.components.LibraryFloatingControlsEndPadding
+import com.ella.music.ui.components.LocateCurrentSongFloatingButton
+import com.ella.music.ui.components.ShuffleAllSummaryButton
+import com.ella.music.ui.components.ellaPageBackground
+import com.ella.music.ui.components.SongItem
+import com.ella.music.ui.components.EllaSearchBar
+import com.ella.music.ui.components.EllaSmallTopAppBar
+import com.ella.music.ui.components.DirectionalSortModeField
+import com.ella.music.ui.components.SortDropdownMenu
+import com.ella.music.ui.components.directionalSortModeDropdownItems
+import com.ella.music.ui.components.FloatingSelectionControls
+import com.ella.music.ui.components.rememberLibrarySelectionState
+import com.ella.music.ui.components.rememberSongDeleteRequester
+import com.ella.music.ui.components.toFastIndexSection
+import com.ella.music.ui.components.openVideoWithMediaInfo
+import com.ella.music.viewmodel.MainViewModel
+import com.ella.music.viewmodel.PlayerViewModel
+import kotlinx.coroutines.Dispatchers
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Search
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.icon.extended.SelectAll
+import top.yukonga.miuix.kmp.icon.extended.Share
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+@Composable
+fun ArtistScreen(
+    artistName: String,
+    mainViewModel: MainViewModel,
+    playerViewModel: PlayerViewModel,
+    onBack: () -> Unit,
+    onAlbumClick: (Long) -> Unit,
+    onArtistClick: (String) -> Unit = {},
+    onMetadataCategoryClick: (String, String) -> Unit = { _, _ -> },
+    onOpenLastFmSettings: () -> Unit = {},
+    onNavigateToPlayer: () -> Unit
+) {
+    val context = LocalContext.current
+    val songs by mainViewModel.songs.collectAsState()
+    val albums by mainViewModel.albums.collectAsState()
+    val playlists by mainViewModel.playlists.collectAsState()
+    val currentSong by playerViewModel.currentSong.collectAsState()
+    val playbackStats by mainViewModel.playbackStats.collectAsState()
+    val favoriteSongKeys by playerViewModel.favoriteSongKeys.collectAsState()
+    val locateCurrentSongRequest by playerViewModel.locateCurrentSongRequest.collectAsState()
+    com.ella.music.ui.components.RememberPlaybackSourceScreen(
+        com.ella.music.data.CategoryResumeKeys.artist(artistName)
+    )
+    val openPlayerOnPlay by mainViewModel.settingsManager.openPlayerOnPlay.collectAsState(initial = false)
+    val showPlayNextInLists by mainViewModel.settingsManager.showPlayNextInLists.collectAsState(initial = false)
+    val showAlbumArtists by mainViewModel.settingsManager.showAlbumArtists.collectAsState(initial = true)
+    val showArtistIntroduction by mainViewModel.settingsManager.showArtistIntroduction.collectAsState(initial = true)
+    val artistCoverFolderUri by mainViewModel.settingsManager.artistCoverFolderUri.collectAsState(initial = "")
+    val dynamicCoverEnabled by mainViewModel.settingsManager.dynamicCoverEnabled.collectAsState(initial = false)
+    val dynamicCoverCustomFolders by mainViewModel.settingsManager.dynamicCoverCustomFolders.collectAsState(initial = emptyList())
+    val musicVideoCustomFolders by mainViewModel.settingsManager.musicVideoCustomFolders.collectAsState(initial = emptyList())
+    val libraryCacheLoaded by mainViewModel.libraryCacheLoaded.collectAsState()
+    var searchExpanded by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val sortIndex by mainViewModel.settingsManager.artistDetailSongSortIndex.collectAsState(initial = LibrarySortUiState.artistDetailSongSortIndex)
+    val sortMode = ArtistDetailSongSortMode.entries.getOrElse(sortIndex) { ArtistDetailSongSortMode.Title }
+    val albumSortIndex by mainViewModel.settingsManager.artistDetailAlbumSortIndex.collectAsState(initial = LibrarySortUiState.artistDetailAlbumSortIndex)
+    val albumSortMode = ArtistDetailAlbumSortMode.entries.getOrElse(albumSortIndex) { ArtistDetailAlbumSortMode.YearAsc }
+    val scope = rememberCoroutineScope()
+    var selectedTabTarget by rememberSaveable(artistName) { mutableStateOf(ArtistTab.Songs) }
+    var scrollToTopRequest by remember { mutableStateOf(0) }
+    var actionSong by remember { mutableStateOf<Song?>(null) }
+    val selection = rememberLibrarySelectionState<Long>()
+    var pendingDeleteSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var playlistPickerSong by remember { mutableStateOf<Song?>(null) }
+    var createPlaylistSong by remember { mutableStateOf<Song?>(null) }
+    var playlistPickerSongs by remember { mutableStateOf<List<Song>?>(null) }
+    var createPlaylistSongs by remember { mutableStateOf<List<Song>?>(null) }
+    var tagEditorSong by remember { mutableStateOf<Song?>(null) }
+    var songInfoSheetSong by remember { mutableStateOf<Song?>(null) }
+    var musicVideoSortMode by rememberSaveable(artistName) { mutableStateOf(ArtistMusicVideoSortMode.ReleaseDesc) }
+    var musicVideoRevision by remember { mutableStateOf(0) }
+    var pendingDeleteMusicVideos by remember { mutableStateOf<List<ArtistMusicVideo>>(emptyList()) }
+    var musicVideoMenuTarget by remember { mutableStateOf<ArtistMusicVideo?>(null) }
+    var musicVideoArtistChoices by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showIntroduction by rememberSaveable(artistName) { mutableStateOf(false) }
+    var artistCoverPreviewVisible by remember(artistName) { mutableStateOf(false) }
+    var musicVideoInfoTarget by remember { mutableStateOf<ArtistMusicVideo?>(null) }
+    val requestDeleteSongs = rememberSongDeleteRequester(mainViewModel)
+
+    val artistSongsState by produceState<List<Song>?>(null, songs, artistName) {
+        value = withContext(Dispatchers.Default) {
+            mainViewModel.getSongsForArtist(artistName)
+        }
+    }
+    val artistSongs = artistSongsState.orEmpty()
+    val artistMusicVideoState by produceState(
+        initialValue = emptyList<ArtistMusicVideo>() to true,
+        artistSongs,
+        dynamicCoverCustomFolders,
+        musicVideoCustomFolders,
+        musicVideoRevision
+    ) {
+        value = emptyList<ArtistMusicVideo>() to true
+        val sources = withContext(Dispatchers.IO) {
+            resolveArtistMusicVideoSources(
+                context = context.applicationContext,
+                songs = artistSongs,
+                dynamicCoverFolders = dynamicCoverCustomFolders,
+                musicVideoFolders = musicVideoCustomFolders,
+                onProgress = { partial -> value = partial to true }
+            )
+        }
+        value = sources to true
+        value = withContext(Dispatchers.IO) {
+            enrichArtistMusicVideos(context.applicationContext, sources)
+        }.let { enriched -> enriched to false }
+    }
+    val artistMusicVideos = artistMusicVideoState.first
+    val artistMusicVideosLoading = artistMusicVideoState.second
+    val artistQuery = searchQuery.trim()
+    // Music-video previews are backed by DynamicCoverPreviewCache and may be shared with the
+    // player page. The cache owns their lifetime; recycling them from this screen would leave
+    // another Compose surface drawing a recycled bitmap.
+    val filteredArtistSongs = remember(artistSongs, artistQuery) {
+        if (artistQuery.isBlank()) {
+            artistSongs
+        } else {
+            artistSongs.filter { song ->
+                song.title.contains(artistQuery, ignoreCase = true) ||
+                    song.artist.contains(artistQuery, ignoreCase = true) ||
+                    song.album.contains(artistQuery, ignoreCase = true) ||
+                    song.fileName.contains(artistQuery, ignoreCase = true)
+            }
+        }
+    }
+    val sortedArtistSongs = remember(filteredArtistSongs, sortMode, com.ella.music.ui.LibrarySortUiState.randomSortSeed) {
+        filteredArtistSongs.sortedForArtistDetail(sortMode)
+    }
+    fun shuffleArtistSongsAndStart() {
+        val queueSongs = if (sortMode == ArtistDetailSongSortMode.Random) {
+            sortedArtistSongs
+        } else {
+            val seed = LibrarySortUiState.reshuffleRandomSort()
+            scope.launch { mainViewModel.settingsManager.setRandomSortSeed(seed) }
+            LibrarySortUiState.artistDetailSongSortIndex = ArtistDetailSongSortMode.Random.ordinal
+            scope.launch {
+                mainViewModel.settingsManager.setArtistDetailSongSortIndex(ArtistDetailSongSortMode.Random.ordinal)
+            }
+            scrollToTopRequest++
+            LibrarySortUiState.randomizedSongs(filteredArtistSongs, seed)
+        }
+        if (queueSongs.isNotEmpty()) {
+            playerViewModel.setShuffledPlaylist(
+                queueSongs,
+                0,
+                resumeCategoryKey = CategoryResumeKeys.artist(artistName),
+                preserveOrder = true
+            )
+            if (openPlayerOnPlay) onNavigateToPlayer()
+        }
+    }
+    val filteredArtistMusicVideos = remember(artistMusicVideos, artistQuery) {
+        if (artistQuery.isBlank()) {
+            artistMusicVideos
+        } else {
+            artistMusicVideos.filter { item ->
+                item.song.title.contains(artistQuery, ignoreCase = true) ||
+                    item.song.artist.contains(artistQuery, ignoreCase = true) ||
+                    item.song.album.contains(artistQuery, ignoreCase = true) ||
+                    item.song.fileName.contains(artistQuery, ignoreCase = true)
+            }
+        }
+    }
+    val sortedArtistMusicVideos = remember(filteredArtistMusicVideos, musicVideoSortMode) {
+        filteredArtistMusicVideos.sortedForArtistMusicVideo(musicVideoSortMode)
+    }
+    val participatedAlbums = remember(albums, songs, artistName) {
+        mainViewModel.getParticipatedAlbumsForArtist(artistName)
+    }
+    val releaseAlbums = remember(albums, songs, artistName) {
+        mainViewModel.getReleaseAlbumsForArtist(artistName)
+    }
+    val showReleaseAlbums = remember(albums, songs, artistName, showAlbumArtists, artistSongs) {
+        mainViewModel.hasAlbumArtistTags() &&
+            releaseAlbums.isNotEmpty() &&
+            (showAlbumArtists || artistSongs.isEmpty())
+    }
+    val albumDurations = remember(songs) {
+        LibraryAlbumAggregator.durationsByAlbumIdentity(songs)
+    }
+    val representativeSongsByAlbumId = remember(songs) {
+        LibraryAlbumAggregator.representativeSongsByAlbumIdentity(songs)
+    }
+    val filteredParticipatedAlbums = remember(participatedAlbums, artistQuery) {
+        if (artistQuery.isBlank()) {
+            participatedAlbums
+        } else {
+            participatedAlbums.filter { album ->
+                album.name.contains(artistQuery, ignoreCase = true) ||
+                    album.artist.contains(artistQuery, ignoreCase = true) ||
+                    album.albumArtist.contains(artistQuery, ignoreCase = true) ||
+                    album.year.contains(artistQuery, ignoreCase = true)
+            }
+        }
+    }
+    val sortedParticipatedAlbums = remember(filteredParticipatedAlbums, albumSortMode, albumDurations) {
+        filteredParticipatedAlbums.sortedForArtistAlbumDetail(albumSortMode, albumDurations)
+    }
+    val filteredReleaseAlbums = remember(releaseAlbums, artistQuery) {
+        if (artistQuery.isBlank()) {
+            releaseAlbums
+        } else {
+            releaseAlbums.filter { album ->
+                album.name.contains(artistQuery, ignoreCase = true) ||
+                    album.artist.contains(artistQuery, ignoreCase = true) ||
+                    album.albumArtist.contains(artistQuery, ignoreCase = true) ||
+                    album.year.contains(artistQuery, ignoreCase = true)
+            }
+        }
+    }
+    val sortedReleaseAlbums = remember(filteredReleaseAlbums, albumSortMode, albumDurations) {
+        filteredReleaseAlbums.sortedForArtistAlbumDetail(albumSortMode, albumDurations)
+    }
+    val hasComposerCategory = remember(songs, artistName) {
+        mainViewModel.hasMetadataCategory("composer", artistName)
+    }
+    val hasArrangerCategory = remember(songs, artistName) {
+        mainViewModel.hasMetadataCategory("arranger", artistName)
+    }
+    val hasLyricistCategory = remember(songs, artistName) {
+        mainViewModel.hasMetadataCategory("lyricist", artistName)
+    }
+    val neteaseArtistUrl by produceState<String?>(initialValue = null, artistName, songs) {
+        value = mainViewModel.getNeteaseArtistUrlForArtist(artistName)
+    }
+    val artistBioDownload by mainViewModel.settingsManager.artistBioDownload.collectAsState(
+        initial = com.ella.music.data.SettingsManager.DEFAULT_ARTIST_BIO_DOWNLOAD
+    )
+    val artistLibrarySource by mainViewModel.settingsManager.librarySource.collectAsState(initial = "")
+    val showBiographyTab = artistBioDownload != com.ella.music.data.SettingsManager.ARTIST_BIO_DOWNLOAD_NEVER ||
+        artistLibrarySource == com.ella.music.data.SettingsManager.LIBRARY_SOURCE_NETEASE
+    val tabs = remember(showReleaseAlbums, artistMusicVideos, showBiographyTab) {
+        buildList {
+            add(ArtistTab.Songs)
+            add(ArtistTab.ParticipatedAlbums)
+            if (showReleaseAlbums) add(ArtistTab.ReleaseAlbums)
+            if (showBiographyTab) add(ArtistTab.Biography)
+            if (artistMusicVideos.isNotEmpty()) add(ArtistTab.MusicVideos)
+        }
+    }
+    val selectedArtistTab = selectedTabTarget.takeIf { it in tabs } ?: ArtistTab.Songs
+    val listState = rememberLazyListState()
+    RestoreListScrollAfterSearch(
+        searchExpanded = searchExpanded,
+        query = searchQuery,
+        listState = listState
+    )
+    val hasArtistJumpActions = hasComposerCategory || hasArrangerCategory || hasLyricistCategory || !neteaseArtistUrl.isNullOrBlank()
+    val artistDetailListBodyStartIndex = 3 + if (hasArtistJumpActions) 1 else 0
+    val activeArtistListSize = when (selectedArtistTab) {
+        ArtistTab.Songs -> sortedArtistSongs.size
+        ArtistTab.ParticipatedAlbums -> sortedParticipatedAlbums.size
+        ArtistTab.ReleaseAlbums -> sortedReleaseAlbums.size
+        ArtistTab.Biography -> 0
+        ArtistTab.MusicVideos -> sortedArtistMusicVideos.size
+    }
+    val showSongSideIndex = !selection.selectionMode &&
+        selectedArtistTab == ArtistTab.Songs &&
+        sortMode in setOf(
+            ArtistDetailSongSortMode.Title,
+            ArtistDetailSongSortMode.TitleDesc,
+            ArtistDetailSongSortMode.FileName,
+            ArtistDetailSongSortMode.FileNameDesc
+        ) &&
+        sortedArtistSongs.size > 30
+    val songFastIndexData = remember(showSongSideIndex, sortedArtistSongs, artistDetailListBodyStartIndex) {
+        if (!showSongSideIndex) {
+            emptyList()
+        } else {
+            sortedArtistSongs
+                .mapIndexed { index, song ->
+                    val indexText = if (
+                        sortMode == ArtistDetailSongSortMode.FileName ||
+                            sortMode == ArtistDetailSongSortMode.FileNameDesc
+                    ) {
+                        song.fileName.ifBlank { song.path.substringAfterLast('/') }
+                    } else {
+                        song.title
+                    }
+                    indexText.toFastIndexSection() to (index + artistDetailListBodyStartIndex)
+                }
+                .distinctBy { it.first }
+        }
+    }
+    val showScrollIndicator = activeArtistListSize > 30 && !showSongSideIndex
+    val sortedArtistSongIndexById = remember(sortedArtistSongs) {
+        buildMap {
+            sortedArtistSongs.forEachIndexed { index, song -> put(song.id, index) }
+        }
+    }
+    val currentSongItemIndex = remember(sortedArtistSongIndexById, currentSong?.id, selectedArtistTab, artistDetailListBodyStartIndex) {
+        if (selectedArtistTab != ArtistTab.Songs || selection.selectionMode) {
+            -1
+        } else {
+            (currentSong?.id?.let { sortedArtistSongIndexById[it] } ?: -1)
+                .takeIf { it >= 0 }
+                ?.plus(artistDetailListBodyStartIndex)
+                ?: -1
+        }
+    }
+
+    val representativeCoverSong = remember(songs, artistName) {
+        selectArtistCoverSong(songs, artistName)
+    }
+    // The representative song is still chosen by the #266 policy above. Use the unscaled
+    // artwork source so the header and long-press preview are not capped at the 512px
+    // artist-image decode (#609).
+    val artistOriginalCoverModel by produceState<Any?>(
+        initialValue = null,
+        representativeCoverSong?.let { listOf(it.playlistIdentityKey(), it.dateModified, it.fileSize).joinToString("|") }
+    ) {
+        value = withContext(Dispatchers.IO) {
+            representativeCoverSong?.let(mainViewModel::getArtistCoverModel)
+        }
+    }
+    val customArtistCoverAssets = rememberArtistCoverAssets(
+        artistName = artistName,
+        folderLocation = artistCoverFolderUri,
+        mainViewModel = mainViewModel,
+        songs = artistSongs
+    )
+    val artistDownloadedCover = rememberArtistCoverResolution(
+        artistName = artistName,
+        representativeSong = representativeCoverSong,
+        folderLocation = artistCoverFolderUri,
+        mainViewModel = mainViewModel,
+        includeLibraryArtwork = false
+    )
+    val artistHeaderCoverModel = artistDownloadedCover.model ?: artistOriginalCoverModel
+    val artistCoverPreviewModels = remember(customArtistCoverAssets, artistHeaderCoverModel) {
+        val videoUris = customArtistCoverAssets
+            .filter { it.kind == ArtistCoverKind.Video }
+            .map { it.uri }
+        val imageUris = customArtistCoverAssets
+            .filter { it.kind == ArtistCoverKind.Image }
+            .map { it.uri }
+        val allImages = if (imageUris.isNotEmpty()) {
+            imageUris
+        } else if (artistHeaderCoverModel != null) {
+            listOf(artistHeaderCoverModel)
+        } else {
+            emptyList()
+        }
+        videoUris + allImages
+    }
+    val artistVideoAsset = remember(customArtistCoverAssets) {
+        customArtistCoverAssets.firstOrNull { it.kind == ArtistCoverKind.Video }
+    }
+    var artistPreviewModel by remember(artistVideoAsset, artistHeaderCoverModel) {
+        mutableStateOf<Any?>(artistVideoAsset?.uri ?: artistHeaderCoverModel)
+    }
+    val artistPreviewTitle = run {
+        val sourceRes = artistDownloadedCover.downloadSource
+            ?.let { com.ella.music.data.ArtistImageRepository.sourceLabelRes(it) }
+        if (sourceRes != null && artistDownloadedCover.model != null) {
+            "$artistName (${stringResource(sourceRes)})"
+        } else {
+            artistName
+        }
+    }
+    val artistCoverCarousel by mainViewModel.settingsManager.artistCoverCarousel.collectAsState(initial = true)
+    val librarySongsByAlbumId = remember(songs) {
+        songs.groupBy { it.albumIdentityId() }
+    }
+    val randomParticipatedAlbumSongs = remember(sortedParticipatedAlbums, librarySongsByAlbumId) {
+        sortedParticipatedAlbums
+            .flatMap { album -> librarySongsByAlbumId[album.id].orEmpty() }
+            .distinctBy { it.id }
+    }
+    val randomReleaseAlbumSongs = remember(sortedReleaseAlbums, librarySongsByAlbumId) {
+        sortedReleaseAlbums
+            .flatMap { album -> librarySongsByAlbumId[album.id].orEmpty() }
+            .distinctBy { it.id }
+    }
+    val randomArtistMusicVideoSongs = remember(sortedArtistMusicVideos) {
+        sortedArtistMusicVideos.map { it.song }.distinctBy { it.id }
+    }
+    val playableArtistTabSongs = remember(
+        selectedArtistTab,
+        sortedArtistSongs,
+        randomParticipatedAlbumSongs,
+        randomReleaseAlbumSongs,
+        randomArtistMusicVideoSongs
+    ) {
+        when (selectedArtistTab) {
+            ArtistTab.Songs -> sortedArtistSongs
+            ArtistTab.ParticipatedAlbums -> randomParticipatedAlbumSongs
+            ArtistTab.ReleaseAlbums -> randomReleaseAlbumSongs
+            ArtistTab.Biography -> emptyList()
+            ArtistTab.MusicVideos -> randomArtistMusicVideoSongs
+        }
+    }
+    val currentSelectionIds = remember(
+        selectedArtistTab,
+        sortedArtistSongs,
+        sortedParticipatedAlbums,
+        sortedReleaseAlbums,
+        sortedArtistMusicVideos
+    ) {
+        when (selectedArtistTab) {
+            ArtistTab.Songs -> sortedArtistSongs.map { it.id }
+            ArtistTab.ParticipatedAlbums -> sortedParticipatedAlbums.map { it.id }
+            ArtistTab.ReleaseAlbums -> sortedReleaseAlbums.map { it.id }
+            ArtistTab.Biography -> emptyList()
+            ArtistTab.MusicVideos -> sortedArtistMusicVideos.map { it.song.id }
+        }
+    }
+    val currentSelectionIndexById = remember(currentSelectionIds) {
+        buildMap {
+            currentSelectionIds.forEachIndexed { index, id -> put(id, index) }
+        }
+    }
+    fun selectedActionSongs(): List<Song> {
+        val selectedAlbums = when (selectedArtistTab) {
+            ArtistTab.ParticipatedAlbums -> sortedParticipatedAlbums.filter { it.id in selection.selectedIds }
+            ArtistTab.ReleaseAlbums -> sortedReleaseAlbums.filter { it.id in selection.selectedIds }
+            ArtistTab.Songs,
+            ArtistTab.Biography,
+            ArtistTab.MusicVideos -> emptyList()
+        }
+        return when (selectedArtistTab) {
+            ArtistTab.Songs -> sortedArtistSongs.filter { it.id in selection.selectedIds }
+            ArtistTab.ParticipatedAlbums,
+            ArtistTab.ReleaseAlbums -> selectedAlbums
+                .flatMap { librarySongsByAlbumId[it.id].orEmpty() }
+                .distinctBy { it.playlistIdentityKey() }
+            ArtistTab.Biography,
+            ArtistTab.MusicVideos -> emptyList()
+        }
+    }
+    fun selectedActionMusicVideos(): List<ArtistMusicVideo> =
+        sortedArtistMusicVideos.filter { it.song.id in selection.selectedIds }
+    fun selectedActionSongSources(): Map<String, String>? = when (selectedArtistTab) {
+        ArtistTab.ParticipatedAlbums,
+        ArtistTab.ReleaseAlbums -> playbackSourcesForSongs(
+            (if (selectedArtistTab == ArtistTab.ReleaseAlbums) sortedReleaseAlbums else sortedParticipatedAlbums)
+                .filter { it.id in selection.selectedIds }
+                .map { album ->
+                    CategoryResumeKeys.album(album.id) to librarySongsByAlbumId[album.id].orEmpty()
+                }
+        )
+        else -> null
+    }
+    fun artistTabSongSources(): Map<String, String>? = when (selectedArtistTab) {
+        ArtistTab.ParticipatedAlbums -> playbackSourcesForSongs(
+            sortedParticipatedAlbums.map { album ->
+                CategoryResumeKeys.album(album.id) to librarySongsByAlbumId[album.id].orEmpty()
+            }
+        )
+        ArtistTab.ReleaseAlbums -> playbackSourcesForSongs(
+            sortedReleaseAlbums.map { album ->
+                CategoryResumeKeys.album(album.id) to librarySongsByAlbumId[album.id].orEmpty()
+            }
+        )
+        else -> null
+    }
+    val selectedSongsForDrag = remember(selectedArtistTab, sortedArtistSongs, selection.selectedIds) {
+        if (selectedArtistTab == ArtistTab.Songs) {
+            sortedArtistSongs.filter { it.id in selection.selectedIds }
+        } else {
+            emptyList()
+        }
+    }
+
+    val selectedVisibleCount = remember(selection.selectedIds, currentSelectionIds) {
+        currentSelectionIds.count { it in selection.selectedIds }
+    }
+    val rangeSelectionAvailable = remember(selection.selectedIds, selection.rangeAnchorId, selection.rangeTargetId, currentSelectionIndexById) {
+        selection.isRangeSelectionAvailable(currentSelectionIndexById)
+    }
+
+    if (showIntroduction) {
+        ArtistIntroductionScreen(
+            artistName = artistName,
+            songs = artistSongs,
+            onOpenLastFmSettings = onOpenLastFmSettings,
+            coverModel = customArtistCoverAssets
+                .firstOrNull { it.kind == ArtistCoverKind.Image }
+                ?.uri
+                ?: artistHeaderCoverModel,
+            onBack = { showIntroduction = false }
+        )
+        return
+    }
+
+    // Always intercept so system/navbar back shares the toolbar onBack path (and any
+    // player-restore bookkeeping wired by the nav host). Previously only selection/search
+    // were handled here; with predictive back disabled globally, bare NavHost pops could
+    BackHandler {
+        when {
+            selection.selectionMode -> selection.finishSelectionMode()
+            searchExpanded -> {
+                searchExpanded = false
+                searchQuery = ""
+            }
+            else -> onBack()
+        }
+    }
+
+    LaunchedEffect(selectedArtistTab) {
+        if (selection.selectionMode) selection.finishSelectionMode()
+        if (selectedArtistTab == ArtistTab.Biography) {
+            searchExpanded = false
+            searchQuery = ""
+        }
+    }
+    LaunchedEffect(selection.selectionMode, currentSelectionIds) {
+        if (!selection.selectionMode) return@LaunchedEffect
+        val visibleIds = currentSelectionIds.toMutableSet()
+        selection.selectedIds = selection.selectedIds.filterTo(mutableSetOf()) { it in visibleIds }
+        if (selection.rangeAnchorId !in visibleIds) selection.rangeAnchorId = null
+        if (selection.rangeTargetId !in visibleIds) selection.rangeTargetId = null
+    }
+
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequest > 0) listState.animateScrollToItem(0)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ellaPageBackground())
+    ) {
+        // While the library is still loading (remote source / cold start) the songs list can be
+        // momentarily empty; show a spinner instead of flashing the empty/"not found" content.
+        val showLibraryLoading = com.ella.music.ui.components.showLibraryLoadingPlaceholder(
+            libraryCacheLoaded = libraryCacheLoaded,
+            contentResolved = artistSongsState != null,
+            isEmpty = artistSongs.isEmpty()
+        )
+        if (showLibraryLoading) {
+            EllaCenteredLoadingIndicator()
+        } else {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 120.dp, end = if (showScrollIndicator) ScrollIndicatorListEndPadding else 0.dp)
+        ) {
+            item {
+                ArtistHeader(
+                    artistName = artistName,
+                    fallbackCoverModel = artistHeaderCoverModel,
+                    customCoverAssets = customArtistCoverAssets,
+                    dynamicCoverEnabled = dynamicCoverEnabled,
+                    carousel = artistCoverCarousel,
+                    songCount = sortedArtistSongs.size,
+                    albumCount = if (showAlbumArtists) {
+                        (participatedAlbums + releaseAlbums).distinctBy { it.id }.size
+                    } else {
+                        participatedAlbums.distinctBy { it.id }.size
+                    },
+                    onIntroductionClick = { showIntroduction = true },
+                    showIntroductionEntry = showArtistIntroduction,
+                    onPreviewCover = { model ->
+                        artistPreviewModel = model ?: artistHeaderCoverModel
+                        if (artistPreviewModel != null) artistCoverPreviewVisible = true
+                    },
+                    onPlayAll = {
+                        if (playableArtistTabSongs.isNotEmpty()) {
+                            val albumSources = artistTabSongSources()
+                            playerViewModel.setPlaylist(
+                                playableArtistTabSongs,
+                                0,
+                                resumeCategoryKey = if (albumSources == null) {
+                                    CategoryResumeKeys.artist(artistName)
+                                } else {
+                                    null
+                                },
+                                songSources = albumSources
+                            )
+                            if (openPlayerOnPlay) onNavigateToPlayer()
+                        }
+                    }
+                )
+            }
+
+            if (hasArtistJumpActions) {
+                item {
+                    ArtistJumpActions(
+                        hasComposerCategory = hasComposerCategory,
+                        hasArrangerCategory = hasArrangerCategory,
+                        hasLyricistCategory = hasLyricistCategory,
+                        hasNeteaseArtist = !neteaseArtistUrl.isNullOrBlank(),
+                        onComposerClick = { onMetadataCategoryClick("composer", artistName) },
+                        onArrangerClick = { onMetadataCategoryClick("arranger", artistName) },
+                        onLyricistClick = { onMetadataCategoryClick("lyricist", artistName) },
+                        onNeteaseClick = { neteaseArtistUrl?.let { com.ella.music.data.netease.NeteaseLinks.openWebUrl(context, it) } },
+                        // 艺人百科 follows 网易云歌手页, using the same artist id.
+                        onNeteaseWikiClick = neteaseArtistUrl
+                            ?.let(com.ella.music.data.netease.NeteaseLinks::parseWebUrl)
+                            ?.takeIf { it.first == com.ella.music.data.netease.NeteaseLinkKind.Artist }
+                            ?.second
+                            ?.let { artistId ->
+                                {
+                                    com.ella.music.data.netease.NeteaseLinks.open(
+                                        context, com.ella.music.data.netease.NeteaseLinkKind.ArtistWiki, artistId
+                                    )
+                                }
+                            }
+                    )
+                }
+            }
+
+            item {
+                ArtistTabRow(
+                    tabs = tabs,
+                    selectedTab = selectedArtistTab,
+                    onTabSelected = { tab -> selectedTabTarget = tab }
+                )
+            }
+
+            when (selectedArtistTab) {
+                ArtistTab.Songs -> {
+                    item {
+                        com.ella.music.ui.components.SortSummaryHeader(
+                            text = stringResource(
+                                R.string.artist_song_count_sorted,
+                                sortedArtistSongs.size,
+                                com.ella.music.ui.components.sortLabel(sortMode.labelRes, sortMode.isDescending())
+                            ),
+                            leadingContent = {
+                                ShuffleAllSummaryButton(
+                                    visible = !selection.selectionMode && sortedArtistSongs.isNotEmpty(),
+                                    onClick = ::shuffleArtistSongsAndStart
+                                )
+                            }
+                        )
+                    }
+
+                    item {
+                        com.ella.music.ui.components.ContinuePlaybackRow(
+                            songs = sortedArtistSongs,
+                            categoryKey = com.ella.music.data.CategoryResumeKeys.artist(artistName),
+                            playbackStats = playbackStats,
+                            currentSong = currentSong,
+                            onContinue = { index ->
+                                playerViewModel.setPlaylist(
+                                    sortedArtistSongs,
+                                    index,
+                                    resumeCategoryKey = com.ella.music.data.CategoryResumeKeys.artist(artistName)
+                                )
+                                if (openPlayerOnPlay) onNavigateToPlayer()
+                            }
+                        )
+                    }
+
+                    itemsIndexed(sortedArtistSongs) { index, song ->
+                        val selected = song.id in selection.selectedIds
+                        val albumArtUri = remember(song.albumId) {
+                            song.albumId
+                                .takeIf { it > 0L }
+                                ?.let(mainViewModel::getAlbumArtUri)
+                        }
+                        SongItem(
+                            song = song,
+                            titleOverride = if (
+                                sortMode == ArtistDetailSongSortMode.FileName ||
+                                    sortMode == ArtistDetailSongSortMode.FileNameDesc
+                            ) {
+                                song.fileName.ifBlank { song.path.substringAfterLast('/') }
+                            } else {
+                                null
+                            },
+                            isCurrent = currentSong?.id == song.id,
+                            albumArtUri = albumArtUri,
+                            loadCoverArt = mainViewModel::getCoverArtBitmap,
+                            loadAudioInfo = mainViewModel::getAudioInfo,
+                            loadSongTagInfo = mainViewModel::getSongTagInfo,
+                            isFavorite = song.playlistIdentityKey() in favoriteSongKeys,
+                            loadSongRating = mainViewModel::getSongRating,
+                            showPlayNextInLists = showPlayNextInLists,
+                            selectionMode = selection.selectionMode,
+                            selected = selected,
+                            dragSelectedSongs = selectedSongsForDrag,
+                            onClick = {
+                                if (selection.selectionMode) {
+                                    selection.toggleSelection(song.id)
+                                } else {
+                                    playerViewModel.setPlaylist(
+                                        sortedArtistSongs,
+                                        index,
+                                        resumeCategoryKey = com.ella.music.data.CategoryResumeKeys.artist(artistName)
+                                    )
+                                    if (openPlayerOnPlay) onNavigateToPlayer()
+                                }
+                            },
+                            onLongClick = {
+                                selection.selectionMode = true
+                                selection.selectedIds = selection.selectedIds + song.id
+                                selection.updateRangeAnchorsForManualSelection(song.id, selectedNow = true)
+                            },
+                            onPlayNext = { playerViewModel.playNext(song) },
+                            onMore = { actionSong = song }
+                        )
+                    }
+                }
+
+                ArtistTab.ParticipatedAlbums -> {
+                    item {
+                        com.ella.music.ui.components.SortSummaryHeader(
+                            text = stringResource(
+                                R.string.artist_participated_album_count_sorted,
+                                sortedParticipatedAlbums.size,
+                                com.ella.music.ui.components.sortLabel(albumSortMode.labelRes, albumSortMode.isDescending())
+                            ),
+                            leadingContent = {
+                                ShuffleAllSummaryButton(
+                                    visible = !selection.selectionMode && randomParticipatedAlbumSongs.isNotEmpty(),
+                                    onClick = {
+                                        playerViewModel.setShuffledPlaylist(
+                                            randomParticipatedAlbumSongs,
+                                            0,
+                                            songSources = artistTabSongSources()
+                                        )
+                                        if (openPlayerOnPlay) onNavigateToPlayer()
+                                    }
+                                )
+                            }
+                        )
+                    }
+                    items(
+                        items = sortedParticipatedAlbums,
+                        key = { it.id }
+                    ) { album ->
+                        val albumArtUri = remember(album.artAlbumId) {
+                            album.artAlbumId
+                                .takeIf { it > 0L }
+                                ?.let(mainViewModel::getAlbumArtUri)
+                        }
+                        ArtistAlbumRow(
+                            album = album,
+                            duration = albumDurations[album.id] ?: 0L,
+                            albumArtUri = albumArtUri,
+                            representativeSong = representativeSongsByAlbumId[album.id],
+                            loadCoverArt = mainViewModel::getLargeCoverArtBitmap,
+                            contextArtistName = artistName,
+                            selectionMode = selection.selectionMode,
+                            selected = album.id in selection.selectedIds,
+                            onClick = {
+                                if (selection.selectionMode) {
+                                    selection.toggleSelection(album.id)
+                                } else {
+                                    onAlbumClick(album.id)
+                                }
+                            },
+                            onLongClick = {
+                                selection.selectionMode = true
+                                selection.selectedIds = selection.selectedIds + album.id
+                                selection.updateRangeAnchorsForManualSelection(album.id, selectedNow = true)
+                            }
+                        )
+                    }
+                }
+
+                ArtistTab.ReleaseAlbums -> {
+                    item {
+                        com.ella.music.ui.components.SortSummaryHeader(
+                            text = stringResource(
+                                R.string.artist_release_album_count_sorted,
+                                sortedReleaseAlbums.size,
+                                com.ella.music.ui.components.sortLabel(albumSortMode.labelRes, albumSortMode.isDescending())
+                            ),
+                            leadingContent = {
+                                ShuffleAllSummaryButton(
+                                    visible = !selection.selectionMode && randomReleaseAlbumSongs.isNotEmpty(),
+                                    onClick = {
+                                        playerViewModel.setShuffledPlaylist(
+                                            randomReleaseAlbumSongs,
+                                            0,
+                                            songSources = artistTabSongSources()
+                                        )
+                                        if (openPlayerOnPlay) onNavigateToPlayer()
+                                    }
+                                )
+                            }
+                        )
+                    }
+                    items(
+                        items = sortedReleaseAlbums,
+                        key = { it.id }
+                    ) { album ->
+                        val albumArtUri = remember(album.artAlbumId) {
+                            album.artAlbumId
+                                .takeIf { it > 0L }
+                                ?.let(mainViewModel::getAlbumArtUri)
+                        }
+                        ArtistAlbumRow(
+                            album = album,
+                            duration = albumDurations[album.id] ?: 0L,
+                            albumArtUri = albumArtUri,
+                            representativeSong = representativeSongsByAlbumId[album.id],
+                            loadCoverArt = mainViewModel::getLargeCoverArtBitmap,
+                            contextArtistName = artistName,
+                            selectionMode = selection.selectionMode,
+                            selected = album.id in selection.selectedIds,
+                            onClick = {
+                                if (selection.selectionMode) {
+                                    selection.toggleSelection(album.id)
+                                } else {
+                                    onAlbumClick(album.id)
+                                }
+                            },
+                            onLongClick = {
+                                selection.selectionMode = true
+                                selection.selectedIds = selection.selectedIds + album.id
+                                selection.updateRangeAnchorsForManualSelection(album.id, selectedNow = true)
+                            }
+                        )
+                    }
+                }
+
+                ArtistTab.MusicVideos -> {
+                    item {
+                        com.ella.music.ui.components.SortSummaryHeader(
+                            text = stringResource(
+                                R.string.artist_music_video_count_sorted,
+                                sortedArtistMusicVideos.size,
+                                com.ella.music.ui.components.sortLabel(
+                                    musicVideoSortMode.labelRes(),
+                                    musicVideoSortMode.isDescending()
+                                )
+                            ),
+                            leadingContent = {
+                                ShuffleAllSummaryButton(
+                                    visible = !selection.selectionMode && randomArtistMusicVideoSongs.isNotEmpty(),
+                                    onClick = {
+                                        playerViewModel.setShuffledPlaylist(randomArtistMusicVideoSongs, 0)
+                                        if (openPlayerOnPlay) onNavigateToPlayer()
+                                    }
+                                )
+                            }
+                        )
+                    }
+                    items(
+                        items = sortedArtistMusicVideos,
+                        key = { "${it.song.id}:${it.source.failureKey}" }
+                    ) { item ->
+                        val selected = item.song.id in selection.selectedIds
+                        ArtistMusicVideoRow(
+                            item = item,
+                            selectionMode = selection.selectionMode,
+                            selected = selected,
+                            onClick = {
+                                if (selection.selectionMode) {
+                                    selection.toggleSelection(item.song.id)
+                                } else {
+                                    MusicVideoLauncher.open(context, item.song, item.source)
+                                }
+                            },
+                            onLongClick = {
+                                selection.selectionMode = true
+                                selection.selectedIds = selection.selectedIds + item.song.id
+                                selection.updateRangeAnchorsForManualSelection(item.song.id, selectedNow = true)
+                            },
+                            onMore = { musicVideoMenuTarget = item }
+                        )
+                    }
+                }
+
+                ArtistTab.Biography -> {
+                    item {
+                        ArtistBiographyPanel(
+                            artistName = artistName,
+                            songs = artistSongs,
+                            downloadMode = artistBioDownload,
+                            onOpenLastFmSettings = onOpenLastFmSettings
+                        )
+                    }
+                }
+            }
+
+            if (selectedArtistTab != ArtistTab.Songs && (selectedArtistTab == ArtistTab.ParticipatedAlbums && participatedAlbums.isEmpty() || selectedArtistTab == ArtistTab.ReleaseAlbums && releaseAlbums.isEmpty())) {
+                item {
+                    Text(
+                        text = stringResource(R.string.artist_no_albums),
+                        fontSize = 14.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp)
+                    )
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+        }
+
+        if (showSongSideIndex && songFastIndexData.isNotEmpty()) {
+            FastIndexBar(
+                letters = songFastIndexData.map { it.first },
+                reverse = sortMode == ArtistDetailSongSortMode.TitleDesc ||
+                    sortMode == ArtistDetailSongSortMode.FileNameDesc,
+                onLetterClick = { letter ->
+                    songFastIndexData.firstOrNull { it.first == letter }?.second?.let { itemIndex ->
+                        scope.launch { listState.scrollToItem(itemIndex) }
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 88.dp, bottom = 118.dp)
+            )
+        } else if (showScrollIndicator) {
+            LazyListScrollIndicator(
+                state = listState,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 88.dp, bottom = 118.dp)
+            )
+        }
+
+        EllaSmallTopAppBar(
+            title = "",
+            color = Color.Transparent,
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter),
+            onDoubleTapTitle = { scrollToTopRequest++ },
+            navigationIcon = {
+                IconButton(onClick = { if (selection.selectionMode) selection.finishSelectionMode() else onBack() }) {
+                    Icon(
+                        imageVector = MiuixIcons.Regular.Back,
+                        contentDescription = stringResource(R.string.common_back),
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            },
+            actions = {
+                if (selection.selectionMode) {
+                    IconButton(
+                        onClick = {
+                            if (selectedArtistTab == ArtistTab.MusicVideos) {
+                                val selected = selectedActionMusicVideos()
+                                MusicVideoLauncher.share(context, selected.map { it.source.uri }, artistName)
+                            } else {
+                                val selected = selectedActionSongs()
+                                if (selected.isNotEmpty()) playlistPickerSongs = selected
+                            }
+                        }
+                    ) {
+                        if (selectedArtistTab == ArtistTab.MusicVideos) {
+                            Icon(
+                                imageVector = MiuixIcons.Regular.Share,
+                                contentDescription = stringResource(R.string.common_share),
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        } else {
+                            com.ella.music.ui.components.AddToPlaylistActionIcon(
+                                contentDescription = stringResource(R.string.player_add_to_playlist),
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    if (selectedArtistTab != ArtistTab.MusicVideos) {
+                        IconButton(
+                            onClick = {
+                                val selected = selectedActionSongs()
+                                if (selected.isNotEmpty()) {
+                                    playerViewModel.playNext(selected, selectedActionSongSources())
+                                    selection.finishSelectionMode()
+                                }
+                            }
+                        ) {
+                            com.ella.music.ui.components.PlayNextActionIcon(
+                                contentDescription = stringResource(R.string.song_more_play_next),
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = {
+                            if (selectedArtistTab == ArtistTab.MusicVideos) {
+                                pendingDeleteMusicVideos = selectedActionMusicVideos()
+                            } else {
+                                val selected = selectedActionSongs()
+                                if (selected.isNotEmpty()) pendingDeleteSongs = selected
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Regular.Delete,
+                            contentDescription = stringResource(R.string.common_delete),
+                            tint = Color(0xFFE5484D),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                } else if (selectedArtistTab != ArtistTab.Biography) {
+                    IconButton(onClick = {
+                        selection.selectionMode = true
+                        selection.selectedIds = emptySet()
+                        selection.rangeAnchorId = null
+                        selection.rangeTargetId = null
+                    }) {
+                        Icon(
+                            imageVector = MiuixIcons.Regular.SelectAll,
+                            contentDescription = stringResource(R.string.common_multi_select),
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    IconButton(onClick = {
+                        searchExpanded = !searchExpanded
+                        if (!searchExpanded) searchQuery = ""
+                    }) {
+                        Icon(
+                            imageVector = MiuixIcons.Basic.Search,
+                            contentDescription = stringResource(R.string.common_search),
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    val sortItems = when (selectedArtistTab) {
+                    ArtistTab.Songs -> {
+                    directionalSortModeDropdownItems(
+                        fields = listOf(
+                            DirectionalSortModeField(
+                                text = stringResource(R.string.artist_sort_title),
+                                ascendingMode = ArtistDetailSongSortMode.Title,
+                                descendingMode = ArtistDetailSongSortMode.TitleDesc
+                            ),
+                            DirectionalSortModeField(
+                                text = stringResource(R.string.artist_sort_album_track),
+                                ascendingMode = ArtistDetailSongSortMode.AlbumTrack,
+                                descendingMode = ArtistDetailSongSortMode.AlbumTrackDesc
+                            ),
+                            DirectionalSortModeField(
+                                text = stringResource(R.string.artist_sort_file_name),
+                                ascendingMode = ArtistDetailSongSortMode.FileName,
+                                descendingMode = ArtistDetailSongSortMode.FileNameDesc
+                            ),
+                            DirectionalSortModeField(
+                                text = stringResource(R.string.artist_sort_duration),
+                                ascendingMode = ArtistDetailSongSortMode.DurationAsc,
+                                descendingMode = ArtistDetailSongSortMode.Duration
+                            ),
+                            DirectionalSortModeField(
+                                text = stringResource(R.string.playlist_song_sort_date_added),
+                                ascendingMode = ArtistDetailSongSortMode.DateAddedAsc,
+                                descendingMode = ArtistDetailSongSortMode.DateAdded
+                            ),
+                            DirectionalSortModeField(
+                                text = stringResource(R.string.playlist_song_sort_date_modified),
+                                ascendingMode = ArtistDetailSongSortMode.DateModifiedAsc,
+                                descendingMode = ArtistDetailSongSortMode.DateModified
+                            ),
+                            DirectionalSortModeField(
+                                text = stringResource(R.string.playlist_song_sort_year),
+                                ascendingMode = ArtistDetailSongSortMode.YearAsc,
+                                descendingMode = ArtistDetailSongSortMode.YearDesc
+                            )
+                        ),
+                        selectedMode = sortMode,
+                        onSelect = { mode ->
+                            LibrarySortUiState.artistDetailSongSortIndex = mode.ordinal
+                            scope.launch { mainViewModel.settingsManager.setArtistDetailSongSortIndex(mode.ordinal) }
+                            scrollToTopRequest++
+                        }
+                    ) + listOf(
+                        com.ella.music.ui.components.randomSortDropdownItem(
+                            selected = sortMode == ArtistDetailSongSortMode.Random,
+                            onSelect = {
+                                LibrarySortUiState.artistDetailSongSortIndex = ArtistDetailSongSortMode.Random.ordinal
+                                scope.launch { mainViewModel.settingsManager.setArtistDetailSongSortIndex(ArtistDetailSongSortMode.Random.ordinal) }
+                                scrollToTopRequest++
+                            }
+                        )
+                    )
+                    }
+                    ArtistTab.MusicVideos -> {
+                        directionalSortModeDropdownItems(
+                            fields = listOf(
+                                DirectionalSortModeField(
+                                    text = stringResource(R.string.playlist_song_sort_year),
+                                    ascendingMode = ArtistMusicVideoSortMode.ReleaseAsc,
+                                    descendingMode = ArtistMusicVideoSortMode.ReleaseDesc
+                                ),
+                                DirectionalSortModeField(
+                                    text = stringResource(R.string.artist_music_video_sort_duration),
+                                    ascendingMode = ArtistMusicVideoSortMode.DurationAsc,
+                                    descendingMode = ArtistMusicVideoSortMode.DurationDesc
+                                ),
+                                DirectionalSortModeField(
+                                    text = stringResource(R.string.artist_music_video_sort_title),
+                                    ascendingMode = ArtistMusicVideoSortMode.NameAsc,
+                                    descendingMode = ArtistMusicVideoSortMode.NameDesc
+                                )
+                            ),
+                            selectedMode = musicVideoSortMode,
+                            onSelect = { mode ->
+                                musicVideoSortMode = mode
+                                scrollToTopRequest++
+                            }
+                        )
+                    }
+                    ArtistTab.Biography -> emptyList()
+                    ArtistTab.ParticipatedAlbums,
+                    ArtistTab.ReleaseAlbums -> {
+                    directionalSortModeDropdownItems(
+                        fields = listOf(
+                            DirectionalSortModeField(
+                                text = stringResource(R.string.playlist_song_sort_year),
+                                ascendingMode = ArtistDetailAlbumSortMode.YearAsc,
+                                descendingMode = ArtistDetailAlbumSortMode.YearDesc
+                            ),
+                            DirectionalSortModeField(
+                                text = stringResource(R.string.artist_sort_song_count),
+                                ascendingMode = ArtistDetailAlbumSortMode.SongCountAsc,
+                                descendingMode = ArtistDetailAlbumSortMode.SongCount
+                            ),
+                            DirectionalSortModeField(
+                                text = stringResource(R.string.artist_sort_duration),
+                                ascendingMode = ArtistDetailAlbumSortMode.DurationAsc,
+                                descendingMode = ArtistDetailAlbumSortMode.Duration
+                            ),
+                            DirectionalSortModeField(
+                                text = stringResource(R.string.artist_sort_album_name),
+                                ascendingMode = ArtistDetailAlbumSortMode.Name,
+                                descendingMode = ArtistDetailAlbumSortMode.NameDesc
+                            )
+                        ),
+                        selectedMode = albumSortMode,
+                        onSelect = { mode ->
+                            LibrarySortUiState.artistDetailAlbumSortIndex = mode.ordinal
+                            scope.launch { mainViewModel.settingsManager.setArtistDetailAlbumSortIndex(mode.ordinal) }
+                            scrollToTopRequest++
+                        }
+                    )
+                    }
+                }
+                    SortDropdownMenu(items = sortItems, tint = Color.White)
+                }
+            }
+        )
+
+        AnimatedVisibility(
+            visible = searchExpanded,
+            enter = expandVertically(),
+            exit = shrinkVertically(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = 60.dp)
+        ) {
+            EllaSearchBar(
+                query = searchQuery,
+                onQueryChange = { searchQuery = it },
+                onSearch = { searchExpanded = false },
+                placeholder = stringResource(R.string.library_search_placeholder),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+            )
+        }
+
+        if (selection.selectionMode) {
+            Text(
+                text = stringResource(R.string.library_selected_fraction, selection.selectedIds.size, currentSelectionIds.size),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = 22.dp)
+            )
+        }
+
+        LocateCurrentSongFloatingButton(
+            listState = listState,
+            currentItemIndex = currentSongItemIndex,
+            locateRequest = locateCurrentSongRequest,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = LibraryFloatingControlsEndPadding, bottom = LibraryFloatingControlsBottomPadding)
+        )
+        FloatingSelectionControls(
+            visible = selection.selectionMode && currentSelectionIds.isNotEmpty(),
+            rangeEnabled = rangeSelectionAvailable,
+            allSelected = currentSelectionIds.isNotEmpty() && selectedVisibleCount == currentSelectionIds.size,
+            onRangeSelect = { selection.applyRangeSelection(currentSelectionIds, currentSelectionIndexById) },
+            onSelectAll = { selection.toggleSelectAll(currentSelectionIds) },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = LibraryFloatingControlsEndPadding, bottom = LibraryFloatingControlsBottomPadding)
+        )
+
+        ArtistScreenSurfaces(
+            context = context,
+            mainViewModel = mainViewModel,
+            playlists = playlists,
+            actionSong = actionSong,
+            onActionSongChange = { actionSong = it },
+            playerViewModel = playerViewModel,
+            onNavigateToAlbum = onAlbumClick,
+            onNavigateToArtist = onArtistClick,
+            playlistPickerSong = playlistPickerSong,
+            onPlaylistPickerSongChange = { playlistPickerSong = it },
+            createPlaylistSong = createPlaylistSong,
+            onCreatePlaylistSongChange = { createPlaylistSong = it },
+            playlistPickerSongs = playlistPickerSongs,
+            onPlaylistPickerSongsChange = { playlistPickerSongs = it },
+            createPlaylistSongs = createPlaylistSongs,
+            onCreatePlaylistSongsChange = { createPlaylistSongs = it },
+            pendingDeleteSongs = pendingDeleteSongs,
+            onPendingDeleteSongsChange = { pendingDeleteSongs = it },
+            onRequestDeleteSongs = requestDeleteSongs,
+            onFinishSelectionMode = selection::finishSelectionMode,
+            tagEditorSong = tagEditorSong,
+            onTagEditorSongChange = { tagEditorSong = it },
+            songInfoSheetSong = songInfoSheetSong,
+            onSongInfoSheetSongChange = { songInfoSheetSong = it }
+        )
+
+        musicVideoMenuTarget?.let { item ->
+            EllaMiuixBottomSheet(
+                show = true,
+                title = stringResource(R.string.player_more_actions),
+                onDismissRequest = { musicVideoMenuTarget = null }
+            ) {
+                com.ella.music.ui.components.MusicVideoActionMenu(
+                    song = item.song,
+                    onNavigateToArtist = onArtistClick,
+                    onShare = {
+                        MusicVideoLauncher.share(context, item.source.uri, item.song.title)
+                    },
+                    onInfo = { musicVideoInfoTarget = item },
+                    onDelete = { pendingDeleteMusicVideos = listOf(item) },
+                    onDismiss = { musicVideoMenuTarget = null },
+                    onArtistPickerRequested = { artists ->
+                        musicVideoMenuTarget = null
+                        musicVideoArtistChoices = artists
+                    }
+                )
+            }
+        }
+
+        if (musicVideoArtistChoices.isNotEmpty()) {
+            EllaMiuixBottomSheet(
+                show = true,
+                enableNestedScroll = false,
+                title = stringResource(R.string.song_more_select_artist),
+                onDismissRequest = { musicVideoArtistChoices = emptyList() }
+            ) {
+                ArtistPickerContent(
+                    artists = musicVideoArtistChoices,
+                    mainViewModel = mainViewModel,
+                    onArtistSelected = { artist ->
+                        musicVideoArtistChoices = emptyList()
+                        onArtistClick(artist)
+                    },
+                    onDismiss = { musicVideoArtistChoices = emptyList() }
+                )
+            }
+        }
+
+        musicVideoInfoTarget?.let { item ->
+            EllaMiuixBottomSheet(
+                show = true,
+                title = stringResource(R.string.artist_music_video_info),
+                onDismissRequest = { musicVideoInfoTarget = null }
+            ) {
+                ArtistMusicVideoInfoSheet(
+                    item = item,
+                    onOpenMediaInfo = {
+                        musicVideoInfoTarget = null
+                        openVideoWithMediaInfo(
+                            context = context,
+                            uri = item.source.uri,
+                            title = item.metadata.fileName,
+                            mimeType = item.metadata.mimeType
+                        )
+                    }
+                )
+            }
+        }
+
+        ConfirmDangerDialog(
+            show = pendingDeleteMusicVideos.isNotEmpty(),
+            title = stringResource(R.string.artist_music_video_delete_title),
+            message = stringResource(
+                R.string.artist_music_video_delete_message,
+                pendingDeleteMusicVideos.size
+            ),
+            onDismiss = { pendingDeleteMusicVideos = emptyList() },
+            onConfirm = {
+                val targets = pendingDeleteMusicVideos
+                pendingDeleteMusicVideos = emptyList()
+                scope.launch {
+                    val deleted = withContext(Dispatchers.IO) {
+                        deleteArtistMusicVideos(context.applicationContext, targets)
+                    }
+                    clearArtistMusicVideoSourceCache()
+                    musicVideoRevision++
+                    selection.finishSelectionMode()
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.artist_music_video_delete_result, deleted, targets.size),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        )
+
+        if (artistCoverPreviewVisible) {
+            artistPreviewModel?.let { model ->
+                val initialIdx = artistCoverPreviewModels.indexOf(model).takeIf { it >= 0 } ?: 0
+                CoverPreviewDialog(
+                    model = model,
+                    models = artistCoverPreviewModels.ifEmpty { listOf(model) },
+                    initialIndex = initialIdx,
+                    title = artistPreviewTitle,
+                    saveName = artistName,
+                    onDismiss = { artistCoverPreviewVisible = false }
+                )
+            }
+        }
+    }
+}

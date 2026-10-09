@@ -1,0 +1,146 @@
+package com.ella.music.data
+
+import android.content.Context
+import com.ella.music.data.model.playlistIdentityKey
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONObject
+
+/** Bridges queue surfaces that live inside the resident player to the app navigation host. */
+internal object PlaybackSourceNavigation {
+    private const val MAX_SONG_SOURCES = 400
+    private const val PREFS = "ella_playback_source"
+    private const val KEY_QUEUE_SOURCE = "queue_source"
+    private const val KEY_SONG_SOURCES = "song_sources"
+    private const val KEY_ACTIVE_SCREEN = "active_screen"
+
+    private val _sourceKey = MutableStateFlow<String?>(null)
+    val sourceKey = _sourceKey.asStateFlow()
+
+    private val _requests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val requests = _requests.asSharedFlow()
+
+    private val songSources = linkedMapOf<String, String>()
+    private var activeScreenKey: String? = null
+    private var prefsReady = false
+    private var appContext: Context? = null
+
+    /** Browse source keys that can provide a meaningful "jump to source" destination. */
+    fun isNavigableSourceKey(sourceKey: String?): Boolean {
+        val source = sourceKey?.trim().orEmpty()
+        return source == CategoryResumeKeys.HOME ||
+            source == CategoryResumeKeys.DASHBOARD ||
+            source.startsWith("album:") ||
+            source.startsWith("playlist:") ||
+            source.startsWith("folder:") ||
+            source.startsWith("folderPlaylist:") ||
+            source.startsWith("artist:") ||
+            source.startsWith("category:") ||
+            source.startsWith("analysis:")
+    }
+
+    fun attach(context: Context) {
+        if (prefsReady) return
+        appContext = context.applicationContext
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        _sourceKey.value = prefs.getString(KEY_QUEUE_SOURCE, null)
+            ?.takeIf(::isNavigableSourceKey)
+        activeScreenKey = prefs.getString(KEY_ACTIVE_SCREEN, null)
+        prefs.getString(KEY_SONG_SOURCES, null)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { raw ->
+                runCatching {
+                    val json = JSONObject(raw)
+                    json.keys().forEach { key ->
+                        json.optString(key).takeIf { it.isNotBlank() }?.let { songSources[key] = it }
+                    }
+                }
+            }
+        prefsReady = true
+    }
+
+    fun updateSource(key: String?) {
+        _sourceKey.value = key?.takeIf(::isNavigableSourceKey)
+        persist()
+    }
+
+    fun setActiveScreen(key: String?) {
+        activeScreenKey = key?.takeIf { it.isNotBlank() }
+        persist()
+    }
+
+    fun clearActiveScreen(key: String?) {
+        if (activeScreenKey == key) {
+            activeScreenKey = null
+            persist()
+        }
+    }
+
+    fun activeScreen(): String? = activeScreenKey
+
+    fun recordSongSources(sources: Map<String, String>) {
+        if (sources.isEmpty()) return
+        sources.forEach { (songKey, sourceKey) ->
+            if (songKey.isBlank() || !isNavigableSourceKey(sourceKey)) return@forEach
+            songSources.remove(songKey)
+            songSources[songKey] = sourceKey
+        }
+        trimSongSources()
+        persist()
+    }
+
+    fun clearSourceForSong(songKey: String) {
+        if (songKey.isBlank()) return
+        if (songSources.remove(songKey) != null) persist()
+    }
+
+    fun sourceForSong(songKey: String): String? = resolvedSourceKey(songKey)
+
+    fun request() {
+        if (isNavigableSourceKey(resolvedSourceKey())) _requests.tryEmit(Unit)
+    }
+
+    fun resolvedSourceKey(songKey: String? = null): String? {
+        if (!songKey.isNullOrBlank()) {
+            songSources[songKey]?.takeIf(::isNavigableSourceKey)?.let { return it }
+        }
+        return _sourceKey.value?.takeIf(::isNavigableSourceKey)
+    }
+
+    private fun persist() {
+        val context = appContext ?: return
+        val json = JSONObject()
+        songSources.forEach { (key, value) ->
+            json.put(key, value)
+        }
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_QUEUE_SOURCE, _sourceKey.value)
+            .putString(KEY_ACTIVE_SCREEN, activeScreenKey)
+            .putString(KEY_SONG_SOURCES, json.toString())
+            .apply()
+    }
+
+    private fun trimSongSources() {
+        while (songSources.size > MAX_SONG_SOURCES) {
+            val oldestKey = songSources.keys.firstOrNull() ?: break
+            songSources.remove(oldestKey)
+        }
+    }
+}
+
+internal fun playbackSourcesForSongs(
+    groups: Iterable<Pair<String, Iterable<com.ella.music.data.model.Song>>>
+): Map<String, String> {
+    val result = linkedMapOf<String, String>()
+    groups.forEach { (source, songs) ->
+        if (source.isBlank()) return@forEach
+        songs.forEach { song ->
+            val key = song.playlistIdentityKey()
+            if (key.isNotBlank()) result.putIfAbsent(key, source)
+        }
+    }
+    return result
+}

@@ -1,0 +1,166 @@
+package com.ella.music.data.scanner
+
+import com.ella.music.data.LibraryNormalizer
+import com.ella.music.data.model.Song
+import java.io.File
+
+data class MediaStoreAudioItem(
+    val id: Long,
+    val title: String,
+    val artist: String,
+    val album: String,
+    val albumId: Long,
+    val duration: Long,
+    val path: String,
+    val fileName: String,
+    val fileSize: Long,
+    val mimeType: String,
+    val dateAdded: Long,
+    val dateModified: Long,
+    val trackNumber: Int,
+    val discNumber: Int
+)
+
+internal data class ScannerMergeStats(
+    val mediaStoreItemCount: Int,
+    val filesystemFallbackItemCount: Int,
+    val mergedItemCount: Int
+)
+
+internal fun mergeMediaStoreAndFilesystemItems(
+    mediaStoreItems: List<MediaStoreAudioItem>,
+    filesystemItems: List<MediaStoreAudioItem>
+): Pair<List<MediaStoreAudioItem>, ScannerMergeStats> {
+    val merged = ArrayList<MediaStoreAudioItem>(mediaStoreItems.size + filesystemItems.size)
+    val seenPaths = HashSet<String>()
+    mediaStoreItems.forEach { item ->
+        val key = item.path.normalizedAudioPathKey()
+        if (key.isNotBlank() && seenPaths.add(key)) merged += item
+    }
+    var fallbackCount = 0
+    filesystemItems.forEach { item ->
+        val key = item.path.normalizedAudioPathKey()
+        if (key.isNotBlank() && seenPaths.add(key)) {
+            merged += item
+            fallbackCount++
+        }
+    }
+    return merged to ScannerMergeStats(
+        mediaStoreItemCount = mediaStoreItems.size,
+        filesystemFallbackItemCount = fallbackCount,
+        mergedItemCount = merged.size
+    )
+}
+
+internal fun String.normalizedAudioPathKey(): String =
+    trim().replace('\\', '/').lowercase()
+
+internal fun primaryDocumentIdToStoragePath(documentId: String): String? {
+    val parts = documentId.split(':', limit = 2)
+    val volume = parts.firstOrNull().orEmpty()
+    val relative = parts.getOrNull(1).orEmpty().trim('/')
+    if (!volume.equals("primary", ignoreCase = true)) return null
+    return if (relative.isBlank()) "/storage/emulated/0" else "/storage/emulated/0/$relative"
+}
+
+internal fun storagePathToPrimaryDocumentId(path: String): String? {
+    val normalized = path.replace('\\', '/').trimEnd('/')
+    val prefix = "/storage/emulated/0"
+    if (!normalized.equals(prefix, ignoreCase = true) &&
+        !normalized.startsWith("$prefix/", ignoreCase = true)
+    ) {
+        return null
+    }
+    val relative = normalized.removePrefix(prefix).trimStart('/')
+    return if (relative.isBlank()) "primary:" else "primary:$relative"
+}
+
+internal fun MediaStoreAudioItem.toShallowSong(minDurationMs: Long = 0): Song? {
+    val safeDuration = duration
+    if (safeDuration > 0L && safeDuration < minDurationMs) return null
+    // MediaStore often leaves DURATION at 0 until another app reads the file. Salt Player still
+    // keeps the row; filesystem fallback items (negative ids) must go through a tag read instead.
+    if (safeDuration <= 0L && id <= 0L) return null
+    return Song(
+        id = id,
+        title = LibraryNormalizer.cleanedTagText(title)
+            .ifBlank { fileName.substringBeforeLast('.').ifBlank { path.substringAfterLast('/') } },
+        artist = LibraryNormalizer.cleanedArtistText(artist).ifBlank { "Unknown Artist" },
+        album = LibraryNormalizer.cleanedAlbumText(album).ifBlank { "Unknown Album" },
+        albumId = albumId,
+        duration = safeDuration,
+        path = path,
+        fileName = fileName,
+        fileSize = fileSize.coerceAtLeast(0L),
+        mimeType = mimeType,
+        dateAdded = dateAdded,
+        dateModified = dateModified,
+        trackNumber = trackNumber,
+        discNumber = discNumber
+    )
+}
+
+internal fun File.toFallbackAudioItem(): MediaStoreAudioItem {
+    val path = absolutePath
+    val extension = extension.lowercase()
+    val mime = when (extension) {
+        "mp3", "mp2" -> "audio/mpeg"
+        "flac" -> "audio/flac"
+        "ogg", "oga", "spx" -> "audio/ogg"
+        "opus" -> "audio/opus"
+        "aac" -> "audio/aac"
+        "m4a", "m4b", "m4r", "m4p", "mp4" -> "audio/mp4"
+        "wav", "wave" -> "audio/wav"
+        "wma", "asf" -> "audio/x-ms-wma"
+        "aiff", "aif", "aifc", "afc" -> "audio/aiff"
+        "ape" -> "audio/ape"
+        "alac" -> "audio/alac"
+        "dsf" -> "audio/x-dsf"
+        "dff", "dsdiff" -> "audio/x-dff"
+        "dts" -> "audio/vnd.dts"
+        "dtshd" -> "audio/vnd.dts.hd"
+        "wv" -> "audio/x-wavpack"
+        "tta" -> "audio/x-tta"
+        "mpc" -> "audio/x-musepack"
+        "shn" -> "audio/x-shorten"
+        "mka" -> "audio/x-matroska"
+        else -> "audio/$extension"
+    }
+    val stableId = -kotlin.math.abs(path.normalizedAudioPathKey().hashCode().toLong()).coerceAtLeast(1L)
+    val modified = lastModified().takeIf { it > 0L } ?: System.currentTimeMillis()
+    return MediaStoreAudioItem(
+        id = stableId,
+        title = nameWithoutExtension,
+        artist = "",
+        album = "",
+        albumId = 0L,
+        duration = 0L,
+        path = path,
+        fileName = name,
+        fileSize = length().coerceAtLeast(0L),
+        mimeType = mime,
+        dateAdded = modified,
+        dateModified = modified,
+        trackNumber = 0,
+        discNumber = 0
+    )
+}
+
+internal fun MediaStoreAudioItem.withLocalFileSnapshot(): MediaStoreAudioItem {
+    if (path.isBlank() || path.startsWith("content:", ignoreCase = true) ||
+        path.startsWith("http://", ignoreCase = true) ||
+        path.startsWith("https://", ignoreCase = true)
+    ) {
+        return this
+    }
+    val file = File(path)
+    val size = runCatching { file.length() }.getOrDefault(0L)
+    val modified = runCatching { file.lastModified() }.getOrDefault(0L)
+    if (size <= 0L && modified <= 0L) return this
+    if ((size <= 0L || size == fileSize) && (modified <= 0L || modified == dateModified)) return this
+    return copy(
+        fileSize = size.takeIf { it > 0L } ?: fileSize,
+        dateModified = modified.takeIf { it > 0L } ?: dateModified
+    )
+}
+

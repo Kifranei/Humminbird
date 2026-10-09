@@ -1,0 +1,16 @@
+# Baseline profile (Human-Readable Format) compiled by AGP into assets/dexopt/baseline.prof
+# and installed by androidx.profileinstaller, so ART AOT-compiles these at install time
+# instead of JIT-compiling them during the first cold launch / first library entry.
+#
+# The Compose, Coil and Media3 libraries already bundle their own baseline profiles in their
+# AARs, so the remaining first-launch JIT cost is the app's OWN code — Activity startup, the
+# home/library screen, the resident player surface, theming, and the library cache load. We
+# mark all of com.ella.music (and the bundled tag reader) as Hot + Startup + Post-startup.
+#
+# This is a hand-authored profile. To replace it with a measured one later, run a Macrobenchmark
+# BaselineProfileRule against a release build and drop the generated rules in here.
+HSPLcom/ella/music/**->**(**)
+SPLcom/ella/music/**->**(**)
+Lcom/ella/music/**
+HSPLcom/lonx/audiotag/**->**(**)
+Lcom/lonx/audiotag/**

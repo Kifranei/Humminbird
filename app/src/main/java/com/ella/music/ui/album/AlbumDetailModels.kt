@@ -1,0 +1,100 @@
+package com.ella.music.ui.album
+
+import com.ella.music.R
+import com.ella.music.data.model.Song
+import java.util.Locale
+
+internal enum class AlbumDetailSongSortMode(val labelRes: Int) {
+    Track(R.string.album_sort_track),
+    Title(R.string.playlist_song_sort_title),
+    FileName(R.string.playlist_song_sort_file_name),
+    Duration(R.string.playlist_song_sort_duration),
+    DateAdded(R.string.playlist_song_sort_date_added),
+    DateAddedAsc(R.string.playlist_song_sort_date_added_asc),
+    DateModified(R.string.playlist_song_sort_date_modified),
+    DateModifiedAsc(R.string.playlist_song_sort_date_modified_asc),
+    TrackDesc(R.string.album_sort_track),
+    TitleDesc(R.string.playlist_song_sort_title),
+    FileNameDesc(R.string.playlist_song_sort_file_name),
+    DurationAsc(R.string.playlist_song_sort_duration),
+    Random(R.string.common_sort_random)
+}
+
+internal fun AlbumDetailSongSortMode.isDescending(): Boolean = when (this) {
+    AlbumDetailSongSortMode.TrackDesc,
+    AlbumDetailSongSortMode.TitleDesc,
+    AlbumDetailSongSortMode.FileNameDesc,
+    AlbumDetailSongSortMode.Duration,
+    AlbumDetailSongSortMode.DateAdded,
+    AlbumDetailSongSortMode.DateModified -> true
+    else -> false
+}
+
+internal data class AlbumDiscGroup(
+    val discNumber: Int,
+    val songs: List<Song>
+)
+
+internal fun List<Song>.groupForDiscSections(): List<AlbumDiscGroup> =
+    groupBy { it.safeDiscNumber() }
+        .toSortedMap()
+        .map { (discNumber, songs) -> AlbumDiscGroup(discNumber, songs) }
+
+internal fun Song.safeDiscNumber(): Int =
+    if (discNumber > 0) discNumber else 1
+
+internal fun Song.displayTrackNumber(): String =
+    trackNumber.takeIf { it > 0 }?.toString().orEmpty()
+
+internal fun List<Song>.sortedForAlbumDetail(mode: AlbumDetailSongSortMode): List<Song> {
+    return when (mode) {
+        AlbumDetailSongSortMode.Track -> sortedWith(
+            compareBy<Song> { it.discNumber <= 0 && it.trackNumber <= 0 }
+                .thenBy { if (it.discNumber > 0) it.discNumber else Int.MAX_VALUE }
+                .thenBy { if (it.trackNumber > 0) it.trackNumber else Int.MAX_VALUE }
+                .thenBy { it.title.lowercase(Locale.ROOT) }
+                .thenBy { it.id }
+        )
+        AlbumDetailSongSortMode.TrackDesc -> sortedWith(
+            compareBy<Song> { it.discNumber <= 0 && it.trackNumber <= 0 }
+                .thenBy { if (it.discNumber > 0) it.discNumber else Int.MAX_VALUE }
+                .thenBy { if (it.trackNumber > 0) it.trackNumber else Int.MAX_VALUE }
+                .thenBy { it.title.lowercase(Locale.ROOT) }
+                .thenBy { it.id }
+                .reversed()
+        )
+        AlbumDetailSongSortMode.Title -> sortedBy { it.title.lowercase(Locale.ROOT) }
+        AlbumDetailSongSortMode.TitleDesc -> sortedByDescending { it.title.lowercase(Locale.ROOT) }
+        AlbumDetailSongSortMode.FileName -> sortedBy { it.fileName.ifBlank { it.path.substringAfterLast('/') }.lowercase(Locale.ROOT) }
+        AlbumDetailSongSortMode.FileNameDesc -> sortedByDescending { it.fileName.ifBlank { it.path.substringAfterLast('/') }.lowercase(Locale.ROOT) }
+        AlbumDetailSongSortMode.Duration -> sortedByDescending { it.duration }
+        AlbumDetailSongSortMode.DurationAsc -> sortedBy { it.duration }
+        AlbumDetailSongSortMode.DateAdded -> sortedByDescending { it.dateAdded }
+        AlbumDetailSongSortMode.DateAddedAsc -> sortedBy { it.dateAdded }
+        AlbumDetailSongSortMode.DateModified -> sortedByDescending { it.dateModified }
+        AlbumDetailSongSortMode.DateModifiedAsc -> sortedBy { it.dateModified }
+        AlbumDetailSongSortMode.Random -> shuffled(kotlin.random.Random(com.ella.music.ui.LibrarySortUiState.randomSortSeed))
+    }
+}
+
+/**
+ * Pre-navigation hint so AlbumDetail can pick Compact vs Immersive on first frame.
+ * Only set true when a sidecar dynamic cover is confirmed (e.g. song folder has cover.mp4).
+ * Name-index / custom-folder matches are resolved asynchronously after enter — those must
+ * not force immersive until a DynamicCoverSource is actually resolved.
+ */
+internal object AlbumDetailLayoutHint {
+    @Volatile
+    private var pending: Pair<Long, Boolean>? = null
+
+    fun rememberForNavigation(albumId: Long, hasConfirmedDynamicCover: Boolean) {
+        pending = albumId to hasConfirmedDynamicCover
+    }
+
+    fun consume(albumId: Long): Boolean? {
+        val current = pending ?: return null
+        if (current.first != albumId) return null
+        pending = null
+        return current.second
+    }
+}

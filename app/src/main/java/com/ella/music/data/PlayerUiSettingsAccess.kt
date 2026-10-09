@@ -1,0 +1,1021 @@
+package com.ella.music.data
+
+import android.content.Context
+import androidx.datastore.preferences.core.edit
+import com.ella.music.data.SettingsManager.Companion.LYRIC_SECONDARY_OFF
+import com.ella.music.data.SettingsManager.Companion.LYRIC_SECONDARY_PRONUNCIATION
+import com.ella.music.data.SettingsManager.Companion.LYRIC_SECONDARY_TRANSLATION
+import com.ella.music.data.SettingsManager.Companion.MINI_PLAYER_RIGHT_NEXT
+import com.ella.music.data.SettingsManager.Companion.MINI_PLAYER_RIGHT_QUEUE
+import com.ella.music.data.SettingsManager.Companion.PLAYER_BG_THEME_DARK
+import com.ella.music.data.SettingsManager.Companion.PLAYER_TITLE_POSITION_ABOVE_COVER
+import com.ella.music.data.SettingsManager.Companion.PLAYER_TITLE_POSITION_BELOW_COVER
+import com.ella.music.data.SettingsManager.Companion.KEY_AUDIO_VISUALIZER_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_AUDIO_VISUALIZER_OPACITY
+import com.ella.music.data.SettingsManager.Companion.KEY_AUDIO_VISUALIZER_STYLE
+import com.ella.music.data.SettingsManager.Companion.KEY_DYNAMIC_COVER_CUSTOM_FOLDERS
+import com.ella.music.data.SettingsManager.Companion.KEY_DYNAMIC_COVER_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_HIDE_SYSTEM_BARS
+import com.ella.music.data.SettingsManager.Companion.KEY_SYSTEM_BARS_MODE
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_SYSTEM_BARS_MODE
+import com.ella.music.data.SettingsManager.Companion.KEY_SYSTEM_BARS_RESERVE_SPACE
+import com.ella.music.data.SettingsManager.Companion.KEY_MINI_PLAYER_COVER_ROTATION
+import com.ella.music.data.SettingsManager.Companion.KEY_MINI_PLAYER_LYRIC_SECONDARY
+import com.ella.music.data.SettingsManager.Companion.KEY_MINI_PLAYER_LYRIC_TRANSLATION
+import com.ella.music.data.SettingsManager.Companion.KEY_MINI_PLAYER_LYRICS_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_MINI_PLAYER_RIGHT_BUTTON
+import com.ella.music.data.SettingsManager.Companion.KEY_MINI_PLAYER_SWIPE_TO_OPEN_PLAYER
+import com.ella.music.data.SettingsManager.Companion.KEY_MINI_PLAYER_LONG_PRESS_SOURCE
+import com.ella.music.data.SettingsManager.Companion.KEY_MUSIC_VIDEO_CAPTURE_SUBTITLES
+import com.ella.music.data.SettingsManager.Companion.KEY_MUSIC_VIDEO_FULLSCREEN_BUTTON_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_MUSIC_VIDEO_LONG_PRESS_INFO_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_MUSIC_VIDEO_LONG_PRESS_IMMERSIVE_LYRICS_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_MUSIC_VIDEO_IMMERSIVE_LYRICS_HIDE_SYSTEM_BARS
+import com.ella.music.data.SettingsManager.Companion.KEY_MUSIC_VIDEO_ORIENTATION
+import com.ella.music.data.SettingsManager.Companion.KEY_MUSIC_VIDEO_CUSTOM_FOLDERS
+import com.ella.music.data.SettingsManager.Companion.KEY_MUSIC_VIDEO_OFFSETS_JSON
+import com.ella.music.data.SettingsManager.Companion.KEY_MUSIC_VIDEO_STRETCH_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_MUSIC_VIDEO_SYNC_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_BACKGROUND_DIM
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_BACKGROUND_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_BACKGROUND_OPACITY
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_BACKGROUND_THEME
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_BACKGROUND_URI
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_BEAUTIFUL_LYRICS_BACKGROUND
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_BEAUTIFUL_LYRICS_BLUR
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_BEAUTIFUL_LYRICS_BRIGHTNESS
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_BEAUTIFUL_LYRICS_SPEED
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_COVER_CONTENT_COLOR
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_ALBUM_COVER_CORNER_RADIUS
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_MUSIC_VIDEO_CORNER_RADIUS
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_COVER_SWIPE_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_COVER_LONG_PRESS_PREVIEW_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_LYRIC_NON_CURRENT_BLUR_PERCENT
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_DYNAMIC_FLOW_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_APPLE_FLOW_SPEED
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_HDR_GLOW
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_IMMERSIVE_COVER
+import com.ella.music.data.SettingsManager.Companion.KEY_APPLE_MUSIC_PLAYER_IMMERSIVE_COVER
+import com.ella.music.data.SettingsManager.Companion.KEY_APPLE_MUSIC_USE_APPLE_FAVORITE
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_FAVORITE_HEART_PINK
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_KEEP_SCREEN_ON
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_LANDSCAPE_STYLE
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_PAGE_STYLE
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_LYRICS_CORNER_ACTIONS
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_ACTION_MENU_LAYOUT
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_SHORTCUT_ITEMS
+import com.ella.music.data.SettingsManager.Companion.KEY_NON_IMMERSIVE_PLAYER_SHORTCUT_ITEMS
+import com.ella.music.data.SettingsManager.Companion.KEY_LIST_ACTION_MENU_LAYOUT
+import com.ella.music.data.SettingsManager.Companion.KEY_SONG_INFO_LAYOUT
+import com.ella.music.data.SettingsManager.Companion.KEY_QUEUE_TOOLBAR_LAYOUT
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_PROGRESS_INFO_INDEX
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_PROGRESS_STYLE
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_PROGRESS_SHOW_QUALITY
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_PROGRESS_SHOW_AUDIO_INFO
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_PROGRESS_SHOW_OUTPUT_DEVICE
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_PROGRESS_INFO_PRIORITY
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_PROGRESS_LONG_PRESS_CYCLE
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_PROGRESS_INFO_SEPARATED
+import com.ella.music.data.SettingsManager.Companion.KEY_LYRIC_WORD_SEEK_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_LYRIC_TOUCH_FEEDBACK_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_MINI_LYRIC_SCALE
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_MINI_LYRIC_PRIMARY_SIZE
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_MINI_LYRIC_SECONDARY_SIZE
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_MINI_LYRIC_LINE_SPACING
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_MINI_LYRIC_TEXT_ALIGN
+import com.ella.music.data.SettingsManager.Companion.KEY_LYRIC_PAUSE_CURRENT_ONLY
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_IMMERSIVE_LYRIC_SWIPE
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_SHOW_SONG_ANNOTATION
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_SHOW_TOTAL_DURATION
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_TAP_SEEK_ENABLED
+import com.ella.music.data.SettingsManager.Companion.KEY_PLAYER_TITLE_POSITION
+import com.ella.music.data.SettingsManager.Companion.KEY_TRANSPORT_BUTTON_OUTLINES
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+/**
+ * Player-screen appearance and interaction: mini player, transport controls, cover behaviour,
+ * visualizer, dynamic cover / music-video sync, player background and beautiful-lyrics background.
+ *
+ * Extracted verbatim from [SettingsManager], which implements this interface via class
+ * delegation so every call site keeps using settingsManager.<member> unchanged. All flow
+ * properties MUST stay eagerly-initialised stored properties (never computed get() =):
+ * Compose collectAsState keys on the flow instance, and a fresh instance per access would
+ * restart collection on every recomposition.
+ */
+interface PlayerUiSettingsAccess {
+    val playerBackgroundTheme: Flow<Int>
+    val miniPlayerLyricTranslation: Flow<Boolean>
+    val miniPlayerLyricSecondary: Flow<Int>
+    val miniPlayerCoverRotation: Flow<Boolean>
+    val miniPlayerLyricsEnabled: Flow<Boolean>
+    val miniPlayerRightButton: Flow<Int>
+    val miniPlayerSwipeToOpenPlayer: Flow<Boolean>
+    val miniPlayerLongPressSource: Flow<Boolean>
+    val playerProgressInfoIndex: Flow<Int>
+    val playerProgressShowQuality: Flow<Boolean>
+    val playerProgressShowAudioInfo: Flow<Boolean>
+    val playerProgressShowOutputDevice: Flow<Boolean>
+    val playerProgressInfoPriority: Flow<String>
+    val playerProgressLongPressCycle: Flow<Boolean>
+    val playerProgressInfoSeparated: Flow<Boolean>
+    val transportButtonOutlines: Flow<Boolean>
+    val playerTapSeekEnabled: Flow<Boolean>
+    val playerShowTotalDuration: Flow<Boolean>
+    val playerShowSongAnnotation: Flow<Boolean>
+    val playerCoverSwipeEnabled: Flow<Boolean>
+    val playerCoverLongPressPreviewEnabled: Flow<Boolean>
+    val lyricNonCurrentBlurPercent: Flow<Int>
+    val lyricWordSeekEnabled: Flow<Boolean>
+    val lyricTouchFeedbackEnabled: Flow<Boolean>
+    val playerMiniLyricScale: Flow<Int>
+    val playerMiniLyricPrimarySize: Flow<Int>
+    val playerMiniLyricSecondarySize: Flow<Int>
+    val playerMiniLyricLineSpacing: Flow<Int>
+    val playerMiniLyricTextAlign: Flow<Int>
+    val lyricPauseCurrentOnly: Flow<Boolean>
+    val playerImmersiveLyricSwipe: Flow<Boolean>
+    val playerTitlePosition: Flow<Int>
+    val playerPageStyle: Flow<Int>
+    val playerLyricsCornerActionsEnabled: Flow<Boolean>
+    val playerActionMenuLayout: Flow<String>
+    val playerShortcutItems: Flow<String>
+    suspend fun setPlayerShortcutItems(items: List<String>)
+    suspend fun resetPlayerShortcutItems()
+    val nonImmersivePlayerShortcutItems: Flow<String>
+    suspend fun setNonImmersivePlayerShortcutItems(items: List<String>)
+    suspend fun resetNonImmersivePlayerShortcutItems()
+    val listActionMenuLayout: Flow<String>
+    val songInfoLayout: Flow<String>
+    val queueToolbarLayout: Flow<String>
+    val playerLandscapeStyle: Flow<Int>
+    val playerClockColor: Flow<Int>
+    suspend fun setPlayerClockColor(color: Int)
+    val playerLandscapeHideSystemBars: Flow<Boolean>
+    suspend fun setPlayerLandscapeHideSystemBars(enabled: Boolean)
+    val playerKeepScreenOn: Flow<Boolean>
+    val playerHdrGlow: Flow<Boolean>
+    val playerImmersiveCover: Flow<Boolean>
+    val appleMusicPlayerImmersiveCover: Flow<Boolean>
+    val playerCenterTitle: Flow<Boolean>
+    val appleMusicUseAppleFavorite: Flow<Boolean>
+    val playerFavoriteHeartPink: Flow<Boolean>
+    suspend fun setPlayerFavoriteHeartPink(pink: Boolean)
+    val playerCoverContentColor: Flow<Boolean>
+    val playerAlbumCoverCornerRadius: Flow<Int>
+    val playerMusicVideoCornerRadius: Flow<Int>
+    val systemBarsMode: Flow<Int>
+    val playerSystemBarsMode: Flow<Int>
+    val systemBarsReserveSpace: Flow<Boolean>
+    val playerDynamicFlowEnabled: Flow<Boolean>
+    val playerAppleFlowSpeed: Flow<Int>
+    val audioVisualizerRainbow: Flow<Boolean>
+    suspend fun setAudioVisualizerRainbow(enabled: Boolean)
+    val audioVisualizerEnabled: Flow<Boolean>
+    val audioVisualizerBlur: Flow<Int>
+    suspend fun setAudioVisualizerBlur(radius: Int)
+    val audioVisualizerOpacity: Flow<Int>
+    val audioVisualizerStyle: Flow<Int>
+    val audioVisualizerHeight: Flow<Int>
+    suspend fun setAudioVisualizerHeight(percent: Int)
+    val playerProgressStyle: Flow<Int>
+    val playerWaveformScaleAnimation: Flow<Boolean>
+    val playerWaveformDensity: Flow<Int>
+    val playerWaveformPeakHeight: Flow<Int>
+    val dynamicCoverEnabled: Flow<Boolean>
+    val musicVideoSyncEnabled: Flow<Boolean>
+    val videoHoldSpeedPercent: Flow<Int>
+    val musicVideoCaptureSubtitles: Flow<Boolean>
+    val musicVideoStretchEnabled: Flow<Boolean>
+    val musicVideoOrientation: Flow<Int>
+    val musicVideoFullscreenButtonEnabled: Flow<Boolean>
+    val musicVideoLongPressInfoEnabled: Flow<Boolean>
+    val musicVideoLongPressImmersiveLyricsEnabled: Flow<Boolean>
+    val musicVideoImmersiveLyricsHideSystemBars: Flow<Boolean>
+    val musicVideoOffsetsJson: Flow<String>
+    val dynamicCoverCustomFoldersRaw: Flow<String>
+    val dynamicCoverCustomFolders: Flow<List<String>>
+    val musicVideoCustomFoldersRaw: Flow<String>
+    val musicVideoCustomFolders: Flow<List<String>>
+    val playerBackgroundEnabled: Flow<Boolean>
+    val playerBackgroundUri: Flow<String>
+    val playerBackgroundOpacity: Flow<Int>
+    val playerBackgroundDim: Flow<Int>
+    val playerBeautifulLyricsBackground: Flow<Boolean>
+    val playerBeautifulLyricsSpeed: Flow<Int>
+    val playerBeautifulLyricsBlur: Flow<Int>
+    val playerBeautifulLyricsBrightness: Flow<Int>
+    suspend fun setPlayerBackgroundTheme(mode: Int)
+    suspend fun setPlayerCoverContentColor(enabled: Boolean)
+    suspend fun setMiniPlayerLyricTranslation(enabled: Boolean)
+    suspend fun setMiniPlayerLyricSecondary(mode: Int)
+    suspend fun setMiniPlayerCoverRotation(enabled: Boolean)
+    suspend fun setMiniPlayerLyricsEnabled(enabled: Boolean)
+    suspend fun setMiniPlayerRightButton(mode: Int)
+    suspend fun setMiniPlayerSwipeToOpenPlayer(enabled: Boolean)
+    suspend fun setMiniPlayerLongPressSource(enabled: Boolean)
+    suspend fun setPlayerProgressInfoIndex(index: Int)
+    suspend fun setPlayerProgressShowQuality(enabled: Boolean)
+    suspend fun setPlayerProgressShowAudioInfo(enabled: Boolean)
+    suspend fun setPlayerProgressShowOutputDevice(enabled: Boolean)
+    suspend fun setPlayerProgressInfoPriority(priority: String)
+    suspend fun setPlayerProgressLongPressCycle(enabled: Boolean)
+    suspend fun setPlayerProgressInfoSeparated(enabled: Boolean)
+    suspend fun setTransportButtonOutlines(enabled: Boolean)
+    suspend fun setPlayerHdrGlow(enabled: Boolean)
+    suspend fun setPlayerImmersiveCover(enabled: Boolean)
+    suspend fun setAppleMusicPlayerImmersiveCover(enabled: Boolean)
+    suspend fun setPlayerCenterTitle(enabled: Boolean)
+    suspend fun setAppleMusicUseAppleFavorite(enabled: Boolean)
+    suspend fun setPlayerAlbumCoverCornerRadius(value: Int)
+    suspend fun setPlayerMusicVideoCornerRadius(value: Int)
+    suspend fun setSystemBarsMode(mode: Int)
+    suspend fun setPlayerSystemBarsMode(mode: Int)
+    suspend fun setSystemBarsReserveSpace(enabled: Boolean)
+    suspend fun setPlayerDynamicFlowEnabled(enabled: Boolean)
+    suspend fun setPlayerAppleFlowSpeed(value: Int)
+    suspend fun setAudioVisualizerEnabled(enabled: Boolean)
+    suspend fun setAudioVisualizerOpacity(opacity: Int)
+    suspend fun setAudioVisualizerStyle(style: Int)
+    suspend fun setPlayerProgressStyle(style: Int)
+    suspend fun setPlayerWaveformScaleAnimation(enabled: Boolean)
+    suspend fun setPlayerWaveformDensity(percent: Int)
+    suspend fun setPlayerWaveformPeakHeight(percent: Int)
+    suspend fun setDynamicCoverEnabled(enabled: Boolean)
+    suspend fun setMusicVideoSyncEnabled(enabled: Boolean)
+    suspend fun setVideoHoldSpeedPercent(percent: Int)
+    suspend fun setMusicVideoCaptureSubtitles(enabled: Boolean)
+    suspend fun setMusicVideoStretchEnabled(enabled: Boolean)
+    suspend fun setMusicVideoOrientation(orientation: Int)
+    suspend fun setMusicVideoFullscreenButtonEnabled(enabled: Boolean)
+    suspend fun setMusicVideoLongPressInfoEnabled(enabled: Boolean)
+    suspend fun setMusicVideoLongPressImmersiveLyricsEnabled(enabled: Boolean)
+    suspend fun setMusicVideoImmersiveLyricsHideSystemBars(enabled: Boolean)
+    suspend fun setMusicVideoOffsetsJson(json: String)
+    suspend fun setDynamicCoverCustomFolders(folders: String)
+    suspend fun setMusicVideoCustomFolders(folders: String)
+    suspend fun setPlayerBackgroundEnabled(enabled: Boolean)
+    suspend fun setPlayerBackgroundUri(uri: String)
+    suspend fun setPlayerBackgroundOpacity(opacity: Int)
+    suspend fun setPlayerBackgroundDim(dim: Int)
+    suspend fun setPlayerBeautifulLyricsBackground(enabled: Boolean)
+    suspend fun setPlayerBeautifulLyricsSpeed(value: Int)
+    suspend fun setPlayerBeautifulLyricsBlur(value: Int)
+    suspend fun setPlayerBeautifulLyricsBrightness(value: Int)
+    suspend fun setPlayerTapSeekEnabled(enabled: Boolean)
+    suspend fun setPlayerShowTotalDuration(enabled: Boolean)
+    suspend fun setPlayerShowSongAnnotation(enabled: Boolean)
+    suspend fun setPlayerCoverSwipeEnabled(enabled: Boolean)
+    suspend fun setPlayerCoverLongPressPreviewEnabled(enabled: Boolean)
+    suspend fun setLyricNonCurrentBlurPercent(percent: Int)
+    suspend fun setLyricWordSeekEnabled(enabled: Boolean)
+    suspend fun setLyricTouchFeedbackEnabled(enabled: Boolean)
+    suspend fun setPlayerMiniLyricScale(value: Int)
+    suspend fun setPlayerMiniLyricPrimarySize(value: Int)
+    suspend fun setPlayerMiniLyricSecondarySize(value: Int)
+    suspend fun setPlayerMiniLyricLineSpacing(value: Int)
+    suspend fun setPlayerMiniLyricTextAlign(value: Int)
+    suspend fun setLyricPauseCurrentOnly(enabled: Boolean)
+    suspend fun setPlayerImmersiveLyricSwipe(enabled: Boolean)
+    suspend fun setPlayerTitlePosition(position: Int)
+    suspend fun setPlayerPageStyle(style: Int)
+    suspend fun setPlayerLyricsCornerActionsEnabled(enabled: Boolean)
+    suspend fun setPlayerActionMenuLayout(layout: String)
+    suspend fun setListActionMenuLayout(layout: String)
+    suspend fun setSongInfoLayout(layout: String)
+    suspend fun setQueueToolbarLayout(layout: String)
+    suspend fun setPlayerLandscapeStyle(style: Int)
+    suspend fun setPlayerKeepScreenOn(enabled: Boolean)
+}
+
+internal class PlayerUiSettingsAccessImpl(private val context: Context) : PlayerUiSettingsAccess {
+
+    override val playerBackgroundTheme: Flow<Int> =
+        context.dataStore.data.map { it[KEY_PLAYER_BACKGROUND_THEME] ?: PLAYER_BG_THEME_DARK }
+
+    override val miniPlayerLyricTranslation: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_MINI_PLAYER_LYRIC_TRANSLATION] ?: true }
+    override val miniPlayerLyricSecondary: Flow<Int> = context.dataStore.data.map {
+        (it[KEY_MINI_PLAYER_LYRIC_SECONDARY]
+            ?: if (it[KEY_MINI_PLAYER_LYRIC_TRANSLATION] == false) {
+                LYRIC_SECONDARY_OFF
+            } else {
+                LYRIC_SECONDARY_TRANSLATION
+            }).coerceIn(LYRIC_SECONDARY_OFF, LYRIC_SECONDARY_PRONUNCIATION)
+    }
+    override val miniPlayerCoverRotation: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_MINI_PLAYER_COVER_ROTATION] ?: true }
+
+    override val miniPlayerLyricsEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_MINI_PLAYER_LYRICS_ENABLED] ?: true }
+    override val miniPlayerRightButton: Flow<Int> =
+        context.dataStore.data.map { it[KEY_MINI_PLAYER_RIGHT_BUTTON] ?: MINI_PLAYER_RIGHT_NEXT }
+    override val miniPlayerSwipeToOpenPlayer: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_MINI_PLAYER_SWIPE_TO_OPEN_PLAYER] ?: true }
+    override val miniPlayerLongPressSource: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_MINI_PLAYER_LONG_PRESS_SOURCE] ?: false }
+    override val playerProgressInfoIndex: Flow<Int> =
+        context.dataStore.data.map { (it[KEY_PLAYER_PROGRESS_INFO_INDEX] ?: 0).coerceAtLeast(0) }
+    override val playerProgressShowQuality: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_PROGRESS_SHOW_QUALITY] ?: true }
+    override val playerProgressShowAudioInfo: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_PROGRESS_SHOW_AUDIO_INFO] ?: true }
+    override val playerProgressShowOutputDevice: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_PROGRESS_SHOW_OUTPUT_DEVICE] ?: true }
+    override val playerProgressInfoPriority: Flow<String> =
+        context.dataStore.data.map { prefs ->
+            SettingsManager.migratePlayerProgressInfoPriority(
+                stored = prefs[KEY_PLAYER_PROGRESS_INFO_PRIORITY],
+                showQuality = prefs[KEY_PLAYER_PROGRESS_SHOW_QUALITY],
+                showAudioInfo = prefs[KEY_PLAYER_PROGRESS_SHOW_AUDIO_INFO],
+                showOutputDevice = prefs[KEY_PLAYER_PROGRESS_SHOW_OUTPUT_DEVICE]
+            )
+        }
+    override val playerProgressLongPressCycle: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_PROGRESS_LONG_PRESS_CYCLE] ?: false }
+    override val playerProgressInfoSeparated: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_PROGRESS_INFO_SEPARATED] ?: false }
+    override val transportButtonOutlines: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[KEY_TRANSPORT_BUTTON_OUTLINES]
+                ?: SettingsManager.DEFAULT_TRANSPORT_BUTTON_OUTLINES
+        }
+    override val playerTapSeekEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_TAP_SEEK_ENABLED] ?: true }
+    override val playerShowTotalDuration: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[KEY_PLAYER_SHOW_TOTAL_DURATION]
+                ?: SettingsManager.DEFAULT_PLAYER_SHOW_TOTAL_DURATION
+        }
+    override val playerShowSongAnnotation: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_SHOW_SONG_ANNOTATION] ?: true }
+    override val playerCoverSwipeEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_COVER_SWIPE_ENABLED] ?: false }
+    override val playerCoverLongPressPreviewEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_COVER_LONG_PRESS_PREVIEW_ENABLED] ?: true }
+    override val lyricNonCurrentBlurPercent: Flow<Int> =
+        context.dataStore.data.map { (it[KEY_LYRIC_NON_CURRENT_BLUR_PERCENT] ?: 70).coerceIn(0, 100) }
+    override val lyricWordSeekEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_LYRIC_WORD_SEEK_ENABLED] ?: false }
+    override val lyricTouchFeedbackEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_LYRIC_TOUCH_FEEDBACK_ENABLED] ?: false }
+    override val playerMiniLyricScale: Flow<Int> =
+        context.dataStore.data.map { (it[KEY_PLAYER_MINI_LYRIC_SCALE] ?: 100).coerceIn(50, 150) }
+    override val playerMiniLyricPrimarySize: Flow<Int> =
+        context.dataStore.data.map { (it[KEY_PLAYER_MINI_LYRIC_PRIMARY_SIZE] ?: 19).coerceIn(12, 32) }
+    override val playerMiniLyricSecondarySize: Flow<Int> =
+        context.dataStore.data.map { (it[KEY_PLAYER_MINI_LYRIC_SECONDARY_SIZE] ?: 14).coerceIn(10, 28) }
+    override val playerMiniLyricLineSpacing: Flow<Int> =
+        context.dataStore.data.map { (it[KEY_PLAYER_MINI_LYRIC_LINE_SPACING] ?: 7).coerceIn(0, 24) }
+    override val playerMiniLyricTextAlign: Flow<Int> =
+        context.dataStore.data.map { (it[KEY_PLAYER_MINI_LYRIC_TEXT_ALIGN] ?: 0).coerceIn(0, 2) }
+    override val lyricPauseCurrentOnly: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_LYRIC_PAUSE_CURRENT_ONLY] ?: true }
+    override val playerImmersiveLyricSwipe: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_IMMERSIVE_LYRIC_SWIPE] ?: false }
+
+    override val playerTitlePosition: Flow<Int> =
+        context.dataStore.data.map {
+            (it[KEY_PLAYER_TITLE_POSITION] ?: PLAYER_TITLE_POSITION_BELOW_COVER)
+                .coerceIn(PLAYER_TITLE_POSITION_BELOW_COVER, PLAYER_TITLE_POSITION_ABOVE_COVER)
+        }
+    override val playerPageStyle: Flow<Int> =
+        context.dataStore.data.map { SettingsManager.normalizePlayerPageStyle(it[KEY_PLAYER_PAGE_STYLE]) }
+    override val playerLyricsCornerActionsEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_LYRICS_CORNER_ACTIONS] ?: true }
+    override val playerActionMenuLayout: Flow<String> =
+        context.dataStore.data.map { it[KEY_PLAYER_ACTION_MENU_LAYOUT].orEmpty() }
+    override val playerShortcutItems: Flow<String> =
+        context.dataStore.data.map { it[KEY_PLAYER_SHORTCUT_ITEMS] ?: SettingsManager.DEFAULT_PLAYER_SHORTCUT_ITEMS }
+    override val nonImmersivePlayerShortcutItems: Flow<String> =
+        context.dataStore.data.map { it[KEY_NON_IMMERSIVE_PLAYER_SHORTCUT_ITEMS] ?: SettingsManager.DEFAULT_NON_IMMERSIVE_PLAYER_SHORTCUT_ITEMS }
+    override val listActionMenuLayout: Flow<String> =
+        context.dataStore.data.map { it[KEY_LIST_ACTION_MENU_LAYOUT].orEmpty() }
+    override val songInfoLayout: Flow<String> =
+        context.dataStore.data.map { it[KEY_SONG_INFO_LAYOUT].orEmpty() }
+    override val queueToolbarLayout: Flow<String> =
+        context.dataStore.data.map { it[KEY_QUEUE_TOOLBAR_LAYOUT].orEmpty() }
+    override val playerLandscapeStyle: Flow<Int> =
+        context.dataStore.data.map { SettingsManager.normalizePlayerLandscapeStyle(it[KEY_PLAYER_LANDSCAPE_STYLE]) }
+    override val playerClockColor: Flow<Int> = context.dataStore.data.map {
+        SettingsManager.normalizePlayerClockColor(it[SettingsManager.KEY_PLAYER_CLOCK_COLOR])
+    }
+    override suspend fun setPlayerClockColor(color: Int) {
+        context.dataStore.edit { it[SettingsManager.KEY_PLAYER_CLOCK_COLOR] = SettingsManager.normalizePlayerClockColor(color) }
+    }
+    override val playerKeepScreenOn: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_KEEP_SCREEN_ON] ?: false }
+    override val playerLandscapeHideSystemBars: Flow<Boolean> =
+        context.dataStore.data.map { it[SettingsManager.KEY_PLAYER_LANDSCAPE_HIDE_SYSTEM_BARS] ?: false }
+    override suspend fun setPlayerLandscapeHideSystemBars(enabled: Boolean) {
+        context.dataStore.edit { it[SettingsManager.KEY_PLAYER_LANDSCAPE_HIDE_SYSTEM_BARS] = enabled }
+    }
+    override val playerHdrGlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_PLAYER_HDR_GLOW] ?: false }
+    override val playerImmersiveCover: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_IMMERSIVE_COVER] ?: true }
+    override val appleMusicPlayerImmersiveCover: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_APPLE_MUSIC_PLAYER_IMMERSIVE_COVER] ?: false }
+    override val playerCenterTitle: Flow<Boolean> = context.dataStore.data.map { it[SettingsManager.KEY_PLAYER_CENTER_TITLE] ?: false }
+    override val appleMusicUseAppleFavorite: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_APPLE_MUSIC_USE_APPLE_FAVORITE] ?: true }
+    override val playerFavoriteHeartPink: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_FAVORITE_HEART_PINK] ?: false }
+    override val playerCoverContentColor: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_COVER_CONTENT_COLOR] ?: false }
+    override val playerAlbumCoverCornerRadius: Flow<Int> =
+        context.dataStore.data.map {
+            (it[KEY_PLAYER_ALBUM_COVER_CORNER_RADIUS]
+                ?: SettingsManager.DEFAULT_PLAYER_ALBUM_COVER_CORNER_RADIUS_DP)
+                .coerceIn(
+                    SettingsManager.PLAYER_CORNER_RADIUS_MIN_DP,
+                    SettingsManager.PLAYER_CORNER_RADIUS_MAX_DP
+                )
+        }
+    override val playerMusicVideoCornerRadius: Flow<Int> =
+        context.dataStore.data.map {
+            (it[KEY_PLAYER_MUSIC_VIDEO_CORNER_RADIUS]
+                ?: SettingsManager.DEFAULT_PLAYER_MUSIC_VIDEO_CORNER_RADIUS_DP)
+                .coerceIn(
+                    SettingsManager.PLAYER_CORNER_RADIUS_MIN_DP,
+                    SettingsManager.PLAYER_CORNER_RADIUS_MAX_DP
+                )
+        }
+
+    override val systemBarsMode: Flow<Int> =
+        context.dataStore.data.map {
+            SettingsManager.resolveSystemBarsMode(
+                storedMode = it[KEY_SYSTEM_BARS_MODE],
+                legacyHideSystemBars = it[KEY_HIDE_SYSTEM_BARS] ?: false
+            )
+        }
+    override val playerSystemBarsMode: Flow<Int> =
+        context.dataStore.data.map {
+            SettingsManager.resolvePlayerSystemBarsMode(it[KEY_PLAYER_SYSTEM_BARS_MODE])
+        }
+    override val systemBarsReserveSpace: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[KEY_SYSTEM_BARS_RESERVE_SPACE]
+                ?: SettingsManager.DEFAULT_SYSTEM_BARS_RESERVE_SPACE
+        }
+    override val playerDynamicFlowEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[KEY_PLAYER_DYNAMIC_FLOW_ENABLED]
+                ?: SettingsManager.DEFAULT_PLAYER_DYNAMIC_FLOW_ENABLED
+        }
+    override val playerAppleFlowSpeed: Flow<Int> =
+        context.dataStore.data.map {
+            it[KEY_PLAYER_APPLE_FLOW_SPEED]
+                ?.coerceIn(5, 60)
+                ?: SettingsManager.DEFAULT_PLAYER_APPLE_FLOW_SPEED
+        }
+    override val audioVisualizerRainbow: Flow<Boolean> =
+        context.dataStore.data.map { it[SettingsManager.KEY_AUDIO_VISUALIZER_RAINBOW] ?: false }
+    override suspend fun setAudioVisualizerRainbow(enabled: Boolean) {
+        context.dataStore.edit { it[SettingsManager.KEY_AUDIO_VISUALIZER_RAINBOW] = enabled }
+    }
+    override val audioVisualizerEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_AUDIO_VISUALIZER_ENABLED] ?: false }
+    override val audioVisualizerBlur: Flow<Int> = context.dataStore.data.map {
+        it[SettingsManager.KEY_AUDIO_VISUALIZER_BLUR]?.coerceIn(0, 40) ?: 0
+    }
+    override suspend fun setAudioVisualizerBlur(radius: Int) {
+        context.dataStore.edit { it[SettingsManager.KEY_AUDIO_VISUALIZER_BLUR] = radius.coerceIn(0, 40) }
+    }
+    override val audioVisualizerOpacity: Flow<Int> =
+        context.dataStore.data.map { it[KEY_AUDIO_VISUALIZER_OPACITY]?.coerceIn(20, 100) ?: 50 }
+    override val audioVisualizerStyle: Flow<Int> =
+        context.dataStore.data.map { SettingsManager.normalizeAudioVisualizerStyle(it[KEY_AUDIO_VISUALIZER_STYLE]) }
+    override val audioVisualizerHeight: Flow<Int> =
+        context.dataStore.data.map {
+            SettingsManager.normalizeAudioVisualizerHeight(it[SettingsManager.KEY_AUDIO_VISUALIZER_HEIGHT])
+        }
+    override suspend fun setAudioVisualizerHeight(percent: Int) {
+        context.dataStore.edit {
+            it[SettingsManager.KEY_AUDIO_VISUALIZER_HEIGHT] = SettingsManager.normalizeAudioVisualizerHeight(percent)
+        }
+    }
+    override val playerProgressStyle: Flow<Int> =
+        context.dataStore.data.map { SettingsManager.normalizePlayerProgressStyle(it[KEY_PLAYER_PROGRESS_STYLE]) }
+    override val playerWaveformScaleAnimation: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[SettingsManager.KEY_PLAYER_WAVEFORM_SCALE_ANIMATION]
+                ?: SettingsManager.DEFAULT_PLAYER_WAVEFORM_SCALE_ANIMATION
+        }
+    override val playerWaveformDensity: Flow<Int> =
+        context.dataStore.data.map {
+            SettingsManager.normalizePlayerWaveformDensity(it[SettingsManager.KEY_PLAYER_WAVEFORM_DENSITY])
+        }
+    override val playerWaveformPeakHeight: Flow<Int> =
+        context.dataStore.data.map {
+            SettingsManager.normalizePlayerWaveformPeakHeight(it[SettingsManager.KEY_PLAYER_WAVEFORM_PEAK_HEIGHT])
+        }
+
+    override val dynamicCoverEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_DYNAMIC_COVER_ENABLED] ?: false }
+    override val musicVideoSyncEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[KEY_MUSIC_VIDEO_SYNC_ENABLED]
+                ?: SettingsManager.DEFAULT_MUSIC_VIDEO_SYNC_ENABLED
+        }
+    override val videoHoldSpeedPercent: Flow<Int> = context.dataStore.data.map {
+        normalizeVideoHoldSpeedPercent(it[SettingsManager.KEY_VIDEO_HOLD_SPEED_PERCENT] ?: 200)
+    }
+    override val musicVideoCaptureSubtitles: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_MUSIC_VIDEO_CAPTURE_SUBTITLES] ?: false }
+    override val musicVideoStretchEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[KEY_MUSIC_VIDEO_STRETCH_ENABLED]
+                ?: SettingsManager.DEFAULT_MUSIC_VIDEO_STRETCH_ENABLED
+        }
+    override val musicVideoOrientation: Flow<Int> =
+        context.dataStore.data.map {
+            it[KEY_MUSIC_VIDEO_ORIENTATION]
+                ?.coerceIn(
+                    SettingsManager.MUSIC_VIDEO_ORIENTATION_SYSTEM,
+                    SettingsManager.MUSIC_VIDEO_ORIENTATION_PORTRAIT
+                )
+                ?: SettingsManager.DEFAULT_MUSIC_VIDEO_ORIENTATION
+        }
+    override val musicVideoFullscreenButtonEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[KEY_MUSIC_VIDEO_FULLSCREEN_BUTTON_ENABLED]
+                ?: SettingsManager.DEFAULT_MUSIC_VIDEO_FULLSCREEN_BUTTON_ENABLED
+        }
+    override val musicVideoLongPressInfoEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[KEY_MUSIC_VIDEO_LONG_PRESS_INFO_ENABLED]
+                ?: SettingsManager.DEFAULT_MUSIC_VIDEO_LONG_PRESS_INFO_ENABLED
+        }
+    override val musicVideoLongPressImmersiveLyricsEnabled: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[KEY_MUSIC_VIDEO_LONG_PRESS_IMMERSIVE_LYRICS_ENABLED]
+                ?: SettingsManager.DEFAULT_MUSIC_VIDEO_LONG_PRESS_IMMERSIVE_LYRICS_ENABLED
+        }
+    override val musicVideoImmersiveLyricsHideSystemBars: Flow<Boolean> =
+        context.dataStore.data.map {
+            it[KEY_MUSIC_VIDEO_IMMERSIVE_LYRICS_HIDE_SYSTEM_BARS]
+                ?: SettingsManager.DEFAULT_MUSIC_VIDEO_IMMERSIVE_LYRICS_HIDE_SYSTEM_BARS
+        }
+    override val musicVideoOffsetsJson: Flow<String> =
+        context.dataStore.data.map { it[KEY_MUSIC_VIDEO_OFFSETS_JSON].orEmpty() }
+    override val dynamicCoverCustomFoldersRaw: Flow<String> =
+        context.dataStore.data.map { normalizeDynamicCoverCustomFolders(it[KEY_DYNAMIC_COVER_CUSTOM_FOLDERS]) }
+    override val dynamicCoverCustomFolders: Flow<List<String>> =
+        dynamicCoverCustomFoldersRaw.map(::parseDynamicCoverCustomFolders)
+    override val musicVideoCustomFoldersRaw: Flow<String> =
+        context.dataStore.data.map { normalizeDynamicCoverCustomFolders(it[KEY_MUSIC_VIDEO_CUSTOM_FOLDERS]) }
+    override val musicVideoCustomFolders: Flow<List<String>> =
+        musicVideoCustomFoldersRaw.map(::parseDynamicCoverCustomFolders)
+
+    override val playerBackgroundEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_BACKGROUND_ENABLED] ?: false }
+    override val playerBackgroundUri: Flow<String> =
+        context.dataStore.data.map { it[KEY_PLAYER_BACKGROUND_URI] ?: "" }
+    override val playerBackgroundOpacity: Flow<Int> =
+        context.dataStore.data.map { it[KEY_PLAYER_BACKGROUND_OPACITY]?.coerceIn(20, 100) ?: 100 }
+    override val playerBackgroundDim: Flow<Int> =
+        context.dataStore.data.map { it[KEY_PLAYER_BACKGROUND_DIM]?.coerceIn(0, 80) ?: 26 }
+    override val playerBeautifulLyricsBackground: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_PLAYER_BEAUTIFUL_LYRICS_BACKGROUND] ?: false }
+    override val playerBeautifulLyricsSpeed: Flow<Int> =
+        context.dataStore.data.map { it[KEY_PLAYER_BEAUTIFUL_LYRICS_SPEED]?.coerceIn(5, 60) ?: 25 }
+    override val playerBeautifulLyricsBlur: Flow<Int> =
+        context.dataStore.data.map { it[KEY_PLAYER_BEAUTIFUL_LYRICS_BLUR]?.coerceIn(0, 80) ?: 32 }
+    override val playerBeautifulLyricsBrightness: Flow<Int> =
+        context.dataStore.data.map { it[KEY_PLAYER_BEAUTIFUL_LYRICS_BRIGHTNESS]?.coerceIn(30, 120) ?: 70 }
+
+    override suspend fun setPlayerBackgroundTheme(mode: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_BACKGROUND_THEME] = mode }
+    }
+
+    override suspend fun setPlayerCoverContentColor(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_COVER_CONTENT_COLOR] = enabled }
+    }
+
+    override suspend fun setMiniPlayerLyricTranslation(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MINI_PLAYER_LYRIC_TRANSLATION] = enabled }
+    }
+
+    override suspend fun setMiniPlayerLyricSecondary(mode: Int) {
+        context.dataStore.edit {
+            val safeMode = mode.coerceIn(LYRIC_SECONDARY_OFF, LYRIC_SECONDARY_PRONUNCIATION)
+            it[KEY_MINI_PLAYER_LYRIC_SECONDARY] = safeMode
+            it[KEY_MINI_PLAYER_LYRIC_TRANSLATION] = safeMode == LYRIC_SECONDARY_TRANSLATION
+        }
+    }
+
+    override suspend fun setMiniPlayerCoverRotation(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MINI_PLAYER_COVER_ROTATION] = enabled }
+    }
+
+    override suspend fun setMiniPlayerLyricsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MINI_PLAYER_LYRICS_ENABLED] = enabled }
+    }
+
+    override suspend fun setMiniPlayerRightButton(mode: Int) {
+        context.dataStore.edit { it[KEY_MINI_PLAYER_RIGHT_BUTTON] = mode.coerceIn(MINI_PLAYER_RIGHT_NEXT, MINI_PLAYER_RIGHT_QUEUE) }
+    }
+
+    override suspend fun setMiniPlayerSwipeToOpenPlayer(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MINI_PLAYER_SWIPE_TO_OPEN_PLAYER] = enabled }
+    }
+
+    override suspend fun setMiniPlayerLongPressSource(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MINI_PLAYER_LONG_PRESS_SOURCE] = enabled }
+    }
+
+    override suspend fun setPlayerProgressInfoIndex(index: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_PROGRESS_INFO_INDEX] = index.coerceAtLeast(0) }
+    }
+
+    override suspend fun setPlayerProgressShowQuality(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_PROGRESS_SHOW_QUALITY] = enabled }
+    }
+
+    override suspend fun setPlayerProgressShowAudioInfo(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_PROGRESS_SHOW_AUDIO_INFO] = enabled }
+    }
+
+    override suspend fun setPlayerProgressShowOutputDevice(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_PROGRESS_SHOW_OUTPUT_DEVICE] = enabled }
+    }
+
+    override suspend fun setPlayerProgressInfoPriority(priority: String) {
+        val normalized = SettingsManager.normalizePlayerProgressInfoPriority(priority)
+        val enabled = normalized.split(',').map { it.trim() }.filter { it.isNotBlank() }.toSet()
+        context.dataStore.edit {
+            it[KEY_PLAYER_PROGRESS_INFO_PRIORITY] = normalized
+            it[KEY_PLAYER_PROGRESS_SHOW_QUALITY] =
+                SettingsManager.PLAYER_PROGRESS_INFO_QUALITY in enabled
+            it[KEY_PLAYER_PROGRESS_SHOW_AUDIO_INFO] =
+                SettingsManager.PLAYER_PROGRESS_INFO_AUDIO in enabled
+            it[KEY_PLAYER_PROGRESS_SHOW_OUTPUT_DEVICE] =
+                SettingsManager.PLAYER_PROGRESS_INFO_OUTPUT in enabled
+        }
+    }
+
+    override suspend fun setPlayerProgressLongPressCycle(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_PROGRESS_LONG_PRESS_CYCLE] = enabled }
+    }
+
+    override suspend fun setPlayerProgressInfoSeparated(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_PROGRESS_INFO_SEPARATED] = enabled }
+    }
+
+    override suspend fun setTransportButtonOutlines(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_TRANSPORT_BUTTON_OUTLINES] = enabled }
+    }
+
+    override suspend fun setPlayerHdrGlow(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_HDR_GLOW] = enabled }
+    }
+
+    override suspend fun setPlayerImmersiveCover(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_IMMERSIVE_COVER] = enabled }
+    }
+
+    override suspend fun setAppleMusicPlayerImmersiveCover(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_APPLE_MUSIC_PLAYER_IMMERSIVE_COVER] = enabled }
+    }
+
+    override suspend fun setPlayerCenterTitle(enabled: Boolean) {
+        context.dataStore.edit { it[SettingsManager.KEY_PLAYER_CENTER_TITLE] = enabled }
+    }
+
+    override suspend fun setAppleMusicUseAppleFavorite(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_APPLE_MUSIC_USE_APPLE_FAVORITE] = enabled }
+    }
+
+    override suspend fun setPlayerFavoriteHeartPink(pink: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_FAVORITE_HEART_PINK] = pink }
+    }
+
+    override suspend fun setPlayerAlbumCoverCornerRadius(value: Int) {
+        context.dataStore.edit {
+            it[KEY_PLAYER_ALBUM_COVER_CORNER_RADIUS] = value.coerceIn(
+                SettingsManager.PLAYER_CORNER_RADIUS_MIN_DP,
+                SettingsManager.PLAYER_CORNER_RADIUS_MAX_DP
+            )
+        }
+    }
+
+    override suspend fun setPlayerMusicVideoCornerRadius(value: Int) {
+        context.dataStore.edit {
+            it[KEY_PLAYER_MUSIC_VIDEO_CORNER_RADIUS] = value.coerceIn(
+                SettingsManager.PLAYER_CORNER_RADIUS_MIN_DP,
+                SettingsManager.PLAYER_CORNER_RADIUS_MAX_DP
+            )
+        }
+    }
+
+
+    override suspend fun setSystemBarsMode(mode: Int) {
+        val normalized = SettingsManager.resolveSystemBarsMode(mode, legacyHideSystemBars = false)
+        context.dataStore.edit {
+            it[KEY_SYSTEM_BARS_MODE] = normalized
+            it[KEY_HIDE_SYSTEM_BARS] =
+                normalized == SettingsManager.SYSTEM_BARS_MODE_HIDE_BOTH
+        }
+    }
+
+    override suspend fun setPlayerSystemBarsMode(mode: Int) {
+        context.dataStore.edit {
+            it[KEY_PLAYER_SYSTEM_BARS_MODE] = SettingsManager.resolvePlayerSystemBarsMode(mode)
+        }
+    }
+
+    override suspend fun setSystemBarsReserveSpace(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_SYSTEM_BARS_RESERVE_SPACE] = enabled }
+    }
+
+    override suspend fun setPlayerDynamicFlowEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_DYNAMIC_FLOW_ENABLED] = enabled }
+    }
+
+    override suspend fun setPlayerAppleFlowSpeed(value: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_APPLE_FLOW_SPEED] = value.coerceIn(5, 60) }
+    }
+
+    override suspend fun setAudioVisualizerEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_AUDIO_VISUALIZER_ENABLED] = enabled }
+    }
+
+    override suspend fun setAudioVisualizerOpacity(opacity: Int) {
+        context.dataStore.edit { it[KEY_AUDIO_VISUALIZER_OPACITY] = opacity.coerceIn(20, 100) }
+    }
+
+    override suspend fun setAudioVisualizerStyle(style: Int) {
+        context.dataStore.edit { it[KEY_AUDIO_VISUALIZER_STYLE] = SettingsManager.normalizeAudioVisualizerStyle(style) }
+    }
+
+    override suspend fun setPlayerProgressStyle(style: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_PROGRESS_STYLE] = SettingsManager.normalizePlayerProgressStyle(style) }
+    }
+
+    override suspend fun setPlayerWaveformScaleAnimation(enabled: Boolean) {
+        context.dataStore.edit { it[SettingsManager.KEY_PLAYER_WAVEFORM_SCALE_ANIMATION] = enabled }
+    }
+
+    override suspend fun setPlayerWaveformDensity(percent: Int) {
+        context.dataStore.edit {
+            it[SettingsManager.KEY_PLAYER_WAVEFORM_DENSITY] = SettingsManager.normalizePlayerWaveformDensity(percent)
+        }
+    }
+
+    override suspend fun setPlayerWaveformPeakHeight(percent: Int) {
+        context.dataStore.edit {
+            it[SettingsManager.KEY_PLAYER_WAVEFORM_PEAK_HEIGHT] = SettingsManager.normalizePlayerWaveformPeakHeight(percent)
+        }
+    }
+
+    override suspend fun setDynamicCoverEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_DYNAMIC_COVER_ENABLED] = enabled }
+    }
+
+    override suspend fun setMusicVideoSyncEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MUSIC_VIDEO_SYNC_ENABLED] = enabled }
+    }
+
+    override suspend fun setVideoHoldSpeedPercent(percent: Int) {
+        context.dataStore.edit { it[SettingsManager.KEY_VIDEO_HOLD_SPEED_PERCENT] = normalizeVideoHoldSpeedPercent(percent) }
+    }
+    override suspend fun setMusicVideoCaptureSubtitles(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MUSIC_VIDEO_CAPTURE_SUBTITLES] = enabled }
+    }
+
+    override suspend fun setMusicVideoStretchEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MUSIC_VIDEO_STRETCH_ENABLED] = enabled }
+    }
+
+    override suspend fun setMusicVideoOrientation(orientation: Int) {
+        context.dataStore.edit {
+            it[KEY_MUSIC_VIDEO_ORIENTATION] = orientation.coerceIn(
+                SettingsManager.MUSIC_VIDEO_ORIENTATION_SYSTEM,
+                SettingsManager.MUSIC_VIDEO_ORIENTATION_PORTRAIT
+            )
+        }
+    }
+
+    override suspend fun setMusicVideoFullscreenButtonEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MUSIC_VIDEO_FULLSCREEN_BUTTON_ENABLED] = enabled }
+    }
+
+    override suspend fun setMusicVideoLongPressInfoEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MUSIC_VIDEO_LONG_PRESS_INFO_ENABLED] = enabled }
+    }
+
+    override suspend fun setMusicVideoLongPressImmersiveLyricsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MUSIC_VIDEO_LONG_PRESS_IMMERSIVE_LYRICS_ENABLED] = enabled }
+    }
+
+    override suspend fun setMusicVideoImmersiveLyricsHideSystemBars(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MUSIC_VIDEO_IMMERSIVE_LYRICS_HIDE_SYSTEM_BARS] = enabled }
+    }
+
+    override suspend fun setMusicVideoOffsetsJson(json: String) {
+        context.dataStore.edit {
+            val value = json.trim()
+            if (value.isBlank()) it.remove(KEY_MUSIC_VIDEO_OFFSETS_JSON) else it[KEY_MUSIC_VIDEO_OFFSETS_JSON] = value
+        }
+    }
+
+    override suspend fun setDynamicCoverCustomFolders(folders: String) {
+        context.dataStore.edit { prefs ->
+            val normalized = normalizeDynamicCoverCustomFolders(folders)
+            if (normalized.isBlank()) {
+                prefs.remove(KEY_DYNAMIC_COVER_CUSTOM_FOLDERS)
+            } else {
+                prefs[KEY_DYNAMIC_COVER_CUSTOM_FOLDERS] = normalized
+            }
+        }
+    }
+
+    override suspend fun setMusicVideoCustomFolders(folders: String) {
+        context.dataStore.edit { prefs ->
+            val normalized = normalizeDynamicCoverCustomFolders(folders)
+            if (normalized.isBlank()) {
+                prefs.remove(KEY_MUSIC_VIDEO_CUSTOM_FOLDERS)
+            } else {
+                prefs[KEY_MUSIC_VIDEO_CUSTOM_FOLDERS] = normalized
+            }
+        }
+    }
+
+    override suspend fun setPlayerBackgroundEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_BACKGROUND_ENABLED] = enabled }
+    }
+
+    override suspend fun setPlayerBackgroundUri(uri: String) {
+        context.dataStore.edit {
+            val safeUri = uri.trim()
+            if (safeUri.isBlank()) it.remove(KEY_PLAYER_BACKGROUND_URI) else it[KEY_PLAYER_BACKGROUND_URI] = safeUri
+        }
+    }
+
+    override suspend fun setPlayerBackgroundOpacity(opacity: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_BACKGROUND_OPACITY] = opacity.coerceIn(20, 100) }
+    }
+
+    override suspend fun setPlayerBackgroundDim(dim: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_BACKGROUND_DIM] = dim.coerceIn(0, 80) }
+    }
+
+    override suspend fun setPlayerBeautifulLyricsBackground(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_BEAUTIFUL_LYRICS_BACKGROUND] = enabled }
+    }
+
+    override suspend fun setPlayerBeautifulLyricsSpeed(value: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_BEAUTIFUL_LYRICS_SPEED] = value.coerceIn(5, 60) }
+    }
+
+    override suspend fun setPlayerBeautifulLyricsBlur(value: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_BEAUTIFUL_LYRICS_BLUR] = value.coerceIn(0, 80) }
+    }
+
+    override suspend fun setPlayerBeautifulLyricsBrightness(value: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_BEAUTIFUL_LYRICS_BRIGHTNESS] = value.coerceIn(30, 120) }
+    }
+
+    override suspend fun setPlayerTapSeekEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_TAP_SEEK_ENABLED] = enabled }
+    }
+
+    override suspend fun setPlayerShowTotalDuration(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_SHOW_TOTAL_DURATION] = enabled }
+    }
+
+    override suspend fun setPlayerShowSongAnnotation(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_SHOW_SONG_ANNOTATION] = enabled }
+    }
+
+    override suspend fun setPlayerCoverSwipeEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_COVER_SWIPE_ENABLED] = enabled }
+    }
+
+    override suspend fun setPlayerCoverLongPressPreviewEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_COVER_LONG_PRESS_PREVIEW_ENABLED] = enabled }
+    }
+
+    override suspend fun setLyricNonCurrentBlurPercent(percent: Int) {
+        context.dataStore.edit { it[KEY_LYRIC_NON_CURRENT_BLUR_PERCENT] = percent.coerceIn(0, 100) }
+    }
+
+    override suspend fun setLyricWordSeekEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_LYRIC_WORD_SEEK_ENABLED] = enabled }
+    }
+
+    override suspend fun setLyricTouchFeedbackEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_LYRIC_TOUCH_FEEDBACK_ENABLED] = enabled }
+    }
+
+    override suspend fun setPlayerMiniLyricScale(value: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_MINI_LYRIC_SCALE] = value.coerceIn(50, 150) }
+    }
+
+    override suspend fun setPlayerMiniLyricPrimarySize(value: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_MINI_LYRIC_PRIMARY_SIZE] = value.coerceIn(12, 32) }
+    }
+
+    override suspend fun setPlayerMiniLyricSecondarySize(value: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_MINI_LYRIC_SECONDARY_SIZE] = value.coerceIn(10, 28) }
+    }
+
+    override suspend fun setPlayerMiniLyricLineSpacing(value: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_MINI_LYRIC_LINE_SPACING] = value.coerceIn(0, 24) }
+    }
+
+    override suspend fun setPlayerMiniLyricTextAlign(value: Int) {
+        context.dataStore.edit { it[KEY_PLAYER_MINI_LYRIC_TEXT_ALIGN] = value.coerceIn(0, 2) }
+    }
+
+    override suspend fun setLyricPauseCurrentOnly(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_LYRIC_PAUSE_CURRENT_ONLY] = enabled }
+    }
+
+    override suspend fun setPlayerImmersiveLyricSwipe(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_IMMERSIVE_LYRIC_SWIPE] = enabled }
+    }
+
+    override suspend fun setPlayerTitlePosition(position: Int) {
+        context.dataStore.edit {
+            it[KEY_PLAYER_TITLE_POSITION] = position.coerceIn(
+                PLAYER_TITLE_POSITION_BELOW_COVER,
+                PLAYER_TITLE_POSITION_ABOVE_COVER
+            )
+        }
+    }
+
+    override suspend fun setPlayerPageStyle(style: Int) {
+        context.dataStore.edit {
+            it[KEY_PLAYER_PAGE_STYLE] = SettingsManager.normalizePlayerPageStyle(style)
+        }
+    }
+
+    override suspend fun setPlayerLyricsCornerActionsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_LYRICS_CORNER_ACTIONS] = enabled }
+    }
+
+    override suspend fun setPlayerActionMenuLayout(layout: String) {
+        context.dataStore.edit { it[KEY_PLAYER_ACTION_MENU_LAYOUT] = layout }
+    }
+
+    override suspend fun setPlayerShortcutItems(items: List<String>) {
+        context.dataStore.edit {
+            it[KEY_PLAYER_SHORTCUT_ITEMS] = items.take(SettingsManager.MAX_PLAYER_SHORTCUT_ITEMS).joinToString(",")
+        }
+    }
+
+    override suspend fun resetPlayerShortcutItems() {
+        context.dataStore.edit {
+            it.remove(KEY_PLAYER_SHORTCUT_ITEMS)
+        }
+    }
+
+    override suspend fun setNonImmersivePlayerShortcutItems(items: List<String>) {
+        context.dataStore.edit {
+            it[KEY_NON_IMMERSIVE_PLAYER_SHORTCUT_ITEMS] = items.take(SettingsManager.MAX_NON_IMMERSIVE_PLAYER_SHORTCUT_ITEMS).joinToString(",")
+        }
+    }
+
+    override suspend fun resetNonImmersivePlayerShortcutItems() {
+        context.dataStore.edit {
+            it.remove(KEY_NON_IMMERSIVE_PLAYER_SHORTCUT_ITEMS)
+        }
+    }
+
+    override suspend fun setListActionMenuLayout(layout: String) {
+        context.dataStore.edit { it[KEY_LIST_ACTION_MENU_LAYOUT] = layout }
+    }
+
+    override suspend fun setSongInfoLayout(layout: String) {
+        context.dataStore.edit { it[KEY_SONG_INFO_LAYOUT] = layout }
+    }
+
+    override suspend fun setQueueToolbarLayout(layout: String) {
+        context.dataStore.edit { it[KEY_QUEUE_TOOLBAR_LAYOUT] = layout }
+    }
+
+    override suspend fun setPlayerLandscapeStyle(style: Int) {
+        context.dataStore.edit {
+            it[KEY_PLAYER_LANDSCAPE_STYLE] = SettingsManager.normalizePlayerLandscapeStyle(style)
+        }
+    }
+
+    override suspend fun setPlayerKeepScreenOn(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_PLAYER_KEEP_SCREEN_ON] = enabled }
+    }
+
+    private fun parseDynamicCoverCustomFolders(raw: String): List<String> =
+        normalizeDynamicCoverCustomFolders(raw)
+            .split('\n')
+            .map(String::trim)
+            .filter(String::isNotBlank)
+
+    private fun normalizeDynamicCoverCustomFolders(raw: String?): String =
+        raw.orEmpty()
+            .split(Regex("""[;\r\n]+"""))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString("\n")
+}

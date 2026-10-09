@@ -1,0 +1,442 @@
+package com.ella.music.ui.settings
+
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.ella.music.R
+import com.ella.music.data.AppLogEntry
+import com.ella.music.data.AppLogStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.Scaffold
+import com.ella.music.ui.components.EllaMiuixDialog
+import com.ella.music.ui.components.EllaMiuixDialogActions
+import com.ella.music.ui.components.EllaSmallTopAppBar
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.icon.extended.Share
+import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import java.io.File
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.Text
+
+@Composable
+fun LogScreen(
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val scrollBehavior = MiuixScrollBehavior()
+    var refreshKey by remember { mutableIntStateOf(0) }
+    var query by remember { mutableStateOf("") }
+    var selectedLevel by remember { mutableStateOf<EllaLogLevelFilter?>(null) }
+    var selectedType by remember { mutableStateOf<EllaLogTypeFilter?>(null) }
+    var selectedEntry by remember { mutableStateOf<AppLogEntry?>(null) }
+    var showDetailSheet by remember { mutableStateOf(false) }
+    var showClearDialog by remember { mutableStateOf(false) }
+    var crashLogFiles by remember { mutableStateOf(emptyList<File>()) }
+    var selectedCrashContent by remember { mutableStateOf<String?>(null) }
+    var showCrashDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(refreshKey) {
+        crashLogFiles = withContext(Dispatchers.IO) { AppLogStore.getCrashLogs(context) }
+    }
+
+    val entries by produceState(initialValue = emptyList<AppLogEntry>(), refreshKey) {
+        while (isActive) {
+            value = withContext(Dispatchers.IO) { AppLogStore.read(context) }
+            delay(1_000)
+        }
+    }
+
+    val filteredEntries = remember(entries, selectedLevel, selectedType, query) {
+        val keyword = query.trim()
+        entries.filter { entry ->
+            (selectedLevel == null || selectedLevel?.matches(entry) == true) &&
+                (selectedType == null || selectedType?.matches(entry) == true) &&
+                (keyword.isBlank() || entry.matchesKeyword(context, keyword))
+        }
+    }
+    val allLabel = stringResource(R.string.common_all)
+    val shareSubject = stringResource(R.string.logs_share_subject)
+    val shareChooserTitle = stringResource(R.string.logs_share_chooser_title)
+    val noShareApp = stringResource(R.string.share_no_available_app)
+    val logClipLabel = stringResource(R.string.logs_clip_label)
+    val copiedToast = stringResource(R.string.logs_copied)
+
+    fun showToast(text: String) {
+        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+    }
+
+    fun shareLogs() {
+        scope.launch {
+            val filterDescription = buildString {
+                append("process logcat")
+                append("; visible before export=${filteredEntries.size}/${entries.size}")
+                append("; level=${selectedLevel?.name ?: "ALL"}")
+                append("; type=${selectedType?.name ?: "ALL"}")
+                query.trim().takeIf { it.isNotBlank() }?.let { append("; query=${it.take(80)}") }
+            }
+            val file = withContext(Dispatchers.IO) {
+                AppLogStore.info(
+                    context,
+                    "LogExport",
+                    "Export requested: $filterDescription"
+                )
+                val logcatEntries = AppLogStore.read(context)
+                val exportScope = "$filterDescription; logcat after request=${logcatEntries.size}"
+                AppLogStore.exportDetailedReport(
+                    context = context,
+                    entries = logcatEntries,
+                    scopeDescription = exportScope
+                ).also { exportedFile ->
+                    AppLogStore.info(
+                        context,
+                        "LogExport",
+                        "Export finished: entries=${logcatEntries.size}, bytes=${exportedFile.length()}, file=${exportedFile.name}"
+                    )
+                }
+            }
+            shareDiagnosticsTextFile(
+                context = context,
+                file = file,
+                subject = shareSubject,
+                chooserTitle = shareChooserTitle,
+                noAppMessage = noShareApp
+            )
+        }
+    }
+
+    fun copyEntry(entry: AppLogEntry) {
+        copyDiagnosticsText(
+            context = context,
+            label = logClipLabel,
+            text = entry.formatForCopy(context),
+            toastMessage = copiedToast
+        )
+        showDetailSheet = false
+    }
+
+    val pageBackground = diagnosticsPageBackground()
+    val settingsBackdrop = rememberLayerBackdrop()
+    Scaffold(
+        modifier = Modifier.background(pageBackground),
+        topBar = {
+            EllaSmallTopAppBar(
+                backdrop = settingsBackdrop,
+                enableProgressiveBlur = true,
+                title = stringResource(R.string.logs_title),
+                color = pageBackground,
+                scrollBehavior = scrollBehavior,
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = MiuixIcons.Regular.Back,
+                            contentDescription = stringResource(R.string.common_back)
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = ::shareLogs
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Regular.Share,
+                            contentDescription = stringResource(R.string.logs_share_action)
+                        )
+                    }
+                    IconButton(
+                        enabled = entries.isNotEmpty(),
+                        onClick = { showClearDialog = true }
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Regular.Delete,
+                            contentDescription = stringResource(R.string.logs_clear_action),
+                            tint = MiuixTheme.colorScheme.error
+                        )
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(settingsBackdrop)
+                .background(pageBackground)
+                .scrollEndHaptic()
+                .overScrollVertical(),
+            contentPadding = PaddingValues(
+                top = paddingValues.calculateTopPadding() + 8.dp,
+                bottom = paddingValues.calculateBottomPadding() + 120.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            overscrollEffect = null
+        ) {
+            if (crashLogFiles.isNotEmpty()) {
+                item("crash-banner") {
+                    DiagnosticsCard {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "检测到 ${crashLogFiles.size} 份闪退日志",
+                                    color = MiuixTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = {
+                                            val latest = crashLogFiles.firstOrNull()
+                                            if (latest != null) {
+                                                // Read off the main thread; old reports can be megabytes.
+                                                scope.launch {
+                                                    selectedCrashContent = withContext(Dispatchers.IO) { AppLogStore.readCrashLog(latest) }
+                                                    showCrashDialog = true
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Text("查看最新")
+                                    }
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                withContext(Dispatchers.IO) {
+                                                    AppLogStore.clearCrashLogs(context)
+                                                    crashLogFiles = AppLogStore.getCrashLogs(context)
+                                                }
+                                                showToast("已清理崩溃日志")
+                                            }
+                                        }
+                                    ) {
+                                        Text("清理")
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "应用闪退时已自动抓取异常堆栈、内存状态及系统 Logcat 缓冲。",
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            item("filters") {
+                DiagnosticsCard {
+                    WindowDropdownPreference(
+                        title = stringResource(R.string.logs_level_filter),
+                        items = listOf(allLabel) + EllaLogLevelFilter.entries.map { stringResource(it.labelRes) },
+                        selectedIndex = selectedLevel?.let { EllaLogLevelFilter.entries.indexOf(it) + 1 } ?: 0,
+                        onSelectedIndexChange = { index ->
+                            selectedLevel = if (index == 0) null else EllaLogLevelFilter.entries[index - 1]
+                        }
+                    )
+                    WindowDropdownPreference(
+                        title = stringResource(R.string.logs_type_filter),
+                        items = listOf(allLabel) + EllaLogTypeFilter.entries.map { stringResource(it.labelRes) },
+                        selectedIndex = selectedType?.let { EllaLogTypeFilter.entries.indexOf(it) + 1 } ?: 0,
+                        onSelectedIndexChange = { index ->
+                            selectedType = if (index == 0) null else EllaLogTypeFilter.entries[index - 1]
+                        }
+                    )
+                }
+            }
+
+            item("search") {
+                DiagnosticsSearchBar(
+                    query = query,
+                    onQueryChange = { query = it }
+                )
+            }
+
+            item("summary") {
+                DiagnosticsCard {
+                    BasicComponent(
+                        title = stringResource(R.string.logs_summary_title),
+                        summary = stringResource(
+                            R.string.logs_summary,
+                            entries.size,
+                            filteredEntries.size,
+                            entries.count { it.level.equals("ERROR", true) },
+                            entries.count { it.level.equals("WARNING", true) || it.level.equals("WARN", true) }
+                        )
+                    )
+                }
+            }
+
+            if (filteredEntries.isEmpty()) {
+                item("empty") {
+                    DiagnosticsEmptyCard(
+                        text = if (entries.isEmpty()) stringResource(R.string.logs_empty) else stringResource(R.string.logs_empty_filtered)
+                    )
+                }
+            } else {
+                itemsIndexed(
+                    items = filteredEntries,
+                    key = { index, entry ->
+                        "${index}-${entry.time}-${entry.level}-${entry.tag}-${entry.message.hashCode()}"
+                    }
+                ) { _, entry ->
+                    AppLogItem(
+                        entry = entry,
+                        onClick = {
+                            selectedEntry = entry
+                            showDetailSheet = true
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    AppLogDetailSheet(
+        show = showDetailSheet,
+        entry = selectedEntry,
+        onDismiss = { showDetailSheet = false },
+        onDismissFinished = {
+            showDetailSheet = false
+            selectedEntry = null
+        },
+        onCopy = ::copyEntry
+    )
+
+    EllaMiuixDialog(
+        show = showClearDialog,
+        title = stringResource(R.string.logs_clear_action),
+        summary = stringResource(R.string.logs_clear_message, entries.size),
+        onDismissRequest = { showClearDialog = false }
+    ) {
+        EllaMiuixDialogActions(
+            cancelText = stringResource(R.string.common_cancel),
+            confirmText = stringResource(R.string.common_clear),
+            confirmDangerous = true,
+            onCancel = { showClearDialog = false },
+            onConfirm = {
+                scope.launch {
+                    withContext(Dispatchers.IO) { AppLogStore.clear(context) }
+                    refreshKey++
+                    showClearDialog = false
+                    showToast(context.getString(R.string.logs_cleared))
+                }
+            }
+        )
+    }
+
+    if (showCrashDialog && selectedCrashContent != null) {
+        val crashContent = selectedCrashContent.orEmpty()
+        EllaMiuixDialog(
+            show = true,
+            title = "闪退崩溃日志详情",
+            onDismissRequest = {
+                showCrashDialog = false
+                selectedCrashContent = null
+            }
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(360.dp)
+                    .padding(vertical = 8.dp)
+            ) {
+                // One lazily composed item per chunk of lines: a single multi-megabyte Text froze and
+                // could crash the app while measuring.
+                val crashChunks = remember(crashContent) { crashContent.lines().chunked(40) { it.joinToString("\n") } }
+                SelectionContainer {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(crashChunks.size) { index ->
+                            Text(
+                                text = crashChunks[index],
+                                fontSize = 12.sp,
+                                fontFamily = MiuixTheme.textStyles.main.fontFamily,
+                                color = MiuixTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+            EllaMiuixDialogActions(
+                cancelText = "复制内容",
+                confirmText = "分享日志",
+                onCancel = {
+                    val clipped = crashContent.length > AppLogStore.MAX_CLIPBOARD_CHARS
+                    copyDiagnosticsText(
+                        context = context,
+                        label = "崩溃日志",
+                        text = if (clipped) crashContent.take(AppLogStore.MAX_CLIPBOARD_CHARS) else crashContent,
+                        toastMessage = if (clipped) "日志过长，已复制前半部分；完整内容请用分享" else "已复制崩溃日志"
+                    )
+                },
+                onConfirm = {
+                    scope.launch {
+                        val file = withContext(Dispatchers.IO) {
+                            File(context.cacheDir, "shared_logs").apply { mkdirs() }
+                                .resolve("halcyon-crash-${System.currentTimeMillis()}.txt")
+                                .also { it.writeText(crashContent) }
+                        }
+                        shareDiagnosticsTextFile(
+                            context = context,
+                            file = file,
+                            subject = "Halcyon 闪退崩溃日志",
+                            chooserTitle = "分享崩溃日志"
+                        )
+                    }
+                }
+            )
+        }
+    }
+}

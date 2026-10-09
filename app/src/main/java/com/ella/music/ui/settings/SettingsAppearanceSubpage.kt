@@ -1,0 +1,121 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
+package com.ella.music.ui.settings
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.verticalScroll
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.ella.music.R
+import com.ella.music.data.SettingsManager
+import com.ella.music.ui.components.EllaSmallTopAppBar
+import com.ella.music.ui.components.ellaPageBackground
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+@Composable
+fun AppearanceSubpageScreen(
+    page: String,
+    onBack: () -> Unit,
+    highlightKey: String? = null,
+    onNavigateToBottomNavigationSettings: () -> Unit = {},
+    onNavigateToPlayerShortcutSettings: (String) -> Unit = {},
+    onNavigateToAppearancePage: (String) -> Unit = {}
+) {
+    val pageBackground = ellaPageBackground()
+    val settingsBackdrop = rememberLayerBackdrop()
+    val title = when (page) {
+        APPEARANCE_PAGE_SYSTEM_BARS -> stringResource(R.string.settings_appearance_system_bars_page)
+        APPEARANCE_PAGE_WALLPAPER -> stringResource(R.string.settings_appearance_wallpaper_page)
+        APPEARANCE_PAGE_PLAYER -> stringResource(R.string.settings_appearance_player_page)
+        APPEARANCE_PAGE_LIST -> stringResource(R.string.settings_appearance_list_page)
+        APPEARANCE_PAGE_PLAYER_ACTION_MENU -> stringResource(R.string.settings_player_action_menu)
+        APPEARANCE_PAGE_LIST_ACTION_MENU -> stringResource(R.string.settings_list_action_menu)
+        APPEARANCE_PAGE_SONG_INFO_LAYOUT -> stringResource(R.string.settings_song_info_layout)
+        APPEARANCE_PAGE_QUEUE_TOOLBAR -> stringResource(R.string.settings_queue_toolbar_layout)
+        else -> stringResource(R.string.settings_appearance_theme_page)
+    }
+    val context = LocalContext.current
+    val settingsManager = remember(context) { SettingsManager.getInstance(context) }
+    val systemBarsMode by settingsManager.systemBarsMode.collectAsState(
+        initial = SettingsManager.SYSTEM_BARS_MODE_SHOW_BOTH
+    )
+    val systemBarsReserveSpace by settingsManager.systemBarsReserveSpace.collectAsState(
+        initial = SettingsManager.DEFAULT_SYSTEM_BARS_RESERVE_SPACE
+    )
+    val shouldReserveStatus = systemBarsReserveSpace || systemBarsMode !in setOf(
+        SettingsManager.SYSTEM_BARS_MODE_HIDE_STATUS,
+        SettingsManager.SYSTEM_BARS_MODE_HIDE_BOTH
+    )
+    val statusBarHeight = if (shouldReserveStatus) {
+        WindowInsets.statusBarsIgnoringVisibility.asPaddingValues().calculateTopPadding()
+    } else {
+        0.dp
+    }
+    val topBarHeight = 56.dp + statusBarHeight
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(pageBackground)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(settingsBackdrop)
+                .verticalScroll(rememberSettingsScrollState("appearance_$page"))
+                .padding(horizontal = 12.dp)
+        ) {
+            Spacer(modifier = Modifier.height(topBarHeight + 8.dp))
+            SettingsAppearanceSection(
+                highlightKey = highlightKey,
+                page = page,
+                onNavigateToBottomNavigationSettings = onNavigateToBottomNavigationSettings,
+                onNavigateToPlayerShortcutSettings = onNavigateToPlayerShortcutSettings,
+                onNavigateToAppearancePage = onNavigateToAppearancePage,
+                onNavigateBack = onBack
+            )
+            Spacer(modifier = Modifier.height(160.dp))
+        }
+
+        EllaSmallTopAppBar(
+            backdrop = settingsBackdrop,
+            title = title,
+            color = pageBackground,
+            defaultWindowInsetsPadding = shouldReserveStatus,
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = MiuixIcons.Regular.Back,
+                        contentDescription = stringResource(R.string.common_back),
+                        tint = MiuixTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            },
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+    }
+}

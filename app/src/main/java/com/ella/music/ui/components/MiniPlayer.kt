@@ -1,0 +1,840 @@
+package com.ella.music.ui.components
+
+import com.ella.music.ui.player.miniPlayerOpeningGesture
+import com.ella.music.ui.player.miniMorphAnchor
+
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.ella.music.R
+import com.ella.music.data.BottomBarGlassEffect
+import com.ella.music.data.model.Song
+import top.yukonga.miuix.kmp.blur.Backdrop
+import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.sign
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+fun MiniPlayer(
+    song: Song,
+    isPlaying: Boolean,
+    progress: Float = 0f,
+    lyricText: String? = null,
+    lyricTranslation: String? = null,
+    lyricProgress: Float = 0f,
+    lyricPositionMs: Long = 0L,
+    lyricTiming: MiniPlayerLyricTiming? = null,
+    coverRotationEnabled: Boolean = true,
+    albumArtUri: Uri? = null,
+    loadCoverArt: ((Song) -> Bitmap?)? = null,
+    backdrop: Backdrop? = null,
+    liquidGlass: Boolean = false,
+    surfaceColor: Color? = null,
+    glassEffect: BottomBarGlassEffect = BottomBarGlassEffect.Blur,
+    disableRefraction: Boolean = false,
+    cornerRadiusDp: Float? = null,
+    liquidGlassConfig: BottomBarLiquidGlassConfig? = null,
+    compactProgress: Float = 0f,
+    showQueueButton: Boolean = false,
+    swipeUpToOpenPlayer: Boolean = true,
+    isFloating: Boolean = true,
+    dockedAtBottom: Boolean = false,
+    onClick: () -> Unit,
+    onPlayPause: () -> Unit,
+    onSkipPrevious: () -> Unit = {},
+    onSkipNext: () -> Unit = {},
+    previousSongTitle: String? = null,
+    nextSongTitle: String? = null,
+    onShowQueue: () -> Unit = {},
+    onLongClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val coverState = rememberMiniPlayerCoverModel(song, albumArtUri, loadCoverArt)
+    val resolvedCornerRadiusDp = (cornerRadiusDp ?: LocalBottomBarCornerRadiusDp.current)
+        .coerceIn(0f, 32f)
+    val liquidConfig = liquidGlassConfig ?: LocalBottomBarLiquidGlassConfig.current
+    val glassBackdrop = backdrop
+    val useGlassLayout = liquidGlass
+    val compact = compactProgress.coerceIn(0f, 1f)
+    // Keep the surface itself centred while it collapses, matching iOS/MeiloX's mini-player
+    // transition.  The hit target remains the caller-provided layout bounds; only the drawn
+    // surface and its contents move inward.
+    val glassHorizontalPadding = androidx.compose.ui.unit.lerp(16.dp, 72.dp, compact)
+    val isLight = MiuixTheme.colorScheme.background.simpleLuminance() > 0.5f
+    val surfaceContainer = MiuixTheme.colorScheme.surfaceContainer
+
+    val textState = rememberMiniPlayerTextState(song, lyricText, lyricTranslation)
+    var transitionDirection by remember { mutableIntStateOf(1) }
+    val interactionSource = remember { MutableInteractionSource() }
+
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    var travelPx by remember { mutableFloatStateOf(0f) }
+    var hintStrength by remember { mutableFloatStateOf(0f) }
+    var settleJob by remember { mutableStateOf<Job?>(null) }
+    val previousLabel = stringResource(R.string.common_previous)
+    val nextLabel = stringResource(R.string.common_next)
+    val measurer = rememberTextMeasurer()
+    val onSurfaceColor = MiuixTheme.colorScheme.onSurface
+    val globalFontFamily = MiuixTheme.textStyles.main.fontFamily
+    val hintStyle = remember(onSurfaceColor, globalFontFamily) {
+        TextStyle(
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = onSurfaceColor,
+            fontFamily = globalFontFamily
+        )
+    }
+    val titleStyle = remember(onSurfaceColor, globalFontFamily) {
+        TextStyle(
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Normal,
+            color = onSurfaceColor,
+            fontFamily = globalFontFamily
+        )
+    }
+    val maxTitleWidthPx = with(LocalDensity.current) { 92.dp.toPx() }.toInt()
+    val previousHint = remember(previousLabel, hintStyle) { measurer.measure(previousLabel, hintStyle) }
+    val nextHint = remember(nextLabel, hintStyle) { measurer.measure(nextLabel, hintStyle) }
+    val previousTitleHint = remember(previousSongTitle, titleStyle, maxTitleWidthPx) {
+        previousSongTitle?.takeIf { it.isNotBlank() }?.let {
+            measurer.measure(
+                text = it,
+                style = titleStyle,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+                constraints = Constraints(maxWidth = maxTitleWidthPx)
+            )
+        }
+    }
+    val nextTitleHint = remember(nextSongTitle, titleStyle, maxTitleWidthPx) {
+        nextSongTitle?.takeIf { it.isNotBlank() }?.let {
+            measurer.measure(
+                text = it,
+                style = titleStyle,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+                constraints = Constraints(maxWidth = maxTitleWidthPx)
+            )
+        }
+    }
+    val currentSkipPrevious by rememberUpdatedState(onSkipPrevious)
+    val currentSkipNext by rememberUpdatedState(onSkipNext)
+    val swipeThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
+    val maxTravelPx = with(LocalDensity.current) { 108.dp.toPx() }
+
+    ExpandedMiniPlayerSurface(
+        glass = useGlassLayout || glassBackdrop != null,
+        backdrop = glassBackdrop,
+        cornerRadius = if (useGlassLayout) resolvedCornerRadiusDp else 0f,
+        glassEffect = glassEffect,
+        disableRefraction = disableRefraction,
+        liquidConfig = liquidConfig,
+        surfaceColor = surfaceColor ?: surfaceContainer,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = if (useGlassLayout) glassHorizontalPadding else 0.dp,
+                vertical = if (useGlassLayout) 2.dp else 0.dp
+            )
+            .miniMorphAnchor(radius = if (liquidGlass) resolvedCornerRadiusDp.dp else 0.dp)
+            .pointerInput(song.id) {
+                var dragAmount = 0f
+                var passedThreshold = false
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        dragAmount = 0f
+                        passedThreshold = false
+                    },
+                    onHorizontalDrag = { change, amount ->
+                        dragAmount += amount
+                        change.consume()
+                        settleJob?.cancel()
+                        travelPx = sign(dragAmount) * maxTravelPx * (1f - exp(-abs(dragAmount) / maxTravelPx))
+                        hintStrength = (abs(dragAmount) / swipeThresholdPx).coerceIn(0f, 1f)
+                        val nowPassed = abs(dragAmount) >= swipeThresholdPx
+                        if (nowPassed != passedThreshold) {
+                            passedThreshold = nowPassed
+                            if (nowPassed) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                        }
+                    },
+                    onDragEnd = {
+                        val commit = when {
+                            dragAmount <= -swipeThresholdPx -> -1
+                            dragAmount >= swipeThresholdPx -> 1
+                            else -> 0
+                        }
+                        if (commit < 0) {
+                            transitionDirection = 1
+                            currentSkipNext()
+                        } else if (commit > 0) {
+                            transitionDirection = -1
+                            currentSkipPrevious()
+                        }
+                        settleJob?.cancel()
+                        settleJob = scope.launch {
+                            animate(
+                                initialValue = travelPx,
+                                targetValue = 0f,
+                                animationSpec = spring(dampingRatio = 0.78f, stiffness = 380f)
+                            ) { value, _ ->
+                                travelPx = value
+                                hintStrength = hintStrength * 0.86f
+                            }
+                            travelPx = 0f
+                            hintStrength = 0f
+                        }
+                        dragAmount = 0f
+                    },
+                    onDragCancel = {
+                        settleJob?.cancel()
+                        settleJob = scope.launch {
+                            animate(
+                                initialValue = travelPx,
+                                targetValue = 0f,
+                                animationSpec = spring(dampingRatio = 0.78f, stiffness = 380f)
+                            ) { value, _ ->
+                                travelPx = value
+                                hintStrength = hintStrength * 0.86f
+                            }
+                            travelPx = 0f
+                            hintStrength = 0f
+                        }
+                        dragAmount = 0f
+                    }
+                )
+            }
+            .miniPlayerOpeningGesture(song.id, swipeUpToOpenPlayer, onClick)
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = onClick,
+                        onLongClick = onLongClick
+                    )
+                } else {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = onClick
+                    )
+                }
+            )
+            .drawWithCache {
+                val chevron = 4.5.dp.toPx()
+                val chevronGap = 5.dp.toPx()
+                val edgePadding = 14.dp.toPx()
+                onDrawWithContent {
+                    drawContent()
+                    val travel = travelPx
+                    val strength = hintStrength
+                    if (strength <= 0.02f || travel == 0f) return@onDrawWithContent
+                    val towardsPrevious = travel > 0f
+                    val hint = if (towardsPrevious) previousHint else nextHint
+                    val eased = (strength * strength * (3f - 2f * strength)).coerceIn(0f, 1f)
+                    val textAlpha = 0.95f * eased
+                    val midY = size.height / 2f
+                    val direction = if (towardsPrevious) -1f else 1f
+
+                    val chevronX = if (towardsPrevious) {
+                        edgePadding + chevron
+                    } else {
+                        size.width - edgePadding - chevron
+                    }
+
+                    listOf(-chevron, chevron).forEach { dy ->
+                        drawLine(
+                            color = onSurfaceColor.copy(alpha = textAlpha),
+                            start = Offset(chevronX - direction * chevron, midY + dy),
+                            end = Offset(chevronX, midY),
+                            strokeWidth = 1.6.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+
+                    val titleHint = if (towardsPrevious) previousTitleHint else nextTitleHint
+                    val lineGap = 1.5.dp.toPx()
+                    if (titleHint != null) {
+                        val totalHeight = hint.size.height + titleHint.size.height + lineGap
+                        val startY = midY - totalHeight / 2f
+                        if (towardsPrevious) {
+                            val textX = chevronX + chevronGap + chevron
+                            drawText(
+                                textLayoutResult = hint,
+                                color = onSurfaceColor.copy(alpha = textAlpha),
+                                topLeft = Offset(textX, startY)
+                            )
+                            drawText(
+                                textLayoutResult = titleHint,
+                                color = onSurfaceColor.copy(alpha = textAlpha * 0.85f),
+                                topLeft = Offset(textX, startY + hint.size.height + lineGap)
+                            )
+                        } else {
+                            val textRight = chevronX - chevronGap - chevron
+                            drawText(
+                                textLayoutResult = hint,
+                                color = onSurfaceColor.copy(alpha = textAlpha),
+                                topLeft = Offset(textRight - hint.size.width, startY)
+                            )
+                            drawText(
+                                textLayoutResult = titleHint,
+                                color = onSurfaceColor.copy(alpha = textAlpha * 0.85f),
+                                topLeft = Offset(textRight - titleHint.size.width, startY + hint.size.height + lineGap)
+                            )
+                        }
+                    } else {
+                        val textX = if (towardsPrevious) {
+                            chevronX + chevronGap + chevron
+                        } else {
+                            chevronX - chevronGap - chevron - hint.size.width
+                        }
+                        drawText(
+                            textLayoutResult = hint,
+                            color = onSurfaceColor.copy(alpha = textAlpha),
+                            topLeft = Offset(textX, midY - hint.size.height / 2f)
+                        )
+                    }
+                }
+            }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer { translationX = travelPx }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isFloating) {
+                    MiniPlayerCoverProgress(
+                        coverState = coverState,
+                        isPlaying = isPlaying,
+                        progress = progress,
+                        coverRotationEnabled = coverRotationEnabled,
+                        coverSize = 44.dp,
+                        ringSize = 50.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                } else {
+                    MiniPlayerSquareCover(
+                        coverState = coverState,
+                        size = 44.dp,
+                        shape = RoundedCornerShape(6.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
+
+        MiniPlayerAnimatedText(
+            textState = textState,
+            transitionDirection = transitionDirection,
+            lyricProgress = lyricProgress,
+            lyricPositionMs = lyricPositionMs,
+            lyricTiming = lyricTiming,
+            isPlaying = isPlaying,
+            modifier = Modifier.weight(1f)
+        )
+
+        if (!showQueueButton) {
+            IconButton(
+                onClick = {
+                    transitionDirection = -1
+                    onSkipPrevious()
+                },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_skip_previous),
+                    contentDescription = stringResource(R.string.common_previous),
+                    tint = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        IconButton(
+            onClick = onPlayPause,
+            modifier = Modifier.size(36.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = if (isPlaying) R.drawable.ic_player_pause else R.drawable.ic_player_play_legacy),
+                contentDescription = if (isPlaying) stringResource(R.string.common_pause) else stringResource(R.string.common_play),
+                tint = MiuixTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+
+        IconButton(
+            onClick = {
+                transitionDirection = 1
+                onSkipNext()
+            },
+            modifier = Modifier.size(36.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_skip_next),
+                contentDescription = stringResource(R.string.common_next),
+                tint = MiuixTheme.colorScheme.onSurface,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        if (showQueueButton) {
+            IconButton(
+                onClick = onShowQueue,
+                modifier = Modifier.size(40.dp)
+            ) {
+                PlayerQueueListIcon(
+                    contentDescription = stringResource(R.string.player_queue_title),
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+        }
+        }
+
+        if (dockedAtBottom) {
+            Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+        }
+    }
+
+    if (!isFloating) {
+        val clampedProgress = progress.coerceIn(0f, 1f)
+        val trackColor = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+        val progressColor = MiuixTheme.colorScheme.primary
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .align(Alignment.TopCenter)
+        ) {
+            drawRect(color = trackColor)
+            if (clampedProgress > 0f) {
+                drawRect(
+                    color = progressColor,
+                    size = size.copy(width = size.width * clampedProgress)
+                )
+            }
+        }
+    }
+}
+}
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+fun CompactMiniPlayer(
+    song: Song,
+    isPlaying: Boolean,
+    progress: Float = 0f,
+    lyricText: String? = null,
+    lyricTranslation: String? = null,
+    lyricProgress: Float = 0f,
+    lyricPositionMs: Long = 0L,
+    lyricTiming: MiniPlayerLyricTiming? = null,
+    coverRotationEnabled: Boolean = true,
+    albumArtUri: Uri? = null,
+    loadCoverArt: ((Song) -> Bitmap?)? = null,
+    backdrop: Backdrop? = null,
+    glassEffect: BottomBarGlassEffect = BottomBarGlassEffect.Blur,
+    disableRefraction: Boolean = false,
+    cornerRadiusDp: Float? = null,
+    liquidGlassConfig: BottomBarLiquidGlassConfig? = null,
+    compactProgress: Float = 0f,
+    onClick: () -> Unit,
+    onPlayPause: () -> Unit,
+    onSkipNext: () -> Unit = {},
+    onSkipPrevious: () -> Unit = {},
+    previousSongTitle: String? = null,
+    nextSongTitle: String? = null,
+    showSkipButton: Boolean = true,
+    swipeUpToOpenPlayer: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val coverState = rememberMiniPlayerCoverModel(song, albumArtUri, loadCoverArt)
+    val textState = rememberMiniPlayerTextState(song, lyricText, lyricTranslation)
+    var transitionDirection by remember { mutableIntStateOf(1) }
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    var travelPx by remember { mutableFloatStateOf(0f) }
+    var hintStrength by remember { mutableFloatStateOf(0f) }
+    var settleJob by remember { mutableStateOf<Job?>(null) }
+    val previousLabel = stringResource(R.string.common_previous)
+    val nextLabel = stringResource(R.string.common_next)
+    val measurer = rememberTextMeasurer()
+    val onSurfaceColor = MiuixTheme.colorScheme.onSurface
+    val globalFontFamily = MiuixTheme.textStyles.main.fontFamily
+    val hintStyle = remember(onSurfaceColor, globalFontFamily) {
+        TextStyle(
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = onSurfaceColor,
+            fontFamily = globalFontFamily
+        )
+    }
+    val titleStyle = remember(onSurfaceColor, globalFontFamily) {
+        TextStyle(
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Normal,
+            color = onSurfaceColor,
+            fontFamily = globalFontFamily
+        )
+    }
+    val maxTitleWidthPx = with(LocalDensity.current) { 92.dp.toPx() }.toInt()
+    val previousHint = remember(previousLabel, hintStyle) { measurer.measure(previousLabel, hintStyle) }
+    val nextHint = remember(nextLabel, hintStyle) { measurer.measure(nextLabel, hintStyle) }
+    val previousTitleHint = remember(previousSongTitle, titleStyle, maxTitleWidthPx) {
+        previousSongTitle?.takeIf { it.isNotBlank() }?.let {
+            measurer.measure(
+                text = it,
+                style = titleStyle,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+                constraints = Constraints(maxWidth = maxTitleWidthPx)
+            )
+        }
+    }
+    val nextTitleHint = remember(nextSongTitle, titleStyle, maxTitleWidthPx) {
+        nextSongTitle?.takeIf { it.isNotBlank() }?.let {
+            measurer.measure(
+                text = it,
+                style = titleStyle,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+                constraints = Constraints(maxWidth = maxTitleWidthPx)
+            )
+        }
+    }
+    val maxTravelPx = with(LocalDensity.current) { 96.dp.toPx() }
+    val skipNextState by androidx.compose.runtime.rememberUpdatedState(onSkipNext)
+    val skipPreviousState by androidx.compose.runtime.rememberUpdatedState(onSkipPrevious)
+    val swipeThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 48.dp.toPx() }
+    val compact = compactProgress.coerceIn(0f, 1f)
+    val compactHeight = androidx.compose.ui.unit.lerp(64.dp, 60.dp, compact)
+    val coverSize = 38.dp
+    val ringSize = 44.dp
+    val startPadding = 12.dp
+
+    GlassPill(
+        backdrop = backdrop,
+        modifier = modifier
+            .miniMorphAnchor(radius = (cornerRadiusDp ?: LocalBottomBarCornerRadiusDp.current).dp)
+            .fillMaxWidth()
+            .height(compactHeight)
+            .pointerInput(song.id, swipeThreshold) {
+                var dragAmount = 0f
+                var passedThreshold = false
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        dragAmount = 0f
+                        passedThreshold = false
+                    },
+                    onHorizontalDrag = { change, amount ->
+                        dragAmount += amount
+                        change.consume()
+                        settleJob?.cancel()
+                        travelPx = sign(dragAmount) * maxTravelPx * (1f - exp(-abs(dragAmount) / maxTravelPx))
+                        hintStrength = (abs(dragAmount) / swipeThreshold).coerceIn(0f, 1f)
+                        val nowPassed = abs(dragAmount) >= swipeThreshold
+                        if (nowPassed != passedThreshold) {
+                            passedThreshold = nowPassed
+                            if (nowPassed) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                        }
+                    },
+                    onDragEnd = {
+                        val commit = when {
+                            dragAmount <= -swipeThreshold -> -1
+                            dragAmount >= swipeThreshold -> 1
+                            else -> 0
+                        }
+                        if (commit < 0) {
+                            transitionDirection = 1
+                            skipNextState()
+                        } else if (commit > 0) {
+                            transitionDirection = -1
+                            skipPreviousState()
+                        }
+                        settleJob?.cancel()
+                        settleJob = scope.launch {
+                            animate(
+                                initialValue = travelPx,
+                                targetValue = 0f,
+                                animationSpec = spring(dampingRatio = 0.78f, stiffness = 380f)
+                            ) { value, _ ->
+                                travelPx = value
+                                hintStrength = hintStrength * 0.86f
+                            }
+                            travelPx = 0f
+                            hintStrength = 0f
+                        }
+                        dragAmount = 0f
+                    },
+                    onDragCancel = {
+                        settleJob?.cancel()
+                        settleJob = scope.launch {
+                            animate(
+                                initialValue = travelPx,
+                                targetValue = 0f,
+                                animationSpec = spring(dampingRatio = 0.78f, stiffness = 380f)
+                            ) { value, _ ->
+                                travelPx = value
+                                hintStrength = hintStrength * 0.86f
+                            }
+                            travelPx = 0f
+                            hintStrength = 0f
+                        }
+                        dragAmount = 0f
+                    }
+                )
+            }
+            .drawWithCache {
+                val chevron = 4.5.dp.toPx()
+                val chevronGap = 5.dp.toPx()
+                val edgePadding = 14.dp.toPx()
+                onDrawWithContent {
+                    drawContent()
+                    val travel = travelPx
+                    val strength = hintStrength
+                    if (strength <= 0.02f || travel == 0f) return@onDrawWithContent
+                    val towardsPrevious = travel > 0f
+                    val hint = if (towardsPrevious) previousHint else nextHint
+                    val eased = (strength * strength * (3f - 2f * strength)).coerceIn(0f, 1f)
+                    val textAlpha = 0.95f * eased
+                    val midY = size.height / 2f
+                    val direction = if (towardsPrevious) -1f else 1f
+
+                    val chevronX = if (towardsPrevious) {
+                        edgePadding + chevron
+                    } else {
+                        size.width - edgePadding - chevron
+                    }
+
+                    listOf(-chevron, chevron).forEach { dy ->
+                        drawLine(
+                            color = onSurfaceColor.copy(alpha = textAlpha),
+                            start = Offset(chevronX - direction * chevron, midY + dy),
+                            end = Offset(chevronX, midY),
+                            strokeWidth = 1.6.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+
+                    val titleHint = if (towardsPrevious) previousTitleHint else nextTitleHint
+                    val lineGap = 1.5.dp.toPx()
+                    if (titleHint != null) {
+                        val totalHeight = hint.size.height + titleHint.size.height + lineGap
+                        val startY = midY - totalHeight / 2f
+                        if (towardsPrevious) {
+                            val textX = chevronX + chevronGap + chevron
+                            drawText(
+                                textLayoutResult = hint,
+                                color = onSurfaceColor.copy(alpha = textAlpha),
+                                topLeft = Offset(textX, startY)
+                            )
+                            drawText(
+                                textLayoutResult = titleHint,
+                                color = onSurfaceColor.copy(alpha = textAlpha * 0.85f),
+                                topLeft = Offset(textX, startY + hint.size.height + lineGap)
+                            )
+                        } else {
+                            val textRight = chevronX - chevronGap - chevron
+                            drawText(
+                                textLayoutResult = hint,
+                                color = onSurfaceColor.copy(alpha = textAlpha),
+                                topLeft = Offset(textRight - hint.size.width, startY)
+                            )
+                            drawText(
+                                textLayoutResult = titleHint,
+                                color = onSurfaceColor.copy(alpha = textAlpha * 0.85f),
+                                topLeft = Offset(textRight - titleHint.size.width, startY + hint.size.height + lineGap)
+                            )
+                        }
+                    } else {
+                        val textX = if (towardsPrevious) {
+                            chevronX + chevronGap + chevron
+                        } else {
+                            chevronX - chevronGap - chevron - hint.size.width
+                        }
+                        drawText(
+                            textLayoutResult = hint,
+                            color = onSurfaceColor.copy(alpha = textAlpha),
+                            topLeft = Offset(textX, midY - hint.size.height / 2f)
+                        )
+                    }
+                }
+            },
+        cornerRadiusDp = cornerRadiusDp,
+        glassEffect = glassEffect,
+        disableRefraction = disableRefraction,
+        liquidGlassConfig = liquidGlassConfig,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(compactHeight)
+                .padding(start = startPadding, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(compactHeight)
+                    .graphicsLayer { translationX = travelPx; alpha = 1f - hintStrength * 0.55f }
+                    .miniPlayerOpeningGesture(song.id, swipeUpToOpenPlayer, onClick)
+
+                    .then(
+                        if (onLongClick != null) {
+                            Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                        } else {
+                            Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onClick
+                            )
+                        }
+                    ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                MiniPlayerCoverProgress(
+                    coverState = coverState,
+                    isPlaying = isPlaying,
+                    progress = progress,
+                    coverRotationEnabled = coverRotationEnabled,
+                    coverSize = coverSize,
+                    ringSize = ringSize
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                MiniPlayerAnimatedText(
+                    textState = textState,
+                    transitionDirection = transitionDirection,
+                    lyricProgress = lyricProgress,
+                    lyricPositionMs = lyricPositionMs,
+                    lyricTiming = lyricTiming,
+                    isPlaying = isPlaying,
+                    modifier = Modifier.weight(1f),
+                    primaryFontSize = 14,
+                    primaryFontWeight = FontWeight.SemiBold,
+                    secondaryFontSize = 12
+                )
+            }
+            IconButton(
+                onClick = onPlayPause,
+                modifier = Modifier.size(36.dp).graphicsLayer { alpha = 1f - hintStrength }
+            ) {
+                Icon(
+                    painter = painterResource(id = if (isPlaying) R.drawable.ic_player_pause else R.drawable.ic_player_play_legacy),
+                    contentDescription = if (isPlaying) stringResource(R.string.common_pause) else stringResource(R.string.common_play),
+                    tint = MiuixTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            if (showSkipButton) {
+                IconButton(
+                    onClick = {
+                        transitionDirection = 1
+                        onSkipNext()
+                    },
+                    modifier = Modifier.size(36.dp).graphicsLayer { alpha = 1f - hintStrength }
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_skip_next),
+                        contentDescription = stringResource(R.string.common_next),
+                        tint = MiuixTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Expanded and compact players share the same glass drawing/capture order. */
+@Composable
+private fun ExpandedMiniPlayerSurface(
+    glass: Boolean,
+    backdrop: Backdrop?,
+    cornerRadius: Float,
+    glassEffect: BottomBarGlassEffect,
+    disableRefraction: Boolean,
+    liquidConfig: BottomBarLiquidGlassConfig,
+    surfaceColor: Color,
+    modifier: Modifier,
+    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
+) {
+    if (glass) {
+        GlassPill(
+            backdrop = backdrop,
+            modifier = modifier,
+            cornerRadiusDp = cornerRadius,
+            glassEffect = glassEffect,
+            disableRefraction = disableRefraction,
+            liquidGlassConfig = liquidConfig,
+            content = content
+        )
+    } else {
+        Box(modifier = modifier.background(surfaceColor), content = content)
+    }
+}

@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur,rikka.shizuku.api,rikka.shizuku.provider,rikka.shizuku.shared,rikka.shizuku.aidl" />
+
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+        <package android:name="com.lonx.lyrico" />
+        <package android:name="com.example.LyricBox" />
+        <package android:name="com.xjcheng.musictageditor" />
+        <package android:name="com.zarz.spotiflac" />
+        <package android:name="com.andrewkhandr.aspectpro" />
+        <package android:name="ka.spek" />
+        <package android:name="com.hearusy.spectrum" />
+        <package android:name="net.mediaarea.mediainfo" />
+        <package android:name="com.android.musicfx" />
+        <package android:name="com.miui.misound" />
+        <package android:name="com.miui.player" />
+        <package android:name="com.miui.audioeffect" />
+        <package android:name="com.xiaomi.misound" />
+        <package android:name="com.android.settings" />
+        <package android:name="com.android.systemui" />
+        <package android:name="com.coloros.audioeffect" />
+        <package android:name="com.oppo.audioeffect" />
+        <package android:name="com.vivo.audiofx" />
+        <intent>
+            <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
+        </intent>
+        <intent>
+            <action android:name="com.lonx.lyrico.action.EDIT_TAG" />
+            <data android:mimeType="audio/*" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".EllaApp"
+        android:allowBackup="true"
+        android:requestLegacyExternalStorage="true"
+        android:largeHeap="true"
+        android:usesCleartextTraffic="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:localeConfig="@xml/locale_config"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Ella">
+        <meta-data android:name="lyricon_module" android:value="true" />
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="androidx.media3.cast.DefaultCastOptionsProvider" />
+        <meta-data android:name="lyricon_module_author" android:value="Kifranei" />
+        <meta-data android:name="lyricon_module_description" android:value="愿所有的心声都在旋律里靠岸。" />
+        <meta-data android:name="lyricon_module_tags" android:resource="@array/lyricon_module_tags" />
+
+        <!-- Opt into the optional OPlus historical-player stack integration. -->
+        <meta-data
+            android:name="io.github.andrealtb.lockscreenlyrics.OPLUS_MEDIA_HISTORY"
+            android:value="true" />
+
+        <!-- Shown by MIUI/HyperOS in the uninstall confirmation dialog. -->
+        <meta-data android:name="app_description_title" android:resource="@string/miui_uninstall_title" />
+        <meta-data android:name="app_description_content" android:resource="@string/miui_uninstall_content" />
+
+        <!-- HyperOS provides this service through its optional application-handoff SDK. -->
+        <service
+            android:name="com.xiaomi.dist.handoff.sdk.HandoffClientService"
+            android:exported="false">
+            <meta-data
+                android:name="com.xiaomi.dist.handoff.metadata.SECURITY_CONFIG"
+                android:resource="@xml/handoff_signature" />
+        </service>
+
+        <!-- Shizuku starts this Binder endpoint as a shell/root user service. -->
+        <service
+            android:name=".shizuku.ShizukuShellService"
+            android:exported="true"
+            tools:ignore="Instantiatable" />
+
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+        <meta-data android:name="moe.shizuku.client.V3_SUPPORT" android:value="true" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Ella">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="halcyon" android:host="search" />
+                <data android:scheme="halcyon" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.halcyon.action.SHORTCUT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".LyricTimingEditorActivity"
+            android:label="@string/song_more_lyric_timing"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Ella">
+            <intent-filter>
+                <action android:name="com.ella.music.action.LYRIC_TIMING" />
+                <action android:name="com.ella.music.action.EDIT_LYRICS" />
+                <action android:name="android.intent.action.EDIT" />
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="halcyon" android:host="lyric-timing" />
+                <data android:scheme="halcyon" android:host="lyrics-timing" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".CastingDeviceActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Ella.Casting" />
+
+        <activity
+            android:name=".MusicVideoActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@style/Theme.Ella" />
+
+        <activity-alias
+            android:name="com.ella.music.DefaultLauncherAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:banner="@drawable/tv_banner"
+            android:targetActivity="com.ella.music.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Retired icon choices. Kept so an already-enabled alias can be switched back to the default icon. -->
+        <activity-alias
+            android:name="com.ella.music.AnimeLauncherAlias"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:banner="@drawable/tv_banner"
+            android:targetActivity="com.ella.music.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="com.ella.music.LoliLauncherAlias"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:banner="@drawable/tv_banner"
+            android:targetActivity="com.ella.music.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Upgrade bridge for existing launcher shortcuts; renders the default icon. -->
+        <activity-alias
+            android:name="com.ella.music.BlackHairLauncherAlias"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:banner="@drawable/tv_banner"
+            android:targetActivity="com.ella.music.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="com.ella.music.TraditionalLauncherAlias"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_traditional"
+            android:label="@string/app_name"
+            android:banner="@drawable/tv_banner"
+            android:targetActivity="com.ella.music.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity
+            android:name=".ExternalPlaybackActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Ella.ExternalPlayback">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="content" android:mimeType="audio/*" />
+                <data android:scheme="file" android:mimeType="audio/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".player.PlaybackService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".player.PlaybackCompactWidgetProvider"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_APPWIDGET">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_playback_compact_info" />
+        </receiver>
+
+        <receiver
+            android:name=".player.PlaybackExpandedWidgetProvider"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_APPWIDGET">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_playback_expanded_info" />
+        </receiver>
+
+        <service
+            android:name=".player.DesktopLyricService"
+            android:exported="false" />
+
+        <service
+            android:name=".player.XiaomiSuperIslandLyricService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Live rendering of lyrics for Xiaomi Super Island" />
+        </service>
+
+        <service
+            android:name=".web.WebMusicService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-enabled LAN browser music server and local file transfer" />
+        </service>
+
+        <receiver
+            android:name="androidx.mediarouter.media.MediaTransferReceiver"
+            android:exported="false" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>

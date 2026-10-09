@@ -1,0 +1,146 @@
+package com.ella.music.ui.settings
+
+import org.json.JSONObject
+
+private const val BACKUP_EXCLUDED_HOME_FEATURE_WALLPAPER_URI = "home_feature_wallpaper_uri"
+
+internal fun String.isBackupExcludedSettingKey(): Boolean =
+    this == BACKUP_EXCLUDED_HOME_FEATURE_WALLPAPER_URI
+
+internal fun JSONObject.filterBackupSettings(
+    selectedTypes: Set<BackupType>,
+    includeDeviceLocalAssets: Boolean = false
+): JSONObject {
+    if (selectedTypes.isEmpty()) return JSONObject()
+    val filtered = JSONObject()
+    val iterator = keys()
+    while (iterator.hasNext()) {
+        val key = iterator.next()
+        if ((includeDeviceLocalAssets || !key.isBackupExcludedSettingKey()) && key.backupType() in selectedTypes) {
+            filtered.put(key, opt(key))
+        }
+    }
+    return filtered
+}
+
+internal fun String.backupType(): BackupType = when {
+    isFontSettingKey() -> BackupType.Fonts
+    isWallpaperAndImageSettingKey() -> BackupType.WallpapersAndImages
+    isEqualizerSettingKey() -> BackupType.Equalizer
+    isOnlineSourceSettingKey() -> BackupType.OnlineSources
+    isFolderPlaylistSettingKey() -> BackupType.FolderPlaylists
+    isPlaylistSettingKey() -> BackupType.Playlists
+    isLibraryAndScanSettingKey() -> BackupType.LibraryAndScan
+    else -> BackupType.Personalization
+}
+
+internal fun JSONObject.availableBackupTypes(includeDeviceLocalAssets: Boolean = false): Set<BackupType> {
+    val available = linkedSetOf<BackupType>()
+    val hasSectionedPayload = has("settings") || has("playlists") || has("playback")
+    val settings = if (hasSectionedPayload) optJSONObject("settings") ?: JSONObject() else this
+    val keys = settings.keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        if (includeDeviceLocalAssets || !key.isBackupExcludedSettingKey()) available += key.backupType()
+    }
+    val manifest = optJSONObject(PORTABLE_ASSETS_FIELD)
+    if (manifest != null) {
+        val manifestKeys = manifest.keys()
+        while (manifestKeys.hasNext()) {
+            val key = manifestKeys.next()
+            available += key.backupType()
+        }
+    }
+    if (has("playlists")) available += BackupType.Playlists
+    if (has("playback")) available += BackupType.PlaybackStats
+    if (has(BACKUP_LYRICO_PLUGINS_FIELD)) available += BackupType.OnlineSources
+    return available
+}
+
+private fun String.isFontSettingKey(): Boolean =
+    startsWith("imported_font_") ||
+        startsWith("lyric_font_") ||
+        startsWith("lyric_western_") ||
+        startsWith("lyric_cjk_") ||
+        startsWith("lyric_original_") ||
+        startsWith("lyric_translation_") ||
+        startsWith("global_western_") ||
+        startsWith("global_cjk_") ||
+        this == "lyric_custom_font_enabled" ||
+        this == "lyric_share_use_lyric_font" ||
+        this == "desktop_lyric_font_scale"
+
+private fun String.isEqualizerSettingKey(): Boolean =
+    startsWith("audio_eq_") ||
+        startsWith("audio_surround_360_") ||
+        startsWith("audio_bass_boost_") ||
+        startsWith("audio_virtualizer_") ||
+        startsWith("audio_reverb_")
+
+private fun String.isOnlineSourceSettingKey(): Boolean =
+    startsWith("webdav_") ||
+        startsWith("lx_") || startsWith("musicfree_") || startsWith("netease_") ||
+    startsWith("navidrome_") ||
+    startsWith("opensubsonic_") ||
+    startsWith("emby_") ||
+    startsWith("lyrico_plugin_") ||
+    this == "online_selected_provider"
+
+private fun String.isFolderPlaylistSettingKey(): Boolean =
+    this == "folder_playlists" ||
+        this == "sort_folder_playlist_list" ||
+        this == "pinned_folder_playlist"
+
+private fun String.isPlaylistSettingKey(): Boolean =
+    this == "sort_playlist_list" ||
+        this == "sort_playlist_detail_song" ||
+        this == "playlist_special_entries_visible" ||
+        this == "playlist_custom_order" ||
+        this == "add_to_playlist_append_to_end"
+
+private fun String.isLibraryAndScanSettingKey(): Boolean =
+    this == "auto_scan" ||
+        this == "auto_scan_local_playlists" ||
+        this == "scan_include_folders" ||
+        this == "scan_exclude_folders" ||
+        this == "usb_folder_uris" ||
+        this == "use_android_media_library" ||
+        this == "full_tag_search_enabled" ||
+        this == "initial_scan_prompt_handled" ||
+        this == "local_playlist_scan_prompt_handled" ||
+        this == "artist_separators" ||
+        this == "artist_protected_names" ||
+        this == "genre_separators" ||
+        this == "genre_protected_names" ||
+        this == "tag_ignore_case" ||
+        this == "show_album_artists" ||
+        this == "category_grid_columns" ||
+        this == "sort_library_song" ||
+        this == "sort_album_list" ||
+        this == "sort_artist_list" ||
+        this == "sort_album_detail_song" ||
+        this == "sort_artist_detail_song" ||
+        this == "sort_artist_detail_album" ||
+        this == "sort_folder_list" ||
+        this == "sort_folder_detail_song" ||
+        startsWith("sort_metadata_category_") ||
+        startsWith("sort_metadata_category_detail_song_") ||
+        startsWith("sort_metadata_category_detail_album_") ||
+        (startsWith("pinned_") && this != "pinned_folder_playlist")
+
+private fun String.isWallpaperAndImageSettingKey(): Boolean =
+    this == "startup_poster_enabled" ||
+        this == "startup_poster_uri" ||
+        this == "startup_poster_duration_ms" ||
+        this == "app_wallpaper_enabled" ||
+        this == "app_wallpaper_uri" ||
+        this == "app_wallpaper_opacity" ||
+        this == "app_wallpaper_dim" ||
+        this == "app_wallpaper_content_overlay" ||
+        this == "player_background_enabled" ||
+        this == "player_background_uri" ||
+        this == "player_background_opacity" ||
+        this == "player_background_dim" ||
+        this == "home_feature_wallpaper_uri" ||
+        this == "hi_res_logo_enabled" ||
+        this == "hi_res_logo_uri"
