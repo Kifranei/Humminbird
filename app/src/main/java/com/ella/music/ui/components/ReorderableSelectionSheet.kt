@@ -104,6 +104,12 @@ fun ReorderableSelectionSheet(
         }
     }
 
+    fun toggleItem(id: String) {
+        val item = localItems.firstOrNull { it.id == id } ?: return
+        if (!item.enabled && maxSelectCount != null && localItems.count { it.enabled } >= maxSelectCount) onExceedMaxSelect?.invoke()
+        else localItems = localItems.map { if (it.id == id) it.copy(enabled = !it.enabled) else it }
+    }
+
     EllaMiuixBottomSheet(
         show = show,
         title = null,
@@ -166,10 +172,23 @@ fun ReorderableSelectionSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                InvertSelectionButton({
+                    val selected = localItems.filter { it.enabled }.mapTo(linkedSetOf()) { it.id }
+                    val inverted = invertedSelection(localItems.map { it.id }, selected, maxSelectCount)
+                    localItems = localItems.map { it.copy(enabled = it.id in inverted) }
+                })
+            }
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f, fill = false),
+                    .weight(1f, fill = false)
+                    .dragSelectList(listState, true, remember(localItems) { localItems.map { it.id } },
+                        localItems.filter { it.enabled }.mapTo(linkedSetOf()) { it.id },
+                        onSelectionChange = { requested ->
+                            val allowed = if (maxSelectCount == null) requested else requested.take(maxSelectCount.coerceAtLeast(0)).toSet()
+                            localItems = localItems.map { it.copy(enabled = it.id in allowed) }
+                        }, onToggle = ::toggleItem, excludedStartWidth = 64.dp),
                 state = listState,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -180,16 +199,7 @@ fun ReorderableSelectionSheet(
                             isDragging = isDragging,
                             cardColor = cardColor,
                             dragHandleModifier = Modifier.draggableHandle(dragGestureDetector = ImmediateOrLongPressDragGestureDetector),
-                            onToggle = {
-                                val next = !item.enabled
-                                if (next && maxSelectCount != null && localItems.count { it.enabled } >= maxSelectCount) {
-                                    onExceedMaxSelect?.invoke()
-                                } else {
-                                    localItems = localItems.map {
-                                        if (it.id == item.id) it.copy(enabled = next) else it
-                                    }
-                                }
-                            }
+                            onToggle = { toggleItem(item.id) }
                         )
                     }
                 }

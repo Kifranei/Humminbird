@@ -84,13 +84,16 @@ internal fun PlayerScreenSheetHost(
     }
 
     if (songInfoExpanded && song != null) {
+        val pickerTitle = androidx.compose.runtime.remember(song.id) { androidx.compose.runtime.mutableStateOf<String?>(null) }
         EllaMiuixBottomSheet(
             show = true,
             enableNestedScroll = false,
-            title = stringResource(R.string.player_song_info),
+            title = pickerTitle.value ?: stringResource(R.string.player_song_info),
             onDismissRequest = { onSongInfoExpandedChange(false) }
         ) {
             SongInfoSheet(
+                onPickerTitleChange = { pickerTitle.value = it },
+                mainViewModel = mainViewModel,
                 song = song,
                 audioInfoLoader = playerViewModel::getAudioInfo,
                 tagInfoLoader = playerViewModel::getSongTagInfo,

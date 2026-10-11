@@ -63,7 +63,8 @@ private fun openSongSpectrumWithExternalApp(
     song: Song,
     target: SpectrumExternalApp
 ) {
-    if (song.path.isHttpAudioSource()) {
+    if (song.path.isHttpAudioSource() || song.path.startsWith("smb://", true) ||
+        song.path.startsWith("ftp://", true) || song.path.startsWith("ftps://", true) || song.path.startsWith("sftp://", true)) {
         Toast.makeText(context, context.getString(R.string.aspect_pro_requires_local_audio), Toast.LENGTH_SHORT).show()
         return
     }
@@ -75,13 +76,13 @@ private fun openSongSpectrumWithExternalApp(
             Toast.makeText(context, context.getString(R.string.kaspek_open_failed), Toast.LENGTH_SHORT).show()
         } else {
             launchIntent.addFlags(independentExternalTaskFlags())
-            context.startActivity(launchIntent)
+            runCatching { context.startActivity(launchIntent) }.onFailure {
+                Toast.makeText(context, R.string.kaspek_open_failed, Toast.LENGTH_SHORT).show()
+            }
         }
         return
     }
 
-    val uri = song.aspectProUri(context)
-    val mimeType = song.aspectMimeType()
     val (targetPackage, targetActivity, failureMessage) = when (target) {
         SpectrumExternalApp.AspectPro -> Triple(
             ASPECT_PRO_PACKAGE,
@@ -95,16 +96,17 @@ private fun openSongSpectrumWithExternalApp(
         )
         SpectrumExternalApp.Kaspek -> error("Kaspek is handled above")
     }
-    val intent = Intent(Intent.ACTION_VIEW).apply {
-        component = ComponentName(targetPackage, targetActivity)
-        setDataAndType(uri, mimeType)
-        putExtra(Intent.EXTRA_STREAM, uri)
-        putExtra("android.intent.extra.STREAM", uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        addFlags(independentExternalTaskFlags())
-        clipData = ClipData.newUri(context.contentResolver, song.title, uri)
-    }
     runCatching {
+        val uri = song.aspectProUri(context)
+        val mimeType = song.aspectMimeType()
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            component = ComponentName(targetPackage, targetActivity)
+            setDataAndType(uri, mimeType)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(independentExternalTaskFlags())
+            clipData = ClipData.newUri(context.contentResolver, song.title, uri)
+        }
         allowFileUriForLegacyAudioApp(uri)
         context.startActivity(intent)
     }.onFailure {

@@ -1,5 +1,8 @@
 package com.ella.music.ui.artist
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import com.ella.music.ui.components.EllaMiuixBottomSheet
 import com.ella.music.ui.folder.musicSortKey
 
@@ -625,7 +628,7 @@ fun ArtistListScreen(
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().dragSelectList(listState, selection, filteredArtistKeys, itemIdsByKey = remember(filteredArtists) { filteredArtists.associate { (it.name as Any) to listOf(it.name.tagIdentityKey()) } }),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         end = when {
                             !showArtistSideIndex -> 0.dp
@@ -731,6 +734,7 @@ fun ArtistListScreen(
                     allSelected = filteredArtists.isNotEmpty() && selectedVisibleArtistCount == filteredArtists.size,
                     onRangeSelect = { selection.applyRangeSelection(filteredArtistKeys, artistIndexByKey) },
                     onSelectAll = { selection.toggleSelectAll(filteredArtistKeys) },
+                    onInvertSelection = { selection.invertSelection(filteredArtistKeys) },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(end = LibraryFloatingControlsEndPadding, bottom = LibraryFloatingControlsBottomPadding)

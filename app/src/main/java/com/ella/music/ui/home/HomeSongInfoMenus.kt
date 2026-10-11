@@ -30,10 +30,14 @@ internal fun SongInfoMenu(
     song: Song,
     audioInfoLoader: (Song) -> AudioInfo,
     tagInfoLoader: (Song) -> SongTagInfo,
+    mainViewModel: com.ella.music.viewmodel.MainViewModel,
+    onPickerTitleChange: (String?) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     SongInfoSheet(
+        mainViewModel = mainViewModel,
+        onPickerTitleChange = onPickerTitleChange,
         song = song,
         audioInfoLoader = audioInfoLoader,
         tagInfoLoader = tagInfoLoader,

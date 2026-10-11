@@ -102,7 +102,7 @@ fun LyricSharePicker(
     val listState = rememberLazyListState()
 
     LaunchedEffect(initialIndex) {
-        listState.scrollToItem((initialIndex - 4).coerceAtLeast(0))
+        listState.scrollToItem(if (initialIndex < 4) 0 else initialIndex - 3)
     }
 
     val selectedLines = remember(selectedIndexes, lyrics) {
@@ -234,6 +234,7 @@ fun LyricSharePicker(
                             selectedIndexes = selectedIndexes,
                             listState = listState,
                             onToggleSelection = onToggleSelection,
+                            onSelectionChange = { selectedIndexes = it },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
@@ -276,6 +277,7 @@ fun LyricSharePicker(
                     selectedIndexes = selectedIndexes,
                     listState = listState,
                     onToggleSelection = onToggleSelection,
+                            onSelectionChange = { selectedIndexes = it },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
@@ -480,14 +482,21 @@ private fun LyricShareLineList(
     selectedIndexes: Set<Int>,
     listState: androidx.compose.foundation.lazy.LazyListState,
     onToggleSelection: (Int, Boolean) -> Unit,
+    onSelectionChange: (Set<Int>) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
         state = listState,
-        modifier = modifier,
+        modifier = modifier.dragSelectList(listState, true, remember(lyrics) { lyrics.indices.toList() }, selectedIndexes,
+            onSelectionChange = onSelectionChange, onToggle = { onToggleSelection(it, it in selectedIndexes) }),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        itemsIndexed(lyrics) { index, line ->
+        item(key = "invert-lyric-selection") {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                InvertSelectionButton({ onSelectionChange(invertedSelection(lyrics.indices.toList(), selectedIndexes)) })
+            }
+        }
+        itemsIndexed(lyrics, key = { index, _ -> index }) { index, line ->
             val selected = index in selectedIndexes
             LyricSharePickerRow(
                 line = line,

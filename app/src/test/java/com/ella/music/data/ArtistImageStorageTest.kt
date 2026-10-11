@@ -4,6 +4,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ArtistImageStorageTest {
+    @Test fun savedArtistImagesOnlyAddSuffixesForCaseInsensitiveCollisions() {
+        val names = mutableListOf<String>()
+        val saved = listOf("LiSA", "LiSA", "LISA", "LISA").map { artist ->
+            uniqueMediaExportName("$artist.png", names).also(names::add)
+        }
+        assertEquals(listOf("LiSA.png", "LiSA (1).png", "LISA (2).png", "LISA (3).png"), saved)
+    }
+    @Test fun mvTemplatesPreserveMetadataAndReplaceReservedFilenameCharacters() {
+        assertEquals("Artist - Title_1080(42).mp4", musicVideoExportName("{artist} - {title}_{quality}({mvId})", "Artist", "Title", "Album", "1080", "42"))
+        assertEquals("Title - Artist - Album.mp4", musicVideoExportName("{title} - {artist} - {album}", "Artist", "Title", "Album", "720", "42"))
+        org.junit.Assert.assertTrue(sanitizeMediaExportName("歌".repeat(200)).toByteArray(Charsets.UTF_8).size <= 210)
+        assertEquals("／＼：＊？｜〈〉'", sanitizeMediaExportName("/\\:*?|<>\""))
+    }
+
     @Test fun spotifyUsesTheLargestAvailableImageInsteadOfResponseOrdering() {
         val json = """{"artists":{"items":[{"name":"LISA","images":[{"url":"https://image.test/small.jpg","width":160,"height":160},{"url":"https://image.test/large.jpg","width":640,"height":640}]}]}}"""
         assertEquals("https://image.test/large.jpg", ArtistImageRepository.parseSpotifyArtistImageUrl(json, "LISA"))

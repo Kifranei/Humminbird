@@ -10,6 +10,17 @@ import org.junit.Test
 
 class ShuffleQueuePolicyTest {
     @Test
+    fun onlyDifferentQueueOccurrencesAtLastToFirstAreACycleBoundary() {
+        assertTrue(isShuffleQueueCycleBoundary(3, 0, 4, "queue:1:4", "queue:1:1"))
+        assertFalse(isShuffleQueueCycleBoundary(3, 0, 4, "queue:1:4", "queue:1:4"))
+        assertFalse(isShuffleQueueCycleBoundary(1, 2, 4, "queue:1:2", "queue:2:3"))
+        assertFalse(isShuffleQueueCycleBoundary(1, 1, 4, "queue:1:2", "queue:1:2"))
+        assertFalse(isShuffleQueueCycleBoundary(0, 0, 1, "queue:1:1", "queue:1:1"))
+        assertFalse(isShuffleQueueCycleBoundary(3, 0, 4, null, "queue:1:1"))
+        assertFalse(isShuffleQueueCycleBoundary(3, 0, 4, "queue:1:4", ""))
+    }
+
+    @Test
     fun enableShuffleDoesNotImmediatelyRequireQueueMutation() {
         assertTrue(
             shouldDeferShuffleReorder(

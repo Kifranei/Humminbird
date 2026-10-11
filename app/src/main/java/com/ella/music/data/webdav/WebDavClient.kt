@@ -117,7 +117,7 @@ private fun flacPrefixLooksValid(file: File): Boolean {
  * File-backed counterpart of [flacMetadataEnd]. It only reads four-byte block headers and seeks
  * over payloads, so validating a large embedded picture never allocates a second full prefix.
  */
-private fun flacMetadataEnd(file: File): Long? {
+internal fun flacMetadataEnd(file: File): Long? {
     if (!file.isFile || file.length() <= 0L) return null
     return runCatching {
         RandomAccessFile(file, "r").use { input ->

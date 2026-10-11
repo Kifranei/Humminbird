@@ -101,7 +101,7 @@ internal fun HomeTileSection(
     val featureIds by settings.homeFeatureItems.collectAsState(initial = initialItems.second)
     val byId = tiles.associateBy { it.id }
     val shortcuts = shortcutIds.split(',').distinct().mapNotNull { byId[it] }
-    val features = featureIds.split(',').distinct().mapNotNull { byId[it] }
+    val features = featureIds.split(',').distinct().filterNot { it in shortcuts.map(HomeTileSpec::id) }.mapNotNull { byId[it] }
     val televisionDevice = remember(context) {
         com.ella.music.util.isTelevisionDevice(context)
     }

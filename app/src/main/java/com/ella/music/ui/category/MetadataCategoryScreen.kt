@@ -1,5 +1,8 @@
 package com.ella.music.ui.category
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -151,6 +154,7 @@ fun MetadataCategoryScreen(
     var searchQuery by remember { mutableStateOf("") }
     val selection = rememberLibrarySelectionState<String>()
     var categoryMenuItem by remember { mutableStateOf<MetadataCategoryItem?>(null) }
+    var batchCategory by rememberSaveable(type) { mutableStateOf<String?>(null) }
     var folderToBlock by remember { mutableStateOf<String?>(null) }
     var playlistPickerSongs by remember { mutableStateOf<List<Song>?>(null) }
     var createPlaylistSongs by remember { mutableStateOf<List<Song>?>(null) }
@@ -484,6 +488,7 @@ fun MetadataCategoryScreen(
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(safeGridColumns),
                     state = gridState,
+                    modifier = Modifier.fillMaxSize().dragSelectGrid(gridState, selection, currentSelectionKeys),
                     contentPadding = PaddingValues(
                         end = if (showCategorySideIndex) SideIndexListEndPadding else 0.dp,
                         bottom = 120.dp
@@ -571,6 +576,7 @@ fun MetadataCategoryScreen(
                     allSelected = currentSelectionKeys.isNotEmpty() && selectedVisibleCount == currentSelectionKeys.size,
                     onRangeSelect = { selection.applyRangeSelection(currentSelectionKeys, currentSelectionIndexByName) },
                     onSelectAll = ::toggleSelectAllVisibleItems,
+                onInvertSelection = { selection.invertSelection(currentSelectionKeys) },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(end = LibraryFloatingControlsEndPadding, bottom = LibraryFloatingControlsBottomPadding)
@@ -720,9 +726,19 @@ fun MetadataCategoryScreen(
                         pendingDeleteSongs = mainViewModel.getSongsForMetadataCategory(type, item.name)
                         categoryMenuItem = null
                     }
-                )
+                ) + if (com.ella.music.data.metadataCategoryEditKey(type) != null) listOf(
+                    com.ella.music.ui.components.LibraryEntityAction(
+                        title = stringResource(R.string.category_batch_edit),
+                        icon = com.ella.music.ui.components.ActionMenuCommonIcons.edit,
+                        onClick = { batchCategory = item.name; categoryMenuItem = null }
+                    )
+                ) else emptyList()
             )
         }
+    }
+
+    if (com.ella.music.data.metadataCategoryEditKey(type) != null) {
+        MetadataCategoryBatchSheet(type, batchCategory, mainViewModel) { batchCategory = null }
     }
 
     associateFolderPaths?.let { sourceFolders ->

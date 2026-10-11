@@ -11,7 +11,6 @@ import org.junit.Test
 
 class ActionMenuLayoutTest {
     private val defaults = listOf("a", "b", "c")
-
     @Test
     fun `lyric sharing is configurable and stays hidden after editing player menu`() {
         val defaults = ActionMenuIds.playerActionMenuDefaults

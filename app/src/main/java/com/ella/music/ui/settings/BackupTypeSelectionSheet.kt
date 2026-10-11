@@ -1,5 +1,8 @@
 package com.ella.music.ui.settings
 
+import com.ella.music.ui.components.dragSelectList
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -103,13 +106,21 @@ internal fun BackupTypeSelectionSheet(
                 .fillMaxWidth()
                 .padding(bottom = 18.dp)
         ) {
-            Column(
+            val dragState = androidx.compose.foundation.lazy.rememberLazyListState()
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                com.ella.music.ui.components.InvertSelectionButton({
+                    selected = com.ella.music.ui.components.invertedSelection(visibleTypes, selected)
+                })
+            }
+            LazyColumn(
+                state = dragState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 360.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .dragSelectList(dragState, true, visibleTypes, selected, onSelectionChange = { selected = it }),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
+                item {
                 BackupTypeSelectAllItem(
                     selected = allSelected,
                     onCheckedChange = { checked ->
@@ -123,7 +134,8 @@ internal fun BackupTypeSelectionSheet(
                         .height(0.5.dp)
                         .background(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 )
-                visibleTypes.forEach { type ->
+                }
+                items(visibleTypes, key = { it }) { type ->
                     BackupTypeCheckboxItem(
                         type = type,
                         checked = type in selected,

@@ -96,6 +96,7 @@ fun CoverMediaSettingsScreen(
         ) {
             Spacer(modifier = Modifier.height(topBarHeight + 8.dp))
             SettingsArtistCoverSection(highlightKey = highlightKey)
+            SettingsMediaExportSection()
             SettingsArtistImageSection(highlightKey = highlightKey)
             SettingsDynamicCoverSection(highlightKey = highlightKey)
             SettingsSpotifyCanvasSection()
@@ -245,8 +246,8 @@ internal fun SettingsArtistImageSection(highlightKey: String? = null) {
                 } // search-anchor:end
 
             }
-            // search-anchor:start
-            SettingsSearchAnchor(R.string.settings_artist_spotify_region) {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_artist_spotify_region) {
                 WindowSpinnerPreference(
                     title = stringResource(R.string.settings_artist_spotify_region),
                     summary = stringResource(R.string.settings_artist_spotify_region_summary),
@@ -254,7 +255,7 @@ internal fun SettingsArtistImageSection(highlightKey: String? = null) {
                     selectedIndex = com.ella.music.data.lastfm.SPOTIFY_ARTIST_REGIONS.indexOfFirst { it.code == spotifyRegion }.coerceAtLeast(0),
                     onSelectedIndexChange = { index -> com.ella.music.data.lastfm.SPOTIFY_ARTIST_REGIONS.getOrNull(index)?.let { region -> scope.launch { settingsManager.setArtistSpotifyRegion(region.code) } } }
                 )
-            } // search-anchor:end
+                } // search-anchor:end
             val artistSourceSummary = remember(enabledSourceIds, sourceLabels) {
                 enabledSourceIds.mapNotNull { sourceLabels[it] }.joinToString(" · ")
             }
@@ -329,7 +330,6 @@ internal fun SettingsArtistCoverSection(highlightKey: String? = null) {
     val artistCoverFolderUri by settingsManager.artistCoverFolderUri.collectCachedAsState("artistCoverFolderUri", "")
     val artistCoverDownloadFolderUri by settingsManager.artistCoverDownloadFolderUri.collectCachedAsState("artistCoverDownloadFolderUri", "")
     val artistCoverCarousel by settingsManager.artistCoverCarousel.collectCachedAsState("artistCoverCarousel", true)
-    val coverExportFolderUri by settingsManager.coverExportFolderUri.collectCachedAsState("coverExportFolderUri", "")
     val artistCoverFolderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -366,15 +366,6 @@ internal fun SettingsArtistCoverSection(highlightKey: String? = null) {
         }
         scope.launch { settingsManager.setArtistCoverDownloadFolderUri(uri.toString()) }
         Toast.makeText(context, context.getString(R.string.settings_artist_cover_download_folder_saved), Toast.LENGTH_SHORT).show()
-    }
-    val coverExportFolderPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        val readWrite = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        runCatching { context.contentResolver.takePersistableUriPermission(uri, readWrite) }
-        scope.launch { settingsManager.setCoverExportFolderUri(uri.toString()) }
-        Toast.makeText(context, context.getString(R.string.settings_cover_export_folder_saved), Toast.LENGTH_SHORT).show()
     }
 
     SmallTitle(text = stringResource(R.string.settings_artist_cover_folder))
@@ -442,33 +433,7 @@ internal fun SettingsArtistCoverSection(highlightKey: String? = null) {
             )
             } // search-anchor:end
 
-            // search-anchor:start
-            SettingsSearchAnchor(R.string.settings_cover_export_folder) {
-            ArrowPreference(
-                title = stringResource(R.string.settings_cover_export_folder),
-                summary = if (coverExportFolderUri.isBlank()) {
-                    stringResource(R.string.settings_cover_export_folder_summary)
-                } else {
-                    stringResource(R.string.settings_cover_export_folder_selected)
-                },
-                onClick = { coverExportFolderPicker.launch(null) }
-            )
-            } // search-anchor:end
 
-            if (coverExportFolderUri.isNotBlank() /* search-reveal */ || SettingsSearchFocus.reveals(R.string.settings_cover_export_folder_remove)) {
-                // search-anchor:start
-                SettingsSearchAnchor(R.string.settings_cover_export_folder_remove) {
-                ArrowPreference(
-                    title = stringResource(R.string.settings_cover_export_folder_remove),
-                    summary = stringResource(R.string.settings_cover_export_folder_remove_summary),
-                    onClick = {
-                        scope.launch { settingsManager.setCoverExportFolderUri("") }
-                        Toast.makeText(context, context.getString(R.string.settings_cover_export_folder_cleared), Toast.LENGTH_SHORT).show()
-                    }
-                )
-                } // search-anchor:end
-
-            }
         }
     }
     com.ella.music.ui.components.EllaMiuixDialog(
@@ -559,6 +524,7 @@ internal fun SettingsDynamicCoverSection(highlightKey: String? = null) {
 
 @Composable
 internal fun SettingsMusicVideoSection(highlightKey: String? = null) {
+    var confirmRemoveMvFolders by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settingsManager = remember { SettingsManager.getInstance(context) }
@@ -890,7 +856,7 @@ internal fun SettingsMusicVideoSection(highlightKey: String? = null) {
                     title = stringResource(R.string.settings_music_video_custom_folders_remove),
                     summary = stringResource(R.string.settings_music_video_custom_folders_remove_summary),
                     onClick = {
-                        scope.launch { settingsManager.setMusicVideoCustomFolders("") }
+                        confirmRemoveMvFolders = true
                     }
                 )
                 } // search-anchor:end
@@ -907,4 +873,16 @@ internal fun SettingsMusicVideoSection(highlightKey: String? = null) {
 
         }
     }
+    com.ella.music.ui.components.ConfirmDangerDialog(
+        show = confirmRemoveMvFolders,
+        title = stringResource(R.string.settings_music_video_custom_folders_remove),
+        message = stringResource(R.string.settings_mv_folder_remove_confirm),
+        confirmText = stringResource(R.string.common_confirm),
+        onDismiss = { confirmRemoveMvFolders = false },
+        onConfirm = {
+            confirmRemoveMvFolders = false
+            scope.launch { settingsManager.setMusicVideoCustomFolders("") }
+        }
+    )
+
 }

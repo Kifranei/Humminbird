@@ -4,7 +4,10 @@ import com.ella.music.data.model.Song
 import com.ella.music.data.model.playlistIdentityKey
 import kotlin.random.Random
 
-internal data class PosterWallDataset(val source: String, val query: String, val items: List<PosterWallItem>, val shuffleSeed: Int = 0)
+internal data class PosterWallDataset(val source: String, val query: String, val items: List<PosterWallItem>, val shuffleSeed: Int = 0,
+    val stackLayout: PosterStackLayout? = null, val allItems: List<PosterWallItem> = items) {
+    val itemsByStackKey = allItems.associateBy { it.stackKey }
+}
 
 /** Shuffle only the presentation, retaining source indices and duplicate queue occurrences. */
 internal fun rearrangePosterWallItems(items: List<PosterWallItem>, seed: Int): List<PosterWallItem> {
@@ -23,10 +26,17 @@ internal fun nextPosterWallShuffleSeed(current: List<PosterWallItem>, seed: Int)
 
 internal fun buildPosterWallItems(songs: List<Song>, source: String, query: String): List<PosterWallItem> {
     val needle = query.trim()
+    val occurrences = mutableMapOf<String, Int>()
     return songs.mapIndexedNotNull { index, song ->
+        val identity = song.playlistIdentityKey()
+        val stable = if (song.onlineSource.isNotBlank() && song.onlineId.isNotBlank())
+            "online|${song.onlineSource}|${song.onlineId}" else identity
+        val occurrenceKey = "$stable|${song.playbackSourceKey.orEmpty()}"
+        val occurrence = occurrences.getOrDefault(occurrenceKey, 0)
+        occurrences[occurrenceKey] = occurrence + 1
         if (needle.isBlank() || song.title.contains(needle, true) || song.artist.contains(needle, true) ||
             song.album.contains(needle, true) || song.fileName.contains(needle, true)) {
-            PosterWallItem(song, index, "$source:$index:${song.playlistIdentityKey()}")
+            PosterWallItem(song, index, "$source:$index:$occurrenceKey#$occurrence", "$occurrenceKey#$occurrence")
         } else null
     }
 }
@@ -37,3 +47,7 @@ internal fun resolvePosterQueueIndex(queue: List<Song>, song: Song, hint: Int): 
     if (matches(queue.getOrNull(hint))) return hint
     return queue.indexOfFirst(::matches)
 }
+
+/** A stale player emission must not replace a card the user has just swiped to. */
+internal fun posterPlaybackConfirmed(pending: Pair<String, Int>?, identity: String, queueIndex: Int): Boolean =
+    pending == null || (pending.first == identity && (pending.second < 0 || pending.second == queueIndex))

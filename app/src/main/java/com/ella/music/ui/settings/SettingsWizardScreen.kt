@@ -105,7 +105,10 @@ fun SettingsWizardScreen(
         SettingsManager.LIBRARY_SOURCE_NAVIDROME to stringResource(R.string.remote_source_navidrome),
         SettingsManager.LIBRARY_SOURCE_OPENSUBSONIC to stringResource(R.string.remote_source_opensubsonic),
         SettingsManager.LIBRARY_SOURCE_EMBY to stringResource(R.string.remote_source_emby),
-        SettingsManager.LIBRARY_SOURCE_WEBDAV to stringResource(R.string.webdav_library_title)
+        SettingsManager.LIBRARY_SOURCE_WEBDAV to stringResource(R.string.webdav_library_title),
+        SettingsManager.LIBRARY_SOURCE_SMB to stringResource(R.string.smb_title),
+        SettingsManager.LIBRARY_SOURCE_FTP to stringResource(R.string.ftp_library_title),
+        SettingsManager.LIBRARY_SOURCE_SFTP to stringResource(R.string.sftp_library_title)
     )
     val bottomBarStyleOptions = listOf(
         com.ella.music.data.BottomBarStyle.Normal to stringResource(R.string.bottom_bar_style_normal),

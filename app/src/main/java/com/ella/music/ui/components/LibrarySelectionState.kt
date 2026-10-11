@@ -86,6 +86,13 @@ class LibrarySelectionState<T : Any> {
         rangeTargetId = null
     }
 
+    fun invertSelection(orderedIds: List<T>) {
+        selectedIds = invertedSelection(orderedIds, selectedIds)
+        rangeAnchorId = null
+        rangeTargetId = null
+        selectionMode = true
+    }
+
     fun toggleSelectAll(orderedIds: List<T>) {
         if (orderedIds.isEmpty()) return
         val ids = orderedIds.toSet()
@@ -105,3 +112,11 @@ class LibrarySelectionState<T : Any> {
 @Composable
 fun <T : Any> rememberLibrarySelectionState(): LibrarySelectionState<T> =
     remember { LibrarySelectionState() }
+
+/** Invert eligible visible IDs, preserving picks outside that scope and any selection limit. */
+internal fun <T : Any> invertedSelection(orderedIds: List<T>, selected: Set<T>, maxCount: Int? = null): Set<T> {
+    val visible = orderedIds.toSet()
+    val retained = selected - visible
+    val capacity = maxCount?.let { (it - retained.size).coerceAtLeast(0) } ?: Int.MAX_VALUE
+    return retained + orderedIds.distinct().filterNot { it in selected }.take(capacity)
+}

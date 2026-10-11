@@ -44,3 +44,20 @@ The Humminbird application is licensed under Apache-2.0. Third-party components 
 LGPL and MPL components above stay under those licenses. They do not relicense the Apache-2.0 application code.
 
 FFmpegKit, the bundled MiSans and Inter fonts, and the MCP Kotlin SDK are not part of this package. Redistribution of FFmpeg, TagLib, LyricGetter-API, and SuperLyricApi must follow their upstream terms. If a native build or a bundled binary changes, update this file before release.
+
+
+### Apache Commons Net 3.13.0
+
+FTP / explicit FTPS client. Apache License 2.0: https://commons.apache.org/proper/commons-net/
+
+### JSch (mwiede) 2.28.7
+
+SFTP client. BSD-style license: https://github.com/mwiede/jsch/blob/master/LICENSE.txt
+
+### Bouncy Castle 1.86
+
+Cryptographic primitives shared by SMB and SFTP, including the modern SSH key exchanges. MIT-style license: https://www.bouncycastle.org/licence.html
+
+## 2026-10-11 navigation provenance and redistribution materials
+
+The liquid navigation implementation was reimported from the Apache-2.0 Miuix v0.9.4 examples, commit `39c40f99844227b853f0049a0933b1f3ae6c00ba`, credited to compose-miuix-ui and Kyant0/AndroidLiquidGlass. The former GPL gesture inspector and KernelSU/InstallerX-derived animation and navigation sources are no longer compiled. See [migration and distribution evidence](docs/license-compliance-2026-10-11.md) and [source hashes](docs/licenses/miuix-example-provenance.json). Remaining font and vendor-SDK authorization gaps are recorded explicitly.

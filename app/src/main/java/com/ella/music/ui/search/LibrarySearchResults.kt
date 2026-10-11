@@ -1,5 +1,8 @@
 package com.ella.music.ui.search
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,6 +17,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ella.music.R
+import com.ella.music.ui.folder.songsForFolderPlaylist
+import com.ella.music.ui.navigation.Screen
+import com.ella.music.ui.navigation.LocalAppNavigator
 import com.ella.music.data.model.Album
 import com.ella.music.data.model.Song
 import com.ella.music.data.model.UserPlaylist
@@ -51,6 +57,7 @@ internal fun LibrarySearchResultsPane(
     albumResults: List<Album>,
     artistResults: List<ArtistSearchResult>,
     playlistResults: List<UserPlaylist>,
+    folderPlaylistResults: List<com.ella.music.data.model.FolderPlaylist>,
     categoryResultsByType: Map<String, List<MetadataCategoryItem>>,
     artistCoverFolderUri: String,
     visibleResultCount: Int,
@@ -58,6 +65,7 @@ internal fun LibrarySearchResultsPane(
     onDeleteHistory: (String) -> Unit,
     onClearHistoryRequest: () -> Unit,
     onToggleSongSelection: (Song) -> Unit,
+    onSongSelectionChange: (Set<String>) -> Unit,
     onEnterSongSelection: (Song) -> Unit,
     onSongAction: (Song) -> Unit,
     onActionTarget: (SearchActionTarget) -> Unit,
@@ -69,6 +77,7 @@ internal fun LibrarySearchResultsPane(
     onNavigateToPlayer: () -> Unit
 ) {
     val context = LocalContext.current
+    val navigate = LocalAppNavigator.current
     val collapsedSongSections = remember(trimmedQuery, filter) { mutableStateMapOf<Int, Boolean>() }
     val selectedSongsForDrag = remember(songResults, selectedSongKeys) {
         songResults
@@ -80,8 +89,20 @@ internal fun LibrarySearchResultsPane(
         com.ella.music.ui.components.EllaCenteredLoadingIndicator()
         return
     }
+    val dragListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val dragRows = remember(songResultGroups, collapsedSongSections.toMap()) {
+        songResultGroups.filter { collapsedSongSections[it.first] != true }.flatMap { (label, entries) -> entries.map { label to it } }
+    }
+    val dragIds = remember(dragRows) { dragRows.map { it.second.result.song.searchIdentityKey() }.distinct() }
+    val dragKeys = remember(dragRows) { dragRows.associate { (label, entry) ->
+        val result = entry.result
+        ("${result.song.id}:${result.song.path}:${result.lyricSnippet.orEmpty()}:$label:${entry.keySuffix}" as Any) to listOf(result.song.searchIdentityKey())
+    } }
+    val dragSongs = remember(songResults) { songResults.associate { it.song.searchIdentityKey() to it.song } }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        state = dragListState,
+        modifier = Modifier.fillMaxSize().dragSelectList(dragListState, selectionMode && songSelectionAvailable, dragIds, selectedSongKeys,
+            onSelectionChange = onSongSelectionChange, onToggle = { id -> dragSongs[id]?.let(onToggleSongSelection) }, itemIdsByKey = dragKeys),
         // Search keeps its own dock (mini player + search field). Leave enough list
         // clearance so the last rows are not covered by that overlay.
         contentPadding = PaddingValues(bottom = 232.dp)
@@ -249,7 +270,28 @@ internal fun LibrarySearchResultsPane(
                 )
             }
         }
-        categoryResultsByType.forEach { (categoryType, results) ->
+        listOf("folder", "folder_playlist", "composer", "arranger", "lyricist", "genre", "year").forEach { categoryType ->
+            if (categoryType == "folder_playlist") {
+                if (folderPlaylistResults.isNotEmpty()) {
+                    item { SearchSectionHeader(stringResource(R.string.folder_playlist_title) + " (${folderPlaylistResults.size})") }
+                    items(folderPlaylistResults, key = { "folder-playlist:${it.id}" }) { playlist ->
+                        val playlistSongs = remember(playlist, songs) { songs.songsForFolderPlaylist(playlist.folders) }
+                        val coverSong = playlistSongs.firstOrNull()
+                        MetadataCategoryResultRow(
+                            item = MetadataCategoryItem(playlist.name, playlistSongs.size,
+                                playlistSongs.map { it.albumIdentityId() }.distinct().size, playlistSongs.sumOf { it.duration }),
+                            displayName = playlist.name,
+                            coverModel = coverSong?.coverUrl?.takeIf { it.isNotBlank() }
+                                ?: coverSong?.albumId?.takeIf { it > 0L }?.let(mainViewModel::getAlbumArtUri),
+                            roundCover = false, query = trimmedQuery,
+                            onClick = { onCommitSearch(); navigate(Screen.FolderPlaylistDetail.createRoute(playlist.id)) },
+                            onLongClick = { onActionTarget(SearchActionTarget.FolderPlaylistTarget(playlist)) }
+                        )
+                    }
+                }
+                return@forEach
+            }
+            val results = categoryResultsByType[categoryType].orEmpty()
             if (results.isNotEmpty()) {
                 item { SearchSectionHeader(stringResource(categoryType.searchLabelRes()) + " (${results.size})") }
                 items(results, key = { "$categoryType:${it.name}" }) { item ->

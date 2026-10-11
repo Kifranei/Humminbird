@@ -1,0 +1,26 @@
+{
+  "tag": "v0.9.4",
+  "commit": "39c40f99844227b853f0049a0933b1f3ae6c00ba",
+  "source": "https://github.com/compose-miuix-ui/miuix",
+  "files": [
+    {
+      "path": "app/src/main/java/com/ella/music/ui/animation/DampedDragAnimation.kt",
+      "upstreamFile": "DampedDragAnimation.kt",
+      "upstreamSha256": "09e528d26e2c58eafe63e80832aa0d3473d8a8676561155592577d27a26e626a",
+      "adaptedSha256": "9644441c9c625b12ac69d78cbdb1e7c4fb42033aa09f3f8bf86ca3c0f3a1dfc2"
+    },
+    {
+      "path": "app/src/main/java/com/ella/music/ui/animation/InteractiveHighlight.kt",
+      "upstreamFile": "InteractiveHighlight.kt",
+      "upstreamSha256": "bb299663f3b8c85193ef628ee1eaf38fdf07cc12f4dd8feed6f31c7d5c75a4e8",
+      "adaptedSha256": "6d84daf1b5a8a553d24f8df4cb35259c51bd474d8bb1166355c1f2e6330e6278"
+    },
+    {
+      "path": "app/src/main/java/com/ella/music/ui/components/FloatingBottomBar.kt",
+      "upstreamFile": "LiquidGlassNavigationBar.kt",
+      "upstreamSha256": "77e4cbb63909a0bf86782d3641f8aff553d6e48dc4baac3c7e8308f81812c0c4",
+      "adaptedSha256": "fdb46413506f44a253d3b528a9ce2ba68525838cb6e487eb4a4e09a3a9fc4c25"
+    }
+  ],
+  "adaptedHashNormalization": "LF"
+}

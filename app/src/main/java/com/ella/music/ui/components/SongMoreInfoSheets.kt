@@ -62,6 +62,8 @@ fun SongInfoSheet(
     song: Song,
     audioInfoLoader: (Song) -> AudioInfo,
     tagInfoLoader: (Song) -> SongTagInfo,
+    mainViewModel: MainViewModel,
+    onPickerTitleChange: ((String?) -> Unit)? = null,
     onOpenMediaInfo: () -> Unit = {},
     onDismiss: () -> Unit,
     onUpdateModifiedTime: (suspend (Long) -> Boolean)? = null,
@@ -83,6 +85,7 @@ fun SongInfoSheet(
     var showNeteaseArtistPicker by remember(song.id) { mutableStateOf(false) }
     var neteaseArtistPickerForWiki by remember(song.id) { mutableStateOf(false) }
     var namePicker by remember(song.id) { mutableStateOf<SongInfoNamePicker?>(null) }
+    LaunchedEffect(namePicker?.title) { onPickerTitleChange?.invoke(namePicker?.title) }
     val audioInfo by produceState<AudioInfo?>(initialValue = null, song.id, song.dateModified, song.fileSize) {
         value = withContext(Dispatchers.IO) { audioInfoLoader(song) }
     }
@@ -106,6 +109,10 @@ fun SongInfoSheet(
                 title = when (jump) {
                     SongInfoJump.Artist, SongInfoJump.AlbumArtist ->
                         context.getString(R.string.song_more_select_artist)
+                    SongInfoJump.Composer -> context.getString(R.string.song_more_select_composer)
+                    SongInfoJump.Arranger -> context.getString(R.string.song_more_select_arranger)
+                    SongInfoJump.Lyricist -> context.getString(R.string.song_more_select_lyricist)
+                    SongInfoJump.Genre -> context.getString(R.string.song_more_select_genre)
                     else -> label
                 },
                 names = choices,
@@ -117,19 +124,23 @@ fun SongInfoSheet(
 
     namePicker?.let { picker ->
         SongSheetColumn {
-            Text(
+            if (onPickerTitleChange == null) Text(
                 text = picker.title,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = MiuixTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
             )
-            picker.names.forEach { name ->
-                SongMenuItem(name, onClick = {
-                    jumpTo(songInfoJumpRoute(picker.jump, song, audioInfo, name))
+            ArtistPickerRows(picker.names, mainViewModel,
+                onArtistSelected = { name -> jumpTo(songInfoJumpRoute(picker.jump, song, audioInfo, name)) },
+                categoryType = when (picker.jump) {
+                    SongInfoJump.Composer -> "composer"
+                    SongInfoJump.Arranger -> "arranger"
+                    SongInfoJump.Lyricist -> "lyricist"
+                    SongInfoJump.Genre -> "genre"
+                    else -> null
                 })
-            }
-            SongMenuItem(stringResource(R.string.common_back), onClick = { namePicker = null })
+            SongMenuItem(stringResource(R.string.common_cancel), onClick = { namePicker = null })
         }
         return
     }
@@ -163,6 +174,8 @@ fun SongInfoSheet(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
             )
             neteaseInfo.musicName.takeIf { it.isNotBlank() }?.let { SongInfoRow(stringResource(R.string.player_detail_song), it) }
+            neteaseInfo.translatedNames.joinToString(" / ").takeIf { it.isNotBlank() }
+                ?.let { SongInfoRow(stringResource(R.string.player_detail_translated_name), it) }
             neteaseInfo.aliases
                 .joinToString(" / ")
                 .takeIf { it.isNotBlank() }

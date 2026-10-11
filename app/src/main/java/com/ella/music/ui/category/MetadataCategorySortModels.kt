@@ -1,6 +1,8 @@
 package com.ella.music.ui.category
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import com.ella.music.R
 import com.ella.music.data.model.Album
@@ -342,7 +344,8 @@ internal fun List<Album>.sortedForMetadataAlbumDetail(
 @Composable
 internal fun String.categoryTitle(): String {
     val context = LocalContext.current
-    return when (this) {
+    val categories by com.ella.music.data.SettingsManager.getInstance(context).customMetadataCategories.collectAsState(initial = emptyList())
+    return categories.firstOrNull { it.type == this }?.name ?: when (this) {
         "genre" -> context.getString(R.string.category_genre)
         "year" -> context.getString(R.string.category_year)
         "composer" -> context.getString(R.string.category_composer)

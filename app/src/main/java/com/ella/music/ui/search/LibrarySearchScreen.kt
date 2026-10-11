@@ -1,10 +1,14 @@
 package com.ella.music.ui.search
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -23,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.ella.music.R
+import com.ella.music.ui.folder.songsForFolderPlaylist
 import com.ella.music.data.BottomBarStyle
 import com.ella.music.data.SettingsManager
 import com.ella.music.data.decodeNeteaseKey
@@ -47,6 +52,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun LibrarySearchScreen(
     mainViewModel: MainViewModel,
@@ -504,6 +510,12 @@ fun LibrarySearchScreen(
     val albumResults = visibleFacetResults.albums
     val artistResults = visibleFacetResults.artists
     val playlistResults = visibleFacetResults.playlists
+    val folderPlaylists by settingsManager.folderPlaylists.collectAsState(initial = emptyList())
+    val folderPlaylistResults = remember(folderPlaylists, trimmedQuery, filter, searchAllCategoryTypes, duplicatesOnlyActive, contentFilters) {
+        if (trimmedQuery.isBlank() || duplicatesOnlyActive || contentFilters.hasActiveFilter ||
+            (filter != SearchFilter.FolderPlaylists && (filter != SearchFilter.All || "folder_playlist" !in searchAllCategoryTypes))) emptyList()
+        else folderPlaylists.filter { it.name.contains(trimmedQuery, ignoreCase = true) }
+    }
     val categoryResultsByType = visibleFacetResults.categoriesByType
     val categoryResultsCount = remember(categoryResultsByType) { categoryResultsByType.values.sumOf { it.size } }
     val visibleAlbumCount = if (filter in listOf(SearchFilter.All, SearchFilter.Albums)) albumResults.size else 0
@@ -524,7 +536,7 @@ fun LibrarySearchScreen(
             .flatMap { (_, entries) -> entries.map { it.result } }
             .distinctBy { it.song.searchIdentityKey() }
     }
-    val visibleResultCount = displayedSongResults.size + visibleAlbumCount + visibleArtistCount + visiblePlaylistCount + categoryResultsCount
+    val visibleResultCount = displayedSongResults.size + visibleAlbumCount + visibleArtistCount + visiblePlaylistCount + categoryResultsCount + folderPlaylistResults.size
 
     LaunchedEffect(filter, trimmedQuery) {
         selection.finishSelectionMode()
@@ -580,6 +592,7 @@ fun LibrarySearchScreen(
             includeAlbumArtist = showAlbumArtists
         )
         is SearchActionTarget.PlaylistTarget -> mainViewModel.playlistSongs(target.playlist)
+        is SearchActionTarget.FolderPlaylistTarget -> songs.songsForFolderPlaylist(target.playlist.folders)
         is SearchActionTarget.CategoryTarget -> mainViewModel.getSongsForMetadataCategory(target.type, target.item.name)
     }
 
@@ -587,6 +600,7 @@ fun LibrarySearchScreen(
         is SearchActionTarget.AlbumTarget -> Screen.AlbumDetail.createRoute(target.album.id)
         is SearchActionTarget.ArtistTarget -> Screen.ArtistDetail.createRoute(target.artist.name)
         is SearchActionTarget.PlaylistTarget -> Screen.PlaylistDetail.createRoute(target.playlist.id)
+        is SearchActionTarget.FolderPlaylistTarget -> Screen.FolderPlaylistDetail.createRoute(target.playlist.id)
         is SearchActionTarget.CategoryTarget -> Screen.MetadataCategoryDetail.createRoute(target.type, target.item.name)
     }
 
@@ -594,6 +608,7 @@ fun LibrarySearchScreen(
         is SearchActionTarget.AlbumTarget -> "album_${target.album.id}"
         is SearchActionTarget.ArtistTarget -> "artist_${target.artist.name.tagIdentityKey()}"
         is SearchActionTarget.PlaylistTarget -> "playlist_${target.playlist.id}"
+        is SearchActionTarget.FolderPlaylistTarget -> "folder_playlist_${target.playlist.id}"
         is SearchActionTarget.CategoryTarget -> "category_${target.type}_${target.item.name.tagIdentityKey()}"
     }
 
@@ -626,8 +641,12 @@ fun LibrarySearchScreen(
         }
     }
 
+    val imeVisible = WindowInsets.isImeVisible
     BackHandler {
-        if (selection.selectionMode) {
+        if (imeVisible) {
+            keyboardController?.hide()
+            focusManager.clearFocus()
+        } else if (selection.selectionMode) {
             selection.finishSelectionMode()
         } else {
             onBack()
@@ -662,6 +681,7 @@ fun LibrarySearchScreen(
             albumResultsCount = albumResults.size,
             artistResultsCount = artistResults.size,
             playlistResultsCount = playlistResults.size,
+            folderPlaylistResultsCount = folderPlaylistResults.size,
             categoryResultsByType = categoryResultsByType,
             onFilterChange = { item ->
                 filter = item
@@ -725,6 +745,7 @@ fun LibrarySearchScreen(
                 allSelected = displayedSongResults.isNotEmpty() && displayedSongResults.all { it.song.searchIdentityKey() in selection.selectedIds },
                 onRangeSelect = { selection.applyRangeSelection(displayedSongKeys, displayedSongIndexByKey) },
                 onSelectAll = ::toggleSelectAllSongResults,
+                onInvertSelection = { selection.invertSelection(displayedSongKeys) },
                 onPlayNext = {
                     val selected = selectedOrToast()
                     if (selected.isNotEmpty()) {
@@ -778,12 +799,14 @@ fun LibrarySearchScreen(
             history = history,
             selectionMode = selection.selectionMode,
             selectedSongKeys = selection.selectedIds,
+            onSongSelectionChange = { selection.selectedIds = it; selection.rangeAnchorId = null; selection.rangeTargetId = null },
             songSelectionAvailable = songSelectionAvailable,
             songResults = displayedSongResults,
             songResultGroups = songResultGroups,
             albumResults = albumResults,
             artistResults = artistResults,
             playlistResults = playlistResults,
+            folderPlaylistResults = folderPlaylistResults,
             categoryResultsByType = categoryResultsByType,
             artistCoverFolderUri = artistCoverFolderUri,
             visibleResultCount = visibleResultCount,

@@ -50,9 +50,11 @@ internal fun rememberPlayerSongPresentationState(
     val shouldResolveLocalArtwork = song?.let {
         it.onlineSource.isBlank() && !it.path.isHttpAudioSource()
     } == true
-    var embeddedCover by remember { mutableStateOf<Bitmap?>(null) }
-    var paletteBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var palettePair by remember(playerLight) { mutableStateOf(paletteDefault to paletteDefault) }
+    // Artwork belongs to the presented song, even while the next asynchronous load is pending.
+    // Reusing these states across songs showed the previous cover beside the new title.
+    var embeddedCover by remember(songKey, artworkGeneration) { mutableStateOf<Bitmap?>(null) }
+    var paletteBitmap by remember(songKey, artworkGeneration) { mutableStateOf<Bitmap?>(null) }
+    var palettePair by remember(songKey, artworkGeneration, playerLight) { mutableStateOf(paletteDefault to paletteDefault) }
 
     LaunchedEffect(songKey, shouldResolveLocalArtwork, artworkGeneration, playerLight) {
         if (songKey == null) {
@@ -83,8 +85,11 @@ internal fun rememberPlayerSongPresentationState(
         palettePair = loadedPalettePair
     }
     val audioInfo = rememberPlayerAudioInfo(context, song, playerViewModel)
-    val tagInfo by produceState<SongTagInfo?>(initialValue = null, songKey, song?.onlineMvId) {
-        value = withContext(Dispatchers.IO) { song?.let(playerViewModel::getSongTagInfo) }
+    val tagInfo = androidx.compose.runtime.key(songKey) {
+        val loaded by produceState<SongTagInfo?>(initialValue = null, songKey, song?.onlineMvId) {
+            value = withContext(Dispatchers.IO) { song?.let(playerViewModel::getSongTagInfo) }
+        }
+        loaded
     }
     val neteaseInfo = remember(tagInfo?.neteaseKey) { decodeNeteaseKey(tagInfo?.neteaseKey.orEmpty()) }
     val annotation = remember(tagInfo?.displayComment, neteaseInfo?.aliases) {
@@ -120,8 +125,11 @@ internal fun rememberPlayerAudioInfo(
     // so the badge must follow the served level instead of the one-shot "Audio" placeholder.
     val neteaseStreams by com.ella.music.data.netease.NeteaseLibraryStore.getInstance(context).streamInfo.collectAsState()
     val neteaseStreamKey = if (song?.onlineSource == com.ella.music.data.SettingsManager.LIBRARY_SOURCE_NETEASE) neteaseStreams[song.onlineId] else null
-    val audioInfo by produceState<AudioInfo?>(initialValue = null, songKey, neteaseStreamKey) {
-        value = withContext(Dispatchers.IO) { song?.let(playerViewModel::getAudioInfo) }
+    val audioInfo = androidx.compose.runtime.key(songKey) {
+        val loaded by produceState<AudioInfo?>(initialValue = null, songKey, neteaseStreamKey) {
+            value = withContext(Dispatchers.IO) { song?.let(playerViewModel::getAudioInfo) }
+        }
+        loaded
     }
     return audioInfo
 }

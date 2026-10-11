@@ -49,6 +49,11 @@ internal fun bottomDockTabCatalog(): Map<String, BottomDockTab> = linkedMapOf(
         label = stringResource(R.string.category_folder_tree),
         icon = MiuixIcons.Regular.Folder
     ),
+    SettingsManager.BOTTOM_DOCK_ITEM_FOLDER_PLAYLISTS to BottomDockTab(
+        route = Screen.FolderPlaylists.route,
+        label = stringResource(R.string.folder_playlist_title),
+        icon = MiuixIcons.Regular.Folder
+    ),
     SettingsManager.BOTTOM_DOCK_ITEM_ARTIST to BottomDockTab(
         route = Screen.Artist.createRoute(fromDock = true),
         label = stringResource(R.string.category_artist),

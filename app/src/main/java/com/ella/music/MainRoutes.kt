@@ -110,6 +110,7 @@ internal fun String?.toCurrentTabRoute(): String? {
         this == null -> null
         this == Screen.Home.route -> Screen.Home.route
         this == Screen.Library.route -> Screen.Library.route
+        this == Screen.FolderPlaylists.route -> Screen.FolderPlaylists.route
         this.isSearchRoute() -> Screen.LibrarySearch.createRoute()
         this.isTopLevelRoute(Screen.Playlists.baseRoute) -> Screen.Playlists.createRoute(fromDock = true)
         this.isTopLevelRoute(Screen.Folder.baseRoute) -> Screen.Folder.createRoute(fromDock = true)
@@ -172,6 +173,7 @@ internal fun String?.isBottomDockRoute(): Boolean {
         this.isSearchRoute() -> true
         this == Screen.Home.route -> true
         this == Screen.Library.route -> true
+        this == Screen.FolderPlaylists.route -> true
         this.isTopLevelRoute(Screen.Playlists.baseRoute) -> true
         this.isTopLevelRoute(Screen.Folder.baseRoute) -> true
         this.isTopLevelRoute(Screen.Artist.baseRoute) -> true
@@ -325,6 +327,7 @@ internal fun NavHostController.navigateBottomDockRoute(
     route: String,
     currentRoute: String?
 ) {
+    if (MainPageNavigation.select(this, route)) return
     // Search is opened from the current page as a transient library tool. Keep its Back
     // behaviour, but remove it before switching to another bottom-dock destination. Otherwise
     // restoreState can resurrect the search entry and make a later Settings click land back on

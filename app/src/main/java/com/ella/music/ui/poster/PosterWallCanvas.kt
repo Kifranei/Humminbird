@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -29,6 +30,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Constraints
 import com.ella.music.data.model.Song
@@ -36,19 +39,31 @@ import kotlinx.coroutines.CoroutineScope
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.max
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlinx.coroutines.delay
 
-internal data class PosterWallItem(val song: Song, val sourceIndex: Int, val key: String)
+internal data class PosterWallItem(val song: Song, val sourceIndex: Int, val key: String, val stackKey: String = key)
+private data class DraggedPoster(val placement: PosterPlacement, val grab: Offset,
+    val offset: Offset = Offset.Zero, val travel: Float = 0f) {
+    val cursor get() = Offset(placement.rect.centerX, placement.rect.centerY) + offset + grab
+}
+private data class PosterDrop(val placement: PosterPlacement, val before: Boolean)
 
 @Composable
 internal fun PosterWallCanvas(
     items: List<PosterWallItem>, geometry: PosterWallGeometry, state: PosterWallState,
     currentIndex: Int, artwork: @Composable (Song, Modifier, Int) -> Unit, scope: CoroutineScope,
     onExpand: (Int, PosterRect) -> Unit, onMore: (Song) -> Unit,
-    remoteEnabled: Boolean = true, fullscreen: Boolean = false, searching: Boolean = false
+    remoteEnabled: Boolean = true, fullscreen: Boolean = false, searching: Boolean = false,
+    onMoveStack: (Int, Int, Boolean) -> Unit = { _, _, _ -> }
 ) {
     val density = LocalDensity.current.density
     val decay = rememberSplineBasedDecay<Offset>()
     val inputMode = LocalInputModeManager.current
+    val haptic = LocalHapticFeedback.current
+    val moveStack by rememberUpdatedState(onMoveStack)
+    var dragged by remember(geometry) { mutableStateOf<DraggedPoster?>(null) }
     val television = LocalConfiguration.current.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
         android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     val remoteFocus = remember { FocusRequester() }
@@ -75,6 +90,47 @@ internal fun PosterWallCanvas(
         // updates placement/drawing without recomposing every poster on every finger sample.
         derivedStateOf { geometry.visiblePosters(state.camera.bounds(state.viewport.x, state.viewport.y)) }
     }.value
+    val foreground = if (!geometry.stacked) emptySet() else visible.groupBy(geometry::stackGroupKey).values.map { group ->
+        (group.firstOrNull { remoteEnabled && hasFocus && it.key == selection?.key }
+            ?: group.maxBy { geometry.depth(it.index) }).key
+    }.toSet()
+    fun rotated(offset: Offset, degrees: Float): Offset {
+        val radians = degrees * Math.PI.toFloat() / 180f
+        return Offset(offset.x * cos(radians) - offset.y * sin(radians),
+            offset.x * sin(radians) + offset.y * cos(radians))
+    }
+    fun layer(placement: PosterPlacement) = if (placement.key in foreground) 20f else geometry.depth(placement.index) / 10f
+    fun dropTarget(drag: DraggedPoster): PosterDrop? {
+        // Use the finger's grab point and the actual rotated cover, rather than its center.
+        // Topmost wins, matching Compose hit testing for exposed lower layers.
+        return visible.asSequence().filter { it.index != drag.placement.index }.mapNotNull { placement ->
+            val rect = placement.rect
+            val local = rotated(drag.cursor - Offset(rect.centerX, rect.centerY), -geometry.rotation(placement.index))
+            if (abs(local.x) <= rect.width / 2f && abs(local.y) <= rect.height / 2f)
+                PosterDrop(placement, before = local.y > 0f) else null
+        }.maxWithOrNull(compareBy<PosterDrop> { layer(it.placement) }.thenBy { visible.indexOf(it.placement) })
+    }
+    val drop = dragged?.let(::dropTarget)
+    // Keep the lifted cover under the finger while moving the viewport near an edge.
+    LaunchedEffect(dragged != null) {
+        while (dragged != null) {
+            val drag = dragged ?: break
+            val camera = state.camera
+            val screen = drag.cursor * camera.scale + Offset(camera.x, camera.y)
+            fun edgePan(position: Float, extent: Float) = when {
+                position < 40f -> ((40f - position) / 40f).coerceIn(0f, 1f) * 7f
+                position > extent - 40f -> -((position - extent + 40f) / 40f).coerceIn(0f, 1f) * 7f
+                else -> 0f
+            }
+            val pan = Offset(edgePan(screen.x, state.viewport.x), edgePan(screen.y, state.viewport.y))
+            if (pan != Offset.Zero) {
+                state.transform(pan, 1f, screen, geometry)
+                val moved = Offset(state.camera.x - camera.x, state.camera.y - camera.y)
+                dragged = drag.copy(offset = drag.offset - moved / camera.scale)
+            }
+            delay(16)
+        }
+    }
     // Capture this composition's list for both content and layout. A delegated State getter
     // would reread it during measure/place: resize() can already have changed the viewport and
     // camera there, while the measurables still belong to the previous visible list.
@@ -138,8 +194,13 @@ internal fun PosterWallCanvas(
                 var accumulatedZoom = 1f
                 var dragging = false
                 var zoomed = false
+                var movingPoster = false
                 do {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
+                    if (dragged != null || movingPoster) {
+                        movingPoster = true
+                        continue
+                    }
                     if (event.changes.any { it.isConsumed }) break
                     val pan = event.calculatePan()
                     val zoom = event.calculateZoom()
@@ -158,7 +219,7 @@ internal fun PosterWallCanvas(
                     }
                     event.changes.firstOrNull { it.id == down.id }?.let { tracker.addPosition(it.uptimeMillis, it.position) }
                 } while (event.changes.any { it.pressed })
-                if (dragging && !zoomed) {
+                if (dragging && !zoomed && !movingPoster) {
                     val velocity = tracker.calculateVelocity()
                     state.fling(Offset(velocity.x / density, velocity.y / density), geometry, decay, scope)
                 }
@@ -175,12 +236,44 @@ internal fun PosterWallCanvas(
                         derivedStateOf { posterCoverSize(max(rect.width, rect.height) * density * state.camera.scale) }
                     }
                     PosterTile(item.song, rect, index == currentIndex,
-                        selected = selectedKey == placement.key,
+                        selected = selectedKey == placement.key, showInfo = !geometry.stacked || placement.key in foreground || dragged?.placement?.key == placement.key,
+                        stackSize = if (geometry.stacked) geometry.groupIndices(index).size else 0,
+                        dropTarget = drop?.placement?.key == placement.key,
+                        dropBefore = drop?.before == true,
+                        modifier = if (!geometry.stacked) Modifier else Modifier.pointerInput(placement.key, geometry, density) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { position ->
+                                    state.stop()
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    val grab = rotated(position / density - Offset(rect.width / 2f, rect.height / 2f), geometry.rotation(index))
+                                    dragged = DraggedPoster(placement, grab)
+                                },
+                                onDragCancel = { dragged = null },
+                                onDragEnd = {
+                                    val active = dragged
+                                    if (active != null) {
+                                        if (active.travel < viewConfiguration.touchSlop / density) {
+                                            // A held lower cover released in place is brought to the top.
+                                            val top = geometry.groupIndices(index).last()
+                                            if (top != index) moveStack(index, top, false)
+                                        } else active.let(::dropTarget)?.let { target ->
+                                            moveStack(index, target.placement.index, target.before)
+                                        }
+                                    }
+                                    dragged = null
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    val world = rotated(amount / density, geometry.rotation(index))
+                                    dragged = dragged?.let { it.copy(offset = it.offset + world, travel = it.travel + world.getDistance()) }
+                                }
+                            )
+                        },
                         artwork = { song, modifier -> artwork(song, modifier, coverSize) },
                         onExpand = {
                             val camera = state.camera
                             onExpand(index, PosterRect(camera.x + rect.x * camera.scale, camera.y + rect.y * camera.scale, rect.width * camera.scale, rect.height * camera.scale))
-                        }, onMore = { onMore(item.song) })
+                        }, onMore = if (geometry.stacked) null else ({ onMore(item.song) }))
                 }
             }
         }
@@ -193,8 +286,19 @@ internal fun PosterWallCanvas(
             val camera = state.camera
             placeables.forEachIndexed { position, placeable ->
                 val rect = visible[position].rect
-                placeable.placeWithLayer(((camera.x + rect.x * camera.scale) * density).roundToInt(), ((camera.y + rect.y * camera.scale) * density).roundToInt()) {
+                val placement = visible[position]
+                val drag = dragged?.takeIf { it.placement.key == placement.key }
+                val offset = drag?.offset ?: Offset.Zero
+                placeable.placeWithLayer(((camera.x + (rect.x + offset.x) * camera.scale) * density).roundToInt(), ((camera.y + (rect.y + offset.y) * camera.scale) * density).roundToInt(),
+                    zIndex = if (drag != null) 100f else if (placement.key in foreground) 20f else geometry.depth(placement.index) / 10f) {
                     scaleX = camera.scale; scaleY = camera.scale; transformOrigin = TransformOrigin(0f, 0f)
+                    // Rotate around the scaled cover's center while retaining top-left camera scaling.
+                    rotationZ = geometry.rotation(placement.index)
+                    val angle = rotationZ * Math.PI.toFloat() / 180f
+                    val cx = rect.width * density * camera.scale / 2f
+                    val cy = rect.height * density * camera.scale / 2f
+                    translationX = cx - (cx * cos(angle) - cy * sin(angle))
+                    translationY = cy - (cx * sin(angle) + cy * cos(angle))
                 }
             }
         }

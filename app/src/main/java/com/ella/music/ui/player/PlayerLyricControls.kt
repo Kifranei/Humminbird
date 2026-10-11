@@ -69,6 +69,7 @@ internal fun LyricActionMenu(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settingsManager = remember(context) { SettingsManager.getInstance(context) }
+    val sharedPerspectiveEffect by settingsManager.lyricPerspectiveEffect.collectAsState(initial = perspectiveEffect)
     val pronunciationBelow by settingsManager.lyricPronunciationBelow.collectAsState(initial = false)
     val sustainThresholdMs by settingsManager.appleMusicLyricsSustainThresholdMs.collectAsState(
         initial = SettingsManager.DEFAULT_APPLE_MUSIC_LYRICS_SUSTAIN_THRESHOLD_MS
@@ -148,8 +149,8 @@ internal fun LyricActionMenu(
             if (showPerspectiveToggle) {
                 SwitchPreference(
                     title = stringResource(R.string.player_enable_perspective_effect),
-                    checked = perspectiveEffect,
-                    onCheckedChange = { onTogglePerspectiveEffect() }
+                    checked = sharedPerspectiveEffect,
+                    onCheckedChange = { enabled -> scope.launch { settingsManager.setLyricPerspectiveEffect(enabled) } }
                 )
             }
             onStyleSettings?.let { openStyleSettings ->
@@ -248,6 +249,8 @@ internal fun LyricStyleSettingsContent(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settingsManager = remember(context) { SettingsManager.getInstance(context) }
+    val sharedPerspectiveEffect by settingsManager.lyricPerspectiveEffect.collectAsState(initial = perspectiveEffect)
+    val sharedPerspectiveYAngle by settingsManager.lyricPerspectiveYAngle.collectAsState(initial = perspectiveYAngle)
     val nonCurrentBlurPercent by settingsManager.lyricNonCurrentBlurPercent.collectAsState(initial = initialBlurPercent ?: 70)
     val configuration = LocalConfiguration.current
     val ultraWideLandscape = isUltraWideLandscapePlayerLayout(
@@ -271,7 +274,7 @@ internal fun LyricStyleSettingsContent(
         secondaryTextSizeRange.first.toFloat(),
         secondaryTextSizeRange.last.toFloat()
     )
-    var previewPerspectiveYAngle by remember(perspectiveYAngle) { mutableStateOf(perspectiveYAngle.toFloat()) }
+    var previewPerspectiveYAngle by remember(sharedPerspectiveYAngle) { mutableStateOf(sharedPerspectiveYAngle.toFloat()) }
     var previewFontScale by remember(fontScaleRange) { mutableStateOf(safeFontScale) }
     var previewPrimaryTextSize by remember(primaryTextSizeRange) { mutableStateOf(safePrimaryTextSize) }
     var previewSecondaryFontScale by remember(secondaryFontScaleRange) { mutableStateOf(safeSecondaryFontScale) }
@@ -298,7 +301,7 @@ internal fun LyricStyleSettingsContent(
             Spacer(modifier = Modifier.height(18.dp))
         }
         SettingsCardGroup {
-            if (perspectiveEffect) {
+            if (sharedPerspectiveEffect) {
                 SliderPreference(
                     title = stringResource(R.string.player_perspective_y_angle),
                     value = previewPerspectiveYAngle.coerceIn(0f, 45f),
@@ -308,7 +311,7 @@ internal fun LyricStyleSettingsContent(
                     valueText = "${previewPerspectiveYAngle.toInt()}°",
                     onValueChange = {
                         previewPerspectiveYAngle = it
-                        onPerspectiveYAngle(it.toInt())
+                        scope.launch { settingsManager.setLyricPerspectiveYAngle(it.toInt()) }
                     }
                 )
             }

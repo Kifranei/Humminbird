@@ -1,5 +1,8 @@
 package com.ella.music.ui.playlist
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import android.widget.Toast
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -639,7 +642,7 @@ fun PlaylistScreen(
         val showPlaylistSideIndex = reorderablePlaylists.size > 30
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().dragSelectList(listState, selection, remember(reorderablePlaylists) { reorderablePlaylists.filterNot { it.isRemote }.map { it.id } }, excludedEndWidth = 112.dp),
             contentPadding = PaddingValues(
                 start = 12.dp,
                 end = when {
@@ -804,6 +807,7 @@ fun PlaylistScreen(
                     selectedVisiblePlaylistCount == displayedCustomPlaylists.count { !it.isRemote },
                 onRangeSelect = ::applyPlaylistRangeSelection,
                 onSelectAll = { selection.toggleSelectAll(displayedCustomPlaylists.filterNot { it.isRemote }.map { it.id }) },
+                onInvertSelection = { selection.invertSelection(displayedCustomPlaylists.filterNot { it.isRemote }.map { it.id }) },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 22.dp, bottom = 176.dp)

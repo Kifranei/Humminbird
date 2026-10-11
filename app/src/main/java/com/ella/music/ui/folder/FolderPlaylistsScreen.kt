@@ -1,5 +1,8 @@
 package com.ella.music.ui.folder
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -631,7 +634,7 @@ fun FolderPlaylistsScreen(
             LazyColumn(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().dragSelectList(listState, selection, displayedPlaylistIds, excludedEndWidth = 112.dp),
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 130.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -712,6 +715,7 @@ fun FolderPlaylistsScreen(
                 allSelected = displayedPlaylistIds.isNotEmpty() && selectedVisibleCount == displayedPlaylistIds.size,
                 onRangeSelect = { selection.applyRangeSelection(displayedPlaylistIds, displayedIndexById) },
                 onSelectAll = ::selectAllPlaylists,
+                onInvertSelection = { selection.invertSelection(displayedPlaylistIds) },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = LibraryFloatingControlsEndPadding, bottom = LibraryFloatingControlsBottomPadding)

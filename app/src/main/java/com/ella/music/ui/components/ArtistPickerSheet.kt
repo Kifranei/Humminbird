@@ -45,7 +45,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 internal fun ColumnScope.ArtistPickerRows(
     artists: List<String>,
     mainViewModel: MainViewModel,
-    onArtistSelected: (String) -> Unit
+    onArtistSelected: (String) -> Unit,
+    categoryType: String? = null
 ) {
     val songs by mainViewModel.songs.collectAsState()
     val artistCoverFolderUri by mainViewModel.settingsManager.artistCoverFolderUri
@@ -61,6 +62,7 @@ internal fun ColumnScope.ArtistPickerRows(
                 mainViewModel = mainViewModel,
                 songs = songs,
                 artistCoverFolderUri = artistCoverFolderUri,
+                categoryType = categoryType,
                 onClick = { onArtistSelected(artist) }
             )
         }
@@ -72,12 +74,19 @@ private fun ArtistPickerRow(
     mainViewModel: MainViewModel,
     songs: List<Song>,
     artistCoverFolderUri: String,
+    categoryType: String?,
     onClick: () -> Unit
 ) {
-    val representativeSong = remember(songs, artist) {
-        selectArtistCoverSong(songs, artist)
+    val representativeSong = remember(songs, artist, categoryType) {
+        if (categoryType == null) selectArtistCoverSong(songs, artist)
+        else mainViewModel.getSongsForMetadataCategory(categoryType, artist).firstOrNull()
     }
-    val coverModel = rememberArtistCoverModel(
+    val isGenre = categoryType == "genre"
+    val coverShape = if (isGenre) RoundedCornerShape(8.dp) else CircleShape
+    val coverModel = if (isGenre) rememberSongArtworkState(
+        representativeSong, representativeSong?.albumId?.let(mainViewModel::getAlbumArtUri),
+        mainViewModel::getCoverArtBitmap, ArtworkUsage.ListThumbnail
+    ).model else rememberArtistCoverModel(
         artistName = artist,
         representativeSong = representativeSong,
         folderLocation = artistCoverFolderUri,
@@ -95,7 +104,7 @@ private fun ArtistPickerRow(
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .clip(CircleShape)
+                .clip(coverShape)
                 .background(MiuixTheme.colorScheme.surfaceContainer),
             contentAlignment = Alignment.Center
         ) {
@@ -105,7 +114,7 @@ private fun ArtistPickerRow(
                     contentDescription = null,
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(CircleShape),
+                        .clip(coverShape),
                     contentScale = ContentScale.Crop,
                     sizePx = 112,
                     showDefaultPlaceholder = false

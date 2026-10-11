@@ -34,6 +34,7 @@ fun SongSelectionActionRow(
     allSelected: Boolean,
     onRangeSelect: () -> Unit,
     onSelectAll: () -> Unit,
+    onInvertSelection: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -61,6 +62,7 @@ fun SongSelectionActionRow(
                 .clickable(enabled = rangeEnabled, onClick = onRangeSelect)
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         )
+        onInvertSelection?.let { InvertSelectionButton(it) }
         Text(
             text = stringResource(if (allSelected) R.string.common_deselect_all else R.string.common_select_all),
             fontSize = 15.sp,
@@ -81,6 +83,7 @@ fun FloatingSelectionControls(
     allSelected: Boolean,
     onRangeSelect: () -> Unit,
     onSelectAll: () -> Unit,
+    onInvertSelection: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -96,6 +99,9 @@ fun FloatingSelectionControls(
                 enabled = rangeEnabled,
                 onClick = onRangeSelect
             )
+            onInvertSelection?.let {
+                FloatingSelectionChip(stringResource(R.string.common_invert_selection), true, it)
+            }
             FloatingSelectionChip(
                 text = stringResource(if (allSelected) R.string.common_deselect_all else R.string.common_select_all),
                 enabled = true,
@@ -126,4 +132,12 @@ private fun FloatingSelectionChip(
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp)
     )
+}
+
+@Composable
+internal fun InvertSelectionButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Text(stringResource(R.string.common_invert_selection), color = MiuixTheme.colorScheme.onSurface,
+        fontSize = 15.sp, fontWeight = FontWeight.Bold,
+        modifier = modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp))
 }

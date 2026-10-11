@@ -210,6 +210,7 @@ interface LibrarySettingsAccess {
     suspend fun setFolderPlaylistSongOrder(playlistId: String, keys: List<String>)
     suspend fun setFolderPlaylistFolderOrder(playlistId: String, paths: List<String>)
     suspend fun setFolderPlaylistHiddenFolders(playlistId: String, paths: List<String>)
+    fun refreshPinnedStateAfterRestore(preferences: androidx.datastore.preferences.core.Preferences, keyNames: Set<String>)
     fun pinnedKeysFlow(namespace: String): Flow<List<String>>
     suspend fun setPinned(namespace: String, key: String, pinned: Boolean)
     suspend fun pinKeysInOrder(namespace: String, keys: List<String>)
@@ -382,7 +383,7 @@ internal class LibrarySettingsAccessImpl(private val context: Context) : Library
     override val coverExportFolderUri: Flow<String> =
         context.dataStore.data.map { it[KEY_COVER_EXPORT_FOLDER_URI] ?: "" }
     override val searchAllCategoryTypes: Flow<Set<String>> = context.dataStore.data.map {
-        parseSearchAllCategoryTypes(it[KEY_SEARCH_ALL_CATEGORY_TYPES])
+        parseSearchAllCategoryTypes(it[KEY_SEARCH_ALL_CATEGORY_TYPES], it[SettingsManager.KEY_SEARCH_ALL_CATEGORY_TYPES_VERSION] ?: 1)
     }
     override val searchAllSongMatchTypes: Flow<Set<String>> = context.dataStore.data.map {
         parseSearchAllSongMatchTypes(it[KEY_SEARCH_ALL_SONG_MATCH_TYPES])
@@ -721,6 +722,8 @@ internal class LibrarySettingsAccessImpl(private val context: Context) : Library
     // Generic "pin to top" store, keyed by an arbitrary namespace (e.g. "artist",
     // "album", "category:genre"). The ordered list keeps the most-recently pinned first.
     private val pinnedPreferences = PinnedPreferences(context.dataStore)
+    override fun refreshPinnedStateAfterRestore(preferences: androidx.datastore.preferences.core.Preferences, keyNames: Set<String>) =
+        pinnedPreferences.restored(preferences, keyNames)
     override fun pinnedKeysFlow(namespace: String): Flow<List<String>> = pinnedPreferences.keys(namespace)
 
     override suspend fun setPinned(namespace: String, key: String, pinned: Boolean) =
@@ -849,7 +852,8 @@ internal class LibrarySettingsAccessImpl(private val context: Context) : Library
         val normalized = type.trim().lowercase()
         if (normalized !in SEARCH_ALL_CATEGORY_TYPES) return
         context.dataStore.edit { prefs ->
-            val current = parseSearchAllCategoryTypes(prefs[KEY_SEARCH_ALL_CATEGORY_TYPES])
+            val current = parseSearchAllCategoryTypes(prefs[KEY_SEARCH_ALL_CATEGORY_TYPES], prefs[SettingsManager.KEY_SEARCH_ALL_CATEGORY_TYPES_VERSION] ?: 1)
+            prefs[SettingsManager.KEY_SEARCH_ALL_CATEGORY_TYPES_VERSION] = 2
             val next = if (enabled) current + normalized else current - normalized
             prefs[KEY_SEARCH_ALL_CATEGORY_TYPES] = next.sorted().joinToString(",")
         }
@@ -964,13 +968,13 @@ internal class LibrarySettingsAccessImpl(private val context: Context) : Library
         }
     }
 
-    private fun parseSearchAllCategoryTypes(raw: String?): Set<String> {
+    private fun parseSearchAllCategoryTypes(raw: String?, version: Int): Set<String> {
         val saved = raw.orEmpty()
             .split(',')
             .map { it.trim().lowercase() }
             .filter { it in SEARCH_ALL_CATEGORY_TYPES }
             .toSet()
-        return if (raw == null) SEARCH_ALL_CATEGORY_TYPES else saved
+        return if (raw == null) SEARCH_ALL_CATEGORY_TYPES else if (version < 2) saved + "folder_playlist" else saved
     }
 
     private fun parseSearchAllSongMatchTypes(raw: String?): Set<String> {

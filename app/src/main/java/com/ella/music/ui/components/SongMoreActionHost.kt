@@ -94,6 +94,7 @@ fun SongMoreActionHost(
     val scope = rememberCoroutineScope()
     var playlistSong by remember { mutableStateOf<Song?>(null) }
     var createPlaylistSong by remember { mutableStateOf<Song?>(null) }
+    var spectrumSong by remember { mutableStateOf<Song?>(null) }
     var tagEditorSong by remember { mutableStateOf<Song?>(null) }
     var tagEditorKind by remember { mutableStateOf(TagEditorOptionKind.Metadata) }
     var metadataEditorSong by remember { mutableStateOf<Song?>(null) }
@@ -245,7 +246,7 @@ fun SongMoreActionHost(
                     }
                 },
                 onSpectrum = {
-                    scope.launch { SpectrumViewerLauncher.openSelected(context, song) }
+                    scope.launch { SpectrumViewerLauncher.openSelected(context, song) { spectrumSong = it } }
                     closeAction()
                 },
                 onInfo = {
@@ -389,6 +390,17 @@ fun SongMoreActionHost(
                 onDismiss = { artistChoices = emptyList() }
             )
         }
+    }
+
+    spectrumSong?.let { song ->
+        SpectrumViewerChoiceSheet(
+            show = true,
+            onDismiss = { spectrumSong = null },
+            onSelect = { viewerId ->
+                spectrumSong = null
+                SpectrumViewerLauncher.open(context, song, viewerId)
+            }
+        )
     }
 
     SongMorePlaylistActionSheets(

@@ -1,5 +1,8 @@
 package com.ella.music.ui.category
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -626,6 +629,7 @@ fun MetadataCategoryDetailScreen(
             } else {
             LazyColumn(
                 state = listState,
+                modifier = Modifier.fillMaxSize().dragSelectList(listState, selection, currentSelectionIds),
                 contentPadding = PaddingValues(
                     end = when {
                         !showSongSideIndex -> 0.dp
@@ -899,6 +903,7 @@ fun MetadataCategoryDetailScreen(
                 allSelected = currentSelectionIds.isNotEmpty() && selectedVisibleCount == currentSelectionIds.size,
                 onRangeSelect = { selection.applyRangeSelection(currentSelectionIds, currentSelectionIndexById) },
                 onSelectAll = { selection.toggleSelectAll(currentSelectionIds) },
+                onInvertSelection = { selection.invertSelection(currentSelectionIds) },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = LibraryFloatingControlsEndPadding, bottom = LibraryFloatingControlsBottomPadding)

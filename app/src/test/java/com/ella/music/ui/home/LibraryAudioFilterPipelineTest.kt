@@ -8,6 +8,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LibraryAudioFilterPipelineTest {
+    @Test fun remoteMetadataUpdatesFinishAndDoNotRepeatInitialFilteringProgress() = kotlinx.coroutines.test.runTest {
+        for (source in listOf("smb", "ftp", "ftps", "sftp", "webdav")) {
+            val original = song(101, "flac").copy(path = "$source://server/Music/101.flac", onlineSource = source)
+            val processed = mutableListOf<String>()
+            val snapshots = kotlinx.coroutines.flow.flow {
+                emit(listOf(original))
+                kotlinx.coroutines.delay(5)
+                emit(listOf(original.copy(title = "Partial")))
+                kotlinx.coroutines.delay(5)
+                emit(listOf(original.copy(title = "Needle")))
+            }
+            val results = filterLibrarySnapshots(snapshots) { songs -> kotlinx.coroutines.flow.flow {
+                processed += songs.single().title
+                emit(LibraryAudioFilterProgress(emptyList(), 0, 1, false))
+                kotlinx.coroutines.delay(40)
+                val matches = songs.filter { it.title.contains("Needle") }
+                emit(LibraryAudioFilterProgress(matches, 1, 1, true))
+            } }.toList()
+            assertEquals(listOf("song101", "Needle"), processed)
+            assertEquals(1, results.count { !it.complete })
+            assertEquals("Needle", results.last().songs.single().title)
+        }
+    }
     private fun song(id: Long, format: String) = Song(id, "song$id", "artist", "album", 1, 1000, "/$id.$format", "$id.$format")
     @Test fun formatSelectionChangesActualSongsAndResetRestoresAll() = runBlocking {
         val songs = listOf(song(1, "mp3"), song(2, "flac"), song(3, "mp3"))

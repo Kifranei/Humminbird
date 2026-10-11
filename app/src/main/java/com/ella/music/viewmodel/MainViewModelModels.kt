@@ -1,6 +1,7 @@
 package com.ella.music.viewmodel
 
 import com.ella.music.data.model.Song
+import com.ella.music.data.customCategoryValues
 import com.ella.music.data.splitArtistNames
 import com.ella.music.data.splitGenreNames
 
@@ -27,7 +28,7 @@ internal fun Song.metadataCategoryNames(type: String): List<String> {
         "arranger" -> splitArtistNames(arranger)
         "lyricist" -> splitArtistNames(lyricist)
         "folder" -> listOfNotNull(parentFolderPath())
-        else -> emptyList()
+        else -> customCategoryValues(type)
     }
 }
 

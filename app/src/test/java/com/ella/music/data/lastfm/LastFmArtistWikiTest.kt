@@ -15,6 +15,35 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 
 class LastFmArtistWikiTest {
+    @Test fun scopedAliasesFallBackToOriginalThenSimplifiedNameOnTheSameProvider() = runBlocking {
+        val queries = mutableListOf<String?>()
+        val client = respondingClient { request ->
+            if (request.url.encodedPath.contains("/search/")) {
+                val query = request.url.queryParameter("s"); queries += query
+                200 to if (query == "铃木このみ") """{"result":{"artists":[{"id":7,"name":"铃木このみ"}]}}"""
+                    else """{"result":{"artists":[]}}"""
+            } else 200 to """{"briefDesc":"Biography"}"""
+        }
+        val rule = com.ella.music.data.ArtistBiographyMatchRule("鈴木このみ", "铃木木乃美", sources = setOf("netease"))
+        val result = fetchLastFmArtistWiki("鈴木このみ", "zh", preferredSource = ArtistBioMenuSource.Netease,
+            client = client, matchRules = listOf(rule))
+        assertEquals("Biography", result.text)
+        assertEquals(listOf("铃木木乃美", "鈴木このみ", "铃木このみ"), queries)
+    }
+
+    @Test fun neteaseRetriesTheAlternateChineseWritingWhenSearchHasNoBiography() = runBlocking {
+        val searches = mutableListOf<String?>()
+        val client = respondingClient { request ->
+            if (request.url.encodedPath.contains("/search/")) {
+                val query = request.url.queryParameter("s")
+                searches += query
+                200 to if (query == "倉木麻衣") """{"result":{"artists":[]}}""" else """{"result":{"artists":[{"id":7,"name":"仓木麻衣"}]}}"""
+            } else 200 to """{"briefDesc":"Biography"}"""
+        }
+        assertEquals("Biography", fetchLastFmArtistWiki("倉木麻衣", "zh", preferredSource = ArtistBioMenuSource.Netease, client = client).text)
+        assertEquals(listOf("倉木麻衣", "仓木麻衣"), searches)
+    }
+
     @Test fun lastFmReadMoreFooterIsRemovedWithoutCuttingBiographySentences() {
         val json = """{"artist":{"name":"Muse","bio":{"content":"<p>Biography</p><a href='https://www.last.fm/music/Muse'>Read more on Last.fm.</a>"}}}"""
         assertEquals("Biography", parseLastFmArtistGetInfoJson(json)?.text)

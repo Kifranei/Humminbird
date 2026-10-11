@@ -366,7 +366,7 @@ internal fun parseWikipediaSearchTitles(raw: String, artistName: String): List<S
                 .getOrNull()?.trim()?.takeIf { it.isNotBlank() }?.let(::add)
         }
     }
-    return titles.filter { it.equals(requested, ignoreCase = true) }
+    return titles.filter { com.ella.music.data.artistBiographyNameMatches(requested, it) }
         .sortedBy { com.ella.music.data.artistNameCaseRank(requested, it) }.distinct()
 }
 
@@ -391,7 +391,7 @@ internal fun parseNeteaseArtistId(raw: String, artistName: String): String? =
 internal fun parseNeteaseArtistIds(raw: String, artistName: String): List<String> {
     val artists = runCatching { JSONObject(raw).optJSONObject("result")?.optJSONArray("artists") }.getOrNull() ?: return emptyList()
     val candidates = (0 until artists.length()).mapNotNull { artists.optJSONObject(it) }
-    return candidates.filter { it.optString("name").trim().equals(artistName.trim(), ignoreCase = true) }
+    return candidates.filter { com.ella.music.data.artistBiographyNameMatches(artistName, it.optString("name")) }
         .sortedBy { com.ella.music.data.artistNameCaseRank(artistName, it.optString("name")) }
         .mapNotNull { it.optLong("id").takeIf { id -> id > 0 }?.toString() }.distinct()
 }
@@ -489,7 +489,8 @@ internal suspend fun fetchLastFmArtistWiki(
     regionCode: String,
     apiKey: String? = null,
     preferredSource: ArtistBioMenuSource? = null,
-    client: OkHttpClient = wikiHttpClient()
+    client: OkHttpClient = wikiHttpClient(),
+    matchRules: List<com.ella.music.data.ArtistBiographyMatchRule> = emptyList()
 ): LastFmArtistWiki = withContext(Dispatchers.IO) {
     val region = normalizeLastFmWikiRegion(regionCode)
     val errors = mutableListOf<Throwable>()
@@ -499,32 +500,40 @@ internal suspend fun fetchLastFmArtistWiki(
         hasApiKey = !apiKey.isNullOrBlank(),
         preferred = preferredSource
     )) {
-        val result = runCatching {
-            when (source) {
-                ArtistWikiSource.LastFmApi ->
-                    fetchLastFmArtistWikiFromApi(artistName, region, apiKey.orEmpty(), client)
-                ArtistWikiSource.QQ, ArtistWikiSource.Kugou, ArtistWikiSource.Kuwo -> {
-                    val provider = when (source) {
-                        ArtistWikiSource.QQ -> com.ella.music.data.AlbumInfoSource.QQ
-                        ArtistWikiSource.Kugou -> com.ella.music.data.AlbumInfoSource.Kugou
-                        else -> com.ella.music.data.AlbumInfoSource.Kuwo
-                    }
-                    com.ella.music.data.ChineseMusicMetadata.artist(artistName, provider)?.let {
-                        LastFmArtistWiki(it.text, it.url, it.url, source)
-                    }
-                }
-                ArtistWikiSource.Netease -> fetchNeteaseArtistWiki(artistName, client)
-                ArtistWikiSource.LastFmHtml -> fetchLastFmArtistWikiFromHtml(artistName, region, client)
-                ArtistWikiSource.WikipediaSelected -> fetchWikipediaArtistWiki(artistName, region, client)
-                ArtistWikiSource.WikipediaEnglish ->
-                    fetchWikipediaArtistWiki(artistName, DEFAULT_LAST_FM_WIKI_REGION, client)
-            }
-        }.onFailure { error ->
-            if (error is CancellationException) throw error
-            errors.add(error)
+        val provider = when (source) {
+            ArtistWikiSource.QQ -> "qq"
+            ArtistWikiSource.Kugou -> "kugou"
+            ArtistWikiSource.Kuwo -> "kuwo"
+            ArtistWikiSource.Netease -> "netease"
+            ArtistWikiSource.LastFmApi, ArtistWikiSource.LastFmHtml -> "lastfm"
+            ArtistWikiSource.WikipediaSelected, ArtistWikiSource.WikipediaEnglish -> "wikipedia"
         }
-        val wiki = result.getOrNull()
-        if (wiki != null && wiki.text.isNotBlank()) return@withContext wiki
+        for (query in com.ella.music.data.artistBiographyMatchCandidates(artistName, provider, matchRules)) {
+            val result = runCatching {
+                when (source) {
+                    ArtistWikiSource.LastFmApi -> fetchLastFmArtistWikiFromApi(query, region, apiKey.orEmpty(), client)
+                    ArtistWikiSource.LastFmHtml -> fetchLastFmArtistWikiFromHtml(query, region, client)
+                    ArtistWikiSource.QQ, ArtistWikiSource.Kugou, ArtistWikiSource.Kuwo -> {
+                        val infoSource = when (source) {
+                            ArtistWikiSource.QQ -> com.ella.music.data.AlbumInfoSource.QQ
+                            ArtistWikiSource.Kugou -> com.ella.music.data.AlbumInfoSource.Kugou
+                            else -> com.ella.music.data.AlbumInfoSource.Kuwo
+                        }
+                        com.ella.music.data.ChineseMusicMetadata.artist(query, infoSource, client, allowAlternateScript = false)?.let {
+                            LastFmArtistWiki(it.text, it.url, it.url, source)
+                        }
+                    }
+                    ArtistWikiSource.Netease -> fetchNeteaseArtistWiki(query, client)
+                    ArtistWikiSource.WikipediaSelected -> fetchWikipediaArtistWiki(query, region, client)
+                    ArtistWikiSource.WikipediaEnglish -> fetchWikipediaArtistWiki(query, DEFAULT_LAST_FM_WIKI_REGION, client)
+                }
+            }.onFailure { error ->
+                if (error is CancellationException) throw error
+                errors.add(error)
+            }
+            val wiki = result.getOrNull()
+            if (wiki != null && wiki.text.isNotBlank()) return@withContext wiki
+        }
     }
 
     if (errors.isNotEmpty()) {
@@ -729,7 +738,7 @@ private fun fetchLastFmArtistWikiFromHtml(
         }
         val text = parseLastFmWikiHtml(html).takeIf(String::isNotBlank) ?: continue
         val returnedName = parseLastFmCanonicalArtistName(html) ?: queryName
-        if (!returnedName.equals(artistName.trim(), ignoreCase = true)) continue
+        if (!com.ella.music.data.artistBiographyNameMatches(artistName, returnedName)) continue
         val rank = com.ella.music.data.artistNameCaseRank(artistName, returnedName)
         val result = LastFmArtistWiki(
             text = text,
@@ -773,7 +782,7 @@ private fun fetchWikipediaArtistWiki(
             .addQueryParameter("format", "json").addQueryParameter("utf8", "1")
             .apply { variant?.let { addQueryParameter("variant", it) } }.build().toString()
         val (extract, canonicalTitle) = parseWikipediaExtract(client.executeText(extractUrl)) ?: continue
-        if (canonicalTitle.isNotBlank() && !canonicalTitle.equals(artistName.trim(), ignoreCase = true)) continue
+        if (canonicalTitle.isNotBlank() && !com.ella.music.data.artistBiographyNameMatches(artistName, canonicalTitle)) continue
         val pageUrl = "https://$language.wikipedia.org/wiki/${canonicalTitle.ifBlank { title }.replace(' ', '_')}"
         return LastFmArtistWiki(extract, pageUrl, pageUrl, ArtistWikiSource.WikipediaSelected)
     }

@@ -7,6 +7,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.conflate
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -95,6 +96,19 @@ internal data class LibraryAudioFilterProgress(
     val songs: List<com.ella.music.data.model.Song>, val checked: Int, val total: Int,
     val complete: Boolean
 )
+
+/** Finish an in-flight pass and conflate metadata updates. Background refreshes keep the
+ * previous complete result, rather than repeatedly resetting the visible progress to zero. */
+internal fun filterLibrarySnapshots(
+    snapshots: kotlinx.coroutines.flow.Flow<List<com.ella.music.data.model.Song>>,
+    filter: suspend (List<com.ella.music.data.model.Song>) -> kotlinx.coroutines.flow.Flow<LibraryAudioFilterProgress>
+): kotlinx.coroutines.flow.Flow<LibraryAudioFilterProgress> = kotlinx.coroutines.flow.flow {
+    var initial = true
+    snapshots.conflate().collect { songs ->
+        filter(songs).collect { progress -> if (initial || progress.complete) emit(progress) }
+        initial = false
+    }
+}
 
 /** Emits initial empty results, then checkpoints; cancellation stops an obsolete selection. */
 internal fun filterLibraryAudio(

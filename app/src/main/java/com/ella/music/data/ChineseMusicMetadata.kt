@@ -66,7 +66,8 @@ internal object ChineseMusicMetadata {
         return (root.optJSONArray("abslist") ?: root.optJSONArray("albumlist")).objects()
     }
 
-    suspend fun artist(name: String, source: AlbumInfoSource, networkClient: OkHttpClient = client): ChineseArtistBiography? = withContext(Dispatchers.IO) {
+    suspend fun artist(name: String, source: AlbumInfoSource, networkClient: OkHttpClient = client,
+        allowAlternateScript: Boolean = true): ChineseArtistBiography? = withContext(Dispatchers.IO) {
         val artists = when (source) {
             AlbumInfoSource.QQ -> json("https://c.y.qq.com/soso/fcgi-bin/client_search_cp", "w" to name, "t" to "9",
                 "format" to "json", "inCharset" to "utf-8", "outCharset" to "utf-8", "p" to "1", "n" to "20", networkClient = networkClient)
@@ -111,8 +112,15 @@ internal object ChineseMusicMetadata {
             }
             if (result.text.isNotBlank()) return@withContext result
         }
+        // Try the alternate writing only after exhausting the exact-script result set.
+        for (alternate in if (allowAlternateScript) artistBiographyScriptCandidates(name).drop(1) else emptyList()) {
+            artistExactScript(alternate, source, networkClient)?.let { return@withContext it }
+        }
         null
     }
+
+    private suspend fun artistExactScript(name: String, source: AlbumInfoSource, networkClient: OkHttpClient): ChineseArtistBiography? =
+        artist(name, source, networkClient, allowAlternateScript = false)
 
     suspend fun album(source: AlbumInfoSource, album: Album?, songs: List<Song>, neteaseUrl: String?): String? = withContext(Dispatchers.IO) {
         if (source == AlbumInfoSource.Netease) return@withContext NeteaseAlbumDescriptionFetcher.fetchDescription(album, songs, neteaseUrl)

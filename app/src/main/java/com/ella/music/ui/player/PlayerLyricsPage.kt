@@ -181,11 +181,6 @@ internal fun LyricsPlayerPage(
                     .fillMaxWidth()
                     .weight(1f)
                     .clipToBounds()
-                    .playerLyricPerspective(
-                        enabled = perspectiveEffect,
-                        angle = perspectiveYAngle,
-                        lyricTextAlign = lyricTextAlign
-                    )
             ) {
                 when {
                     lyricsLoading -> {
@@ -219,6 +214,8 @@ internal fun LyricsPlayerPage(
                             primaryTextSizeSp = primaryTextSizeSp,
                             secondaryTextSizeSp = secondaryTextSizeSp,
                             lyricTextAlign = lyricTextAlign,
+                            perspectiveEffectEnabled = perspectiveEffect,
+                            perspectiveYAngle = perspectiveYAngle,
                             contentColor = palette.onBackground,
                             wordLiftEnabled = appleMusicWordLiftEnabled,
                             onLineClick = onLineClick,

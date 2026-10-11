@@ -356,23 +356,34 @@ class KaraokeGlowRenderingTest {
             settings.setLyricRainbowEnabled(false)
             settings.setLyricHdrHighlightEnabled(false)
             settings.setLyricSustainMotion(false)
+            settings.setLyricPerspectiveEffect(false)
+            settings.setLyricPerspectiveYAngle(15)
         }
+        val showStyle = mutableStateOf(false)
         compose.setContent {
             MiuixTheme {
-                LyricActionMenu(showPronunciation = false, showTranslation = false, keepScreenOn = false,
+                if (showStyle.value) {
+                    LyricStyleSettingsContent(layoutProfile = PlayerLyricLayoutProfile.Compact,
+                        fontScale = 1f, secondaryFontScale = 1f, primaryTextSizeSp = 32f, secondaryTextSizeSp = 20f,
+                        perspectiveEffect = false, perspectiveYAngle = 0, onPerspectiveYAngle = {},
+                        onFontScale = {}, onSecondaryFontScale = {}, onPrimaryTextSize = {}, onSecondaryTextSize = {},
+                        onBack = { showStyle.value = false })
+                } else LyricActionMenu(showPronunciation = false, showTranslation = false, keepScreenOn = false,
                     lyricFormatAvailability = MusicRepository.LyricFormatAvailability(), preferTtmlLyrics = null,
                     lyricSourceMode = SettingsManager.LYRIC_SOURCE_AUTO, layoutProfile = PlayerLyricLayoutProfile.Compact,
                     fontScale = 1f, secondaryFontScale = 1f, primaryTextSizeSp = 32f, secondaryTextSizeSp = 20f,
                     perspectiveEffect = false, perspectiveYAngle = 0, onTogglePronunciation = {},
                     onToggleTranslation = {}, onToggleKeepScreenOn = {}, onTogglePerspectiveEffect = {},
                     onPerspectiveYAngle = {}, onLyricSourceMode = {}, onLyricFormatPreference = {},
-                    onFontScale = {}, onSecondaryFontScale = {}, onPrimaryTextSize = {}, onSecondaryTextSize = {})
+                    onFontScale = {}, onSecondaryFontScale = {}, onPrimaryTextSize = {}, onSecondaryTextSize = {},
+                    onStyleSettings = { showStyle.value = true })
             }
         }
         for ((title, flow) in listOf(
             R.string.settings_lyric_rainbow to settings.lyricRainbowEnabled,
             R.string.settings_lyric_hdr_highlight to settings.lyricHdrHighlightEnabled,
-            R.string.settings_lyric_sustain_motion to settings.lyricSustainMotion
+            R.string.settings_lyric_sustain_motion to settings.lyricSustainMotion,
+            R.string.player_enable_perspective_effect to settings.lyricPerspectiveEffect
         )) {
             compose.onNodeWithText(context.getString(title)).performScrollTo().performClick()
             compose.waitUntil(5000) { boundedSettings { flow.first() } }
@@ -381,6 +392,20 @@ class KaraokeGlowRenderingTest {
         compose.onNode(hasSetTextAction()).performTextReplacement("1000")
         compose.onNodeWithText(context.getString(R.string.common_confirm)).performClick()
         compose.waitUntil(5000) { boundedSettings { settings.appleMusicLyricsSustainThresholdMs.first() } == 1000 }
+        // The lyric and playback menus share the preference even when their caller's
+        // captured values and callbacks have not updated yet.
+        compose.onNodeWithText(context.getString(R.string.player_lyric_style_settings)).performScrollTo().performClick()
+        compose.waitUntil(5000) { compose.onAllNodesWithText("15°").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("15°").assertExists()
+        compose.onNodeWithText(context.getString(R.string.player_perspective_y_angle)).performScrollTo().performClick()
+        compose.onNode(hasSetTextAction()).performTextReplacement("37")
+        compose.onNodeWithText(context.getString(R.string.common_confirm)).performClick()
+        compose.waitUntil(5000) { boundedSettings { settings.lyricPerspectiveYAngle.first() } == 37 }
+        boundedSettings { settings.setLyricPerspectiveYAngle(12) }
+        compose.waitUntil(5000) { compose.onAllNodesWithText("12°").fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle { showStyle.value = false }
+        compose.onNodeWithText(context.getString(R.string.player_enable_perspective_effect)).performScrollTo().performClick()
+        compose.waitUntil(5000) { !boundedSettings { settings.lyricPerspectiveEffect.first() } }
         for (minutes in listOf(1, 60, 180, 419)) {
             boundedSettings {
                 settings.setSleepTimerCustomMinutes(minutes)
@@ -487,7 +512,9 @@ class KaraokeGlowRenderingTest {
         val style = mutableStateOf(PosterLyricStyle.Glow)
         val position = mutableLongStateOf(1000L)
         val time = mutableFloatStateOf(0f)
-        val line = LyricLine(0, "MMMM", words = listOf(LyricWord("MMMM", 0, 1200)), endMs = 1200)
+        val line = LyricLine(0, "Weave that prosaic poem", words = listOf(
+            LyricWord("Weave ", 0, 800), LyricWord("that ", 800, 1500),
+            LyricWord("prosaic ", 1500, 2500), LyricWord("poem", 2500, 3500)), endMs = 3500)
         fun rainbow(enabled: Boolean) {
             boundedSettings {
                 settings.setLyricRainbowEnabled(enabled)

@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -219,7 +220,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     @Volatile private var incrementalRescanPending = false
     private val metadataCategoryItemsCache = ConcurrentHashMap<String, MetadataCategoryItemsCacheEntry>()
 
+    val metadataBatchEditor = MetadataCategoryBatchEditor(viewModelScope,
+        write = repository::writeCategoryTagForBatch, publish = repository::publishCategoryTagEdits)
+
     init {
+        viewModelScope.launch {
+            combine(settingsManager.customMetadataCategories, songs) { categories, library ->
+                categories.isNotEmpty() && library.any { !it.customTagsLoaded &&
+                    (it.path.startsWith("/") || it.path.startsWith("content://") || it.path.startsWith("file://")) }
+            }.distinctUntilChanged().collect { needed -> if (needed) repository.hydrateCustomCategoryTags() }
+        }
         viewModelScope.launchNameSplitConfigObservers(
             settingsManager = settingsManager,
             onNameSplitConfigChanged = { metadataCategoryItemsCache.clear() },
@@ -274,7 +284,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setLibrarySource(source: String) {
+    fun setLibrarySource(source: String, forceRefresh: Boolean = false) {
         val requestedSource = SettingsManager.normalizeLibrarySource(source)
         val switchGeneration = librarySourceSwitchGeneration.incrementAndGet()
         scanJob?.cancel()
@@ -297,7 +307,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     repository.loadCachedLibrary()
                     scanFromCurrentSettings(fullRescan = false, deepRescan = false)
                 } else {
-                    loadRemoteLibrarySource(requestedSource, forceRefresh = false)
+                    loadRemoteLibrarySource(requestedSource, forceRefresh = forceRefresh)
                 }
                 if (switchGeneration == librarySourceSwitchGeneration.get()) {
                     _libraryCacheLoaded.value = true
@@ -312,6 +322,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val ownerJob = currentCoroutineContext()[Job]
         repository.startScanning()
         val summary = try {
+            if (source == SettingsManager.LIBRARY_SOURCE_SMB) withContext(Dispatchers.IO) {
+                com.ella.music.data.smb.SmbMetadataCache.trim(getApplication())
+            }
             repository.loadRemoteLibrary(source, forceRefresh = forceRefresh)
         } finally {
             if (scanJob === ownerJob) {
@@ -335,14 +348,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun startWebDavMetadataHydrationIfNeeded(source: String) {
         webDavMetadataHydrationJob?.cancel()
         webDavMetadataHydrationJob = null
-        if (source != SettingsManager.LIBRARY_SOURCE_WEBDAV) return
-        val initialSongs = repository.songs.value
-        if (initialSongs.isEmpty()) return
-        webDavMetadataHydrationJob = viewModelScope.launch {
-            repository.hydrateWebDavMetadata(initialSongs)
-            // Hydration can create the remote cache without changing filename-derived Song
-            // fields. Invalidate artwork models so embedded covers are resolved immediately.
-            clearArtworkModelMemoryCache()
+        if (source !in setOf(SettingsManager.LIBRARY_SOURCE_WEBDAV, SettingsManager.LIBRARY_SOURCE_SMB,
+                SettingsManager.LIBRARY_SOURCE_FTP, SettingsManager.LIBRARY_SOURCE_SFTP)) return
+        webDavMetadataHydrationJob = viewModelScope.launch(Dispatchers.IO) {
+            repository.trimRemoteMetadataCaches()
         }
     }
 
@@ -740,10 +749,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun clearDownloadedArtistImageCache() {
         ArtistImageRepository.clearDownloadedCache(getApplication())
-    }
-
-    suspend fun prefetchWebDavMetadataHeaders(songs: List<Song>, maxItems: Int = 80) {
-        repository.prefetchWebDavMetadataHeaders(songs, maxItems)
     }
 
     suspend fun resolveSongForPlayback(song: Song): Song =

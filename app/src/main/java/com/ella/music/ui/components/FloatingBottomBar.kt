@@ -1,51 +1,53 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2025-2026 InstallerX Revived contributors
-//
-// Adapted from compose-miuix-ui example (IosLiquidGlassNavigationBar) — Apache 2.0.
-// Portions of the migration follow KernelSU commit f261dc4a3dc3f137ebbf38cd1fcbd06d2858c494.
+// Copyright 2026, compose-miuix-ui contributors
+// SPDX-License-Identifier: Apache-2.0
+// Adapted anew from Miuix v0.9.4 (39c40f99844227b853f0049a0933b1f3ae6c00ba),
+// based on Kyant0/AndroidLiquidGlass (Apache-2.0).
+// Halcyon modifications: public content API, visual settings, TV fallback, focus feedback and one-way pager tracking.
 package com.ella.music.ui.components
 
-import android.os.Build
+// Adapted from Kyant0/AndroidLiquidGlass — https://github.com/Kyant0/AndroidLiquidGlass (Apache 2.0).
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Alignment.Companion.CenterHorizontally
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -53,30 +55,33 @@ import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.fastCoerceIn
-import androidx.compose.ui.util.fastRoundToInt
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import com.ella.music.ui.animation.DampedDragAnimation
 import com.ella.music.ui.animation.InteractiveHighlight
-import com.ella.music.ui.components.liquid.innerShadow
-import com.ella.music.ui.components.liquid.InnerShadow
-import com.ella.music.ui.components.liquid.lens
-import com.ella.music.ui.components.liquid.rememberCombinedBackdrop
-import com.ella.music.ui.components.liquid.vibrancy
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.blur
 import top.yukonga.miuix.kmp.blur.drawBackdrop
 import top.yukonga.miuix.kmp.blur.highlight.BloomStroke
@@ -86,49 +91,71 @@ import top.yukonga.miuix.kmp.blur.highlight.LightSource
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.sensor.rememberDeviceTilt
+import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sign
 import kotlin.math.sin
-import kotlin.math.sqrt
-import top.yukonga.miuix.kmp.theme.LocalContentColor as MiuixLocalContentColor
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
+import top.yukonga.miuix.kmp.blur.Backdrop
+import com.ella.music.ui.components.liquid.InnerShadow
+import com.ella.music.ui.components.liquid.innerShadow
+import com.ella.music.ui.components.liquid.lens
+import com.ella.music.ui.components.liquid.vibrancy
+import com.ella.music.ui.components.liquid.rememberCombinedBackdrop
+
+private val LocalIosTabScale = staticCompositionLocalOf { { 1f } }
+
+val LocalFloatingBottomBarTabScale = LocalIosTabScale
 val LocalFloatingBottomBarContentColor = staticCompositionLocalOf { Color.Unspecified }
-val LocalFloatingBottomBarTabScale = staticCompositionLocalOf { { 1f } }
 val LocalFloatingBottomBarActiveIndex = compositionLocalOf { -1 }
 val LocalFloatingBottomBarIsDragging = compositionLocalOf { false }
+private val LocalFloatingBottomBarPassive = staticCompositionLocalOf { false }
 
-// State class holding all colors for the bottom bar
 @Immutable
-class FloatingBottomBarColors(
-    val containerColor: Color,
-    val indicatorColor: Color,
-    val contentColor: Color,
-    val activeContentColor: Color
-)
+class FloatingBottomBarColors(val containerColor: Color, val indicatorColor: Color,
+    val contentColor: Color, val activeContentColor: Color)
 
-// Defaults object for creating the Colors instance
 object FloatingBottomBarDefaults {
-    @Composable
-    fun colors(
-        containerColor: Color = MiuixTheme.colorScheme.surfaceContainer,
+    @Composable fun colors(containerColor: Color = MiuixTheme.colorScheme.surfaceContainer,
         indicatorColor: Color = MiuixTheme.colorScheme.primary,
         contentColor: Color = MiuixTheme.colorScheme.onSurface,
-        activeContentColor: Color = indicatorColor
-    ): FloatingBottomBarColors = FloatingBottomBarColors(
-        containerColor = containerColor,
-        indicatorColor = indicatorColor,
-        contentColor = contentColor,
-        activeContentColor = activeContentColor
-    )
+        activeContentColor: Color = indicatorColor) =
+        FloatingBottomBarColors(containerColor, indicatorColor, contentColor, activeContentColor)
 }
 
-enum class FloatingBottomBarMode {
-    LiquidGlass,
-    Blur,
-    None
+enum class FloatingBottomBarMode { LiquidGlass, Blur, None }
+
+@Composable
+fun RowScope.FloatingBottomBarItem(onClick: () -> Unit, modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val scale = LocalFloatingBottomBarTabScale.current
+    val color = LocalFloatingBottomBarContentColor.current
+    val passive = LocalFloatingBottomBarPassive.current
+    Column(modifier.weight(1f).fillMaxHeight().clip(CircleShape)
+        .onFocusChanged { focused = it.hasFocus }
+        .border(if (focused) 3.dp else 0.dp, if (focused) MiuixTheme.colorScheme.primary else Color.Transparent, CircleShape)
+        .then(if (passive) Modifier else Modifier.clickable(interactionSource = null, indication = null, role = Role.Tab, onClick = onClick))
+        .graphicsLayer { scaleX = scale() * if (focused) 1.06f else 1f; scaleY = scaleX },
+        verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        CompositionLocalProvider(LocalContentColor provides color) { content() }
+    }
 }
 
 private val iosIndicatorSpecular: Highlight = Highlight(
@@ -151,130 +178,94 @@ private val iosIndicatorSpecular: Highlight = Highlight(
     ),
 )
 
-// Mirrors miuix-blur HighlightStyle's LIGHT_REF — keep in sync.
+// Mirrors HighlightStyle.kt's LIGHT_REF — keep in sync.
 private const val LIGHT_REF_X = 0.5f
 private const val LIGHT_REF_Y = 0.7f
 private const val GRAVITY_DIR_THRESHOLD_SQ = 0.01f // |g_xy| > 0.1, ≈ 6° tilt
 
-/** Tracks gravity for a `dualPeak` highlight's primary light, with an extra UV-clockwise offset on top. */
+// 3° quantization step for the gravity direction: finer changes are imperceptible.
+private const val GRAVITY_ANGLE_STEP_RAD = (3.0 * PI / 180.0).toFloat()
+
+/**
+ * In-screen-plane gravity direction angle (radians, quantized to 3° steps).
+ *
+ * Returned as [State] so the read can be deferred to the draw phase: the sensor writes tilt
+ * state unthrottled (~50Hz), and a composition-time read would recompose the whole caller
+ * scope on every tick. The derivedStateOf equality check then drops draw invalidations to
+ * quantization-step crossings.
+ */
+@Composable
+private fun rememberQuantizedGravityAngle(): State<Float> {
+    val tiltState = rememberDeviceTilt()
+    return remember(tiltState) {
+        derivedStateOf {
+            val tilt = tiltState.value
+            val gx = tilt.gravityX
+            val gy = tilt.gravityY
+            val gMagSq = gx * gx + gy * gy
+            if (gMagSq > GRAVITY_DIR_THRESHOLD_SQ) {
+                (atan2(gy, gx) / GRAVITY_ANGLE_STEP_RAD).roundToInt() * GRAVITY_ANGLE_STEP_RAD
+            } else {
+                // Near-flat: the in-plane gravity direction is unstable, pin to (0, -1).
+                (-PI / 2).toFloat()
+            }
+        }
+    }
+}
+
+/**
+ * [base] with its `dualPeak` primary light rotated to the gravity angle plus [extraDegrees].
+ * Read `.value` only at draw time (see [rememberQuantizedGravityAngle]); the rotated copy is
+ * cached, re-allocating only when the angle crosses a quantization step.
+ */
 @Composable
 private fun rememberGravityRotatedHighlight(
     base: Highlight,
-    extraDegrees: Float = 0f,
-): Highlight {
-    val baseStyle = base.style as BloomStroke
-    val tilt by rememberDeviceTilt()
-    val rotatedPrimary = remember(tilt, baseStyle.primaryLight, extraDegrees) {
-        val basePrimary = baseStyle.primaryLight
-        val gx = tilt.gravityX
-        val gy = tilt.gravityY
-        val gMagSq = gx * gx + gy * gy
-        val (lx0, ly0) = if (gMagSq > GRAVITY_DIR_THRESHOLD_SQ) {
-            val invMag = 1f / sqrt(gMagSq)
-            (gx * invMag) to (gy * invMag)
-        } else {
-            0f to -1f
-        }
-        val rad = extraDegrees * PI / 180.0
-        val c = cos(rad).toFloat()
-        val s = sin(rad).toFloat()
-        val lx = c * lx0 - s * ly0
-        val ly = s * lx0 + c * ly0
-        basePrimary.copy(
-            position = LightPosition(
-                x = LIGHT_REF_X + lx,
-                y = LIGHT_REF_Y + ly,
-                z = basePrimary.position.z,
-            ),
-        )
-    }
-    return remember(base, rotatedPrimary) {
-        base.copy(style = baseStyle.copy(primaryLight = rotatedPrimary))
-    }
-}
-
-@Composable
-fun RowScope.FloatingBottomBarItem(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    val scale = LocalFloatingBottomBarTabScale.current
-    var focused by remember { mutableStateOf(false) }
-    // Read the dynamic color from the bottom bar layer
-    val contentColor = LocalFloatingBottomBarContentColor.current
-
-    Column(
-        modifier
-            .clip(CircleShape)
-            .onFocusChanged { focused = it.hasFocus }
-            .border(
-                width = if (focused) 3.dp else 0.dp,
-                color = if (focused) MiuixTheme.colorScheme.primary else Color.Transparent,
-                shape = CircleShape
+    extraDegrees: Float,
+): State<Highlight> {
+    val gravityAngle = rememberQuantizedGravityAngle()
+    return remember(gravityAngle, base, extraDegrees) {
+        derivedStateOf {
+            val baseStyle = base.style as BloomStroke
+            val basePrimary = baseStyle.primaryLight
+            val rad = gravityAngle.value + (extraDegrees * PI / 180.0).toFloat()
+            base.copy(
+                style = baseStyle.copy(
+                    primaryLight = basePrimary.copy(
+                        position = LightPosition(
+                            x = LIGHT_REF_X + cos(rad),
+                            y = LIGHT_REF_Y + sin(rad),
+                            z = basePrimary.position.z,
+                        ),
+                    ),
+                ),
             )
-            .clickable(
-                interactionSource = null,
-                indication = null,
-                role = Role.Tab,
-                onClick = onClick
-            )
-            .fillMaxHeight()
-            .weight(1f)
-            .graphicsLayer {
-                val s = scale()
-                val focusScale = if (focused) 1.06f else 1f
-                scaleX = s * focusScale
-                scaleY = s * focusScale
-            },
-        verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Provide the color to Miuix components seamlessly
-        CompositionLocalProvider(
-            MiuixLocalContentColor provides contentColor
-        ) {
-            content()
         }
     }
 }
 
 @Composable
-fun FloatingBottomBar(
-    modifier: Modifier = Modifier,
-    selectedIndex: () -> Int,
-    onSelected: (index: Int) -> Unit,
-    backdrop: Backdrop?,
-    tabsCount: Int,
+fun FloatingBottomBar(modifier: Modifier = Modifier, selectedIndex: () -> Int,
+    onSelected: (Int) -> Unit, backdrop: Backdrop?, tabsCount: Int,
     mode: FloatingBottomBarMode = FloatingBottomBarMode.LiquidGlass,
-    disableRefraction: Boolean = false,
-    cornerRadiusDp: Float? = null,
+    disableRefraction: Boolean = false, cornerRadiusDp: Float? = null,
     liquidGlassConfig: BottomBarLiquidGlassConfig? = null,
     colors: FloatingBottomBarColors = FloatingBottomBarDefaults.colors(),
-    content: @Composable RowScope.() -> Unit
-) {
+    content: @Composable RowScope.() -> Unit) {
+    if (tabsCount <= 0) return
+    val selectedIndexValue = selectedIndex().coerceIn(0, tabsCount - 1)
     val context = LocalContext.current
-    val televisionDevice = remember(context) {
-        com.ella.music.util.isTelevisionDevice(context)
-    }
-    val isLight = MiuixTheme.colorScheme.background.simpleLuminance() > 0.5f
-    val isInDark = !isLight
-    val resolvedCornerRadiusDp = (cornerRadiusDp ?: LocalBottomBarCornerRadiusDp.current)
-        .coerceIn(0f, 32f)
-    val resolvedLiquidGlassConfig = liquidGlassConfig ?: LocalBottomBarLiquidGlassConfig.current
-    val pillShape = remember(resolvedCornerRadiusDp) {
-        RoundedCornerShape(resolvedCornerRadiusDp.dp)
-    }
-    // TV renderers frequently lack the RuntimeShader path used by the refractive lens. Keep the
-    // same backdrop capture but use the simpler Gaussian blur path there; it also avoids the
-    // continuously animated refraction work that can saturate low-power TV CPUs.
-    val isLiquidGlassMode = mode == FloatingBottomBarMode.LiquidGlass && !televisionDevice
-    val isBlurMode = mode == FloatingBottomBarMode.Blur || televisionDevice
-    val useLayeredSelection = isLiquidGlassMode && backdrop != null && !disableRefraction
-    val containerColor =
-        if (isLiquidGlassMode) colors.containerColor.copy(0.4f)
-        else if (televisionDevice) colors.containerColor.copy(alpha = 0.72f)
-        else colors.containerColor
+    val television = remember(context) { com.ella.music.util.isTelevisionDevice(context) }
+    val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
+    val radius = (cornerRadiusDp ?: LocalBottomBarCornerRadiusDp.current).coerceIn(0f, 32f)
+    val pillShape = remember(radius) { RoundedCornerShape(radius.dp) }
+    val config = liquidGlassConfig ?: LocalBottomBarLiquidGlassConfig.current
+    val isBlurActive = mode == FloatingBottomBarMode.LiquidGlass && backdrop != null && !television && !disableRefraction
+    val blurOnly = mode == FloatingBottomBarMode.Blur || television || (mode == FloatingBottomBarMode.LiquidGlass && disableRefraction)
+    val accentColor = colors.activeContentColor
+    val tabContentColor = colors.contentColor
+    val surfaceContainer = colors.containerColor
+    val containerColor = if (isBlurActive) surfaceContainer.copy(alpha = 0.4f) else surfaceContainer
 
     val tabsBackdrop = rememberLayerBackdrop()
     val density = LocalDensity.current
@@ -291,357 +282,310 @@ fun FloatingBottomBar(
             if (totalWidthPx == 0f) {
                 0f
             } else {
-                val fraction = (offsetAnimation.value / totalWidthPx).fastCoerceIn(-1f, 1f)
+                val fraction = (offsetAnimation.value / totalWidthPx).coerceIn(-1f, 1f)
                 rubberBandPx * fraction.sign * EaseOut.transform(abs(fraction))
             }
         }
     }
 
-    val onSelectedState = rememberUpdatedState(onSelected)
-    val selectedIndexState = rememberUpdatedState(selectedIndex)
+    var currentIndex by remember { mutableIntStateOf(selectedIndexValue) }
+    val onItemClickUpdated by rememberUpdatedState(onSelected)
 
-    var currentIndex by remember { mutableIntStateOf(selectedIndexState.value()) }
-    val selectedIndexValue = selectedIndexState.value()
-
-    LaunchedEffect(selectedIndexValue) {
-        if (selectedIndexValue != currentIndex) {
-            currentIndex = selectedIndexValue
-        }
+    fun indexAt(positionX: Float): Int {
+        if (tabWidthPx == 0f) return currentIndex
+        val horizontalPaddingPx = with(density) { 4.dp.toPx() }
+        val logicalX = if (isLtr) positionX else totalWidthPx - positionX
+        return ((logicalX - horizontalPaddingPx) / tabWidthPx)
+            .toInt()
+            .coerceIn(0, tabsCount - 1)
     }
 
-    class DampedDragAnimationHolder {
-        var instance: DampedDragAnimation? = null
-    }
-
-    val holder = remember { DampedDragAnimationHolder() }
-
-    val dampedDragAnimation = remember(animationScope, tabsCount, density, isLtr) {
+    val dragTravel = remember { floatArrayOf(0f) }
+    val touchSlop = androidx.compose.ui.platform.LocalViewConfiguration.current.touchSlop
+    val dampedDrag = remember(animationScope, tabsCount, density, isLtr, touchSlop) {
         DampedDragAnimation(
             animationScope = animationScope,
-            initialValue = selectedIndexState.value().toFloat(),
+            initialValue = selectedIndexValue.toFloat(),
             valueRange = 0f..(tabsCount - 1).toFloat(),
             visibilityThreshold = 0.001f,
             initialScale = 1f,
             pressedScale = 78f / 56f,
-            canDrag = { offset ->
-                val anim = holder.instance ?: return@DampedDragAnimation true
-                if (tabWidthPx == 0f) return@DampedDragAnimation false
-
-                val currentValue = anim.value
-                val indicatorX = currentValue * tabWidthPx
-                val padding = with(density) { 4.dp.toPx() }
-                val globalTouchX = if (isLtr) {
-                    padding + indicatorX + offset.x
-                } else {
-                    totalWidthPx - padding - tabWidthPx - indicatorX + offset.x
-                }
-                globalTouchX in 0f..totalWidthPx
+            canDrag = { position ->
+                position.x in 0f..totalWidthPx
             },
-            onDragStarted = {},
+            onDragStarted = { position ->
+                dragTravel[0] = 0f
+                updateValue(indexAt(position.x).toFloat())
+            },
             onDragStopped = {
-                val targetIndex = targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
-                currentIndex = targetIndex
-                onSelectedState.value(targetIndex)
-                // Always snap the indicator to an integer tab. When the rounded index is
-                // already selected, currentIndex does not change and the external-selection
-                // effect below is intentionally not re-triggered; without this explicit
-                // animation the bubble can keep the fractional drag target and settle between
-                // two buttons.
-                animateToValue(targetIndex.toFloat())
+                val targetIndex = targetValue.roundToInt().coerceIn(0, tabsCount - 1)
+                if (abs(dragTravel[0]) >= touchSlop && currentIndex != targetIndex) {
+                    currentIndex = targetIndex
+                    onItemClickUpdated(targetIndex)
+                }
+                updateValue(currentIndex.toFloat())
+                animationScope.launch {
+                    offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
+                }
+            },
+            onDragCancelled = {
+                updateValue(currentIndex.toFloat())
                 animationScope.launch {
                     offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
                 }
             },
             onDrag = { _, dragAmount ->
-                if (tabWidthPx > 0) {
+                dragTravel[0] += dragAmount.x
+                if (tabWidthPx > 0f && dragAmount.x != 0f) {
                     updateValue(
                         (targetValue + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
-                            .fastCoerceIn(0f, (tabsCount - 1).toFloat())
+                            .coerceIn(0f, (tabsCount - 1).toFloat()),
                     )
                     animationScope.launch {
                         offsetAnimation.snapTo(offsetAnimation.value + dragAmount.x)
                     }
                 }
-            }
-        ).also { holder.instance = it }
+            },
+        )
     }
 
-    LaunchedEffect(dampedDragAnimation) {
-        snapshotFlow { currentIndex }.drop(1).collectLatest { index ->
-            dampedDragAnimation.animateToValue(index.toFloat())
+    LaunchedEffect(selectedIndexValue) {
+        if (currentIndex != selectedIndexValue) {
+            currentIndex = selectedIndexValue
+            dampedDrag.animateToValue(selectedIndexValue.toFloat(), animatePress = false)
         }
     }
 
-    val activeTabIndex by remember(tabsCount) {
-        derivedStateOf {
-            if (tabsCount <= 0) -1
-            else dampedDragAnimation.value.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
+    fun activateTab(index: Int) {
+        if (currentIndex != index) {
+            currentIndex = index
+            onItemClickUpdated(index)
         }
-    }
-    val isDragging by remember {
-        derivedStateOf {
-            dampedDragAnimation.pressProgress > 0.01f
-        }
+        dampedDrag.animateToValue(index.toFloat())
     }
 
-    // Keep the same compatibility guard as the old InstallerX implementation.
-    // If your InteractiveHighlight has already been made safe on older Android versions,
-    // this can be simplified to KernelSU's unguarded version.
-    val interactiveHighlight =
-        if (useLayeredSelection && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            remember(animationScope, tabWidthPx) {
-                InteractiveHighlight(
-                    animationScope = animationScope,
-                    position = { size, _ ->
-                        Offset(
-                            if (isLtr) (dampedDragAnimation.value + 0.5f) * tabWidthPx + panelOffset
-                            else size.width - (dampedDragAnimation.value + 0.5f) * tabWidthPx + panelOffset,
-                            size.height / 2f
+    // Keyed on dampedDrag: the position lambda captures it; a stale capture would freeze the press spot.
+    val interactiveHighlight = remember(animationScope, isLtr, dampedDrag) {
+        InteractiveHighlight(
+            animationScope = animationScope,
+            position = { layerSize, _ ->
+                Offset(
+                    x = if (isLtr) {
+                        (dampedDrag.value + 0.5f) * tabWidthPx + panelOffset
+                    } else {
+                        layerSize.width - (dampedDrag.value + 0.5f) * tabWidthPx + panelOffset
+                    },
+                    y = layerSize.height / 2f,
+                )
+            },
+        )
+    }
+
+    // Read .value only inside highlight lambdas (draw phase), never in composition.
+    val baseHighlight = rememberGravityRotatedHighlight(iosIndicatorSpecular, extraDegrees = -45f)
+    val pillHighlight = rememberGravityRotatedHighlight(iosIndicatorSpecular, extraDegrees = 90f)
+
+    val combinedBackdrop = backdrop?.let { rememberCombinedBackdrop(it, tabsBackdrop) }
+
+    val activeIndex by remember(dampedDrag, tabsCount) { derivedStateOf { dampedDrag.value.roundToInt().coerceIn(0, tabsCount - 1) } }
+    val dragging by remember { derivedStateOf { dampedDrag.pressProgress > 0.001f } }
+    val tabsContent = content
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                                .fillMaxWidth().then(if (television) Modifier else dampedDrag.modifier),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            CompositionLocalProvider(LocalContentColor provides tabContentColor,
+                LocalFloatingBottomBarContentColor provides tabContentColor,
+                LocalFloatingBottomBarActiveIndex provides activeIndex,
+                LocalFloatingBottomBarIsDragging provides dragging) {
+                Row(
+                    modifier = Modifier
+                        .selectableGroup()
+                        .onSizeChanged { coords ->
+                            totalWidthPx = coords.width.toFloat()
+                            val contentWidthPx = totalWidthPx - with(density) { 8.dp.toPx() }
+                            tabWidthPx = (contentWidthPx / tabsCount).coerceAtLeast(0f)
+                        }
+                        .graphicsLayer { translationX = panelOffset }
+                        .dropShadow(
+                            shape = pillShape,
+                            shadow = Shadow(
+                                radius = 10.dp,
+                                color = Color.Black,
+                                // Lighter in light theme to avoid a visible gray fringe.
+                                alpha = if (isDark) 0.2f else 0.1f,
+                            ),
                         )
-                    }
+                        .then(
+                            if (isBlurActive && backdrop != null) {
+                                Modifier.drawBackdrop(
+                                    backdrop = backdrop,
+                                    shape = { pillShape },
+                                    effects = {
+                                        // 24dp lens refraction + 16dp press-scale reach, raised before blur() reads it.
+                                        padding = maxOf(padding, 40.dp.toPx())
+                                        vibrancy()
+                                        blur(
+                                            4.dp.toPx(),
+                                            4.dp.toPx(),
+                                        )
+                                        lens(
+                                            refractionHeight = config.refractionHeightDp.coerceAtLeast(0f).dp.toPx(),
+                                            refractionAmount = config.refractionAmountDp.coerceAtLeast(0f).dp.toPx(),
+                                            chromaticAberration = config.chromaticAberration,
+                                        )
+                                    },
+                                    highlight = { baseHighlight.value.copy(alpha = 0.75f) },
+                                    layerBlock = {
+                                        val width = size.width.coerceAtLeast(1f)
+                                        val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDrag.pressProgress)
+                                        scaleX = s
+                                        scaleY = s
+                                    },
+                                    onDrawSurface = { drawRect(containerColor) },
+                                )
+                            } else if (blurOnly && backdrop != null) {
+                                Modifier.drawBackdrop(backdrop = backdrop, shape = { pillShape },
+                                    effects = { blur(25.dp.toPx(), 25.dp.toPx()) },
+                                    onDrawSurface = { drawRect(containerColor.copy(alpha = 0.65f)) })
+                            } else {
+                                Modifier.background(containerColor, pillShape)
+                            },
+                        )
+                        .then(
+                            if (isBlurActive) {
+                                interactiveHighlight.modifier.then(interactiveHighlight.gestureModifier)
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .height(64.dp)
+                        .padding(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = tabsContent,
                 )
             }
-        } else {
-            null
-        }
 
-    val baseHighlight = if (televisionDevice) iosIndicatorSpecular
-        else rememberGravityRotatedHighlight(iosIndicatorSpecular, extraDegrees = -45f)
-    val pillHighlight = if (televisionDevice) iosIndicatorSpecular
-        else rememberGravityRotatedHighlight(iosIndicatorSpecular, extraDegrees = 90f)
-
-    val combinedBackdrop = if (useLayeredSelection) {
-        rememberCombinedBackdrop(backdrop, tabsBackdrop)
-    } else {
-        null
-    }
-
-    Box(
-        modifier = modifier.fillMaxWidth(),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        // Base layer (Unselected state)
-        // Provide the default content color to this layer
-        CompositionLocalProvider(
-            LocalFloatingBottomBarContentColor provides colors.contentColor,
-            LocalFloatingBottomBarActiveIndex provides activeTabIndex,
-            LocalFloatingBottomBarIsDragging provides isDragging
-        ) {
-            Row(
-                Modifier
-                    .focusGroup()
-                    .onGloballyPositioned { coords ->
-                        totalWidthPx = coords.size.width.toFloat()
-                        val contentWidthPx = totalWidthPx - with(density) { 8.dp.toPx() }
-                        tabWidthPx = (contentWidthPx / tabsCount).coerceAtLeast(0f)
-                    }
-                    .graphicsLayer { translationX = panelOffset }
-                    .dropShadow(
-                        shape = pillShape,
-                        shadow = Shadow(
-                            radius = 10.dp,
-                            color = Color.Black,
-                            alpha = if (isInDark) 0.2f else 0.1f,
-                        ),
-                    )
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {}
-                    )
-                    .then(
-                        if (isLiquidGlassMode && backdrop != null) {
-                            Modifier.drawBackdrop(
+            if (isBlurActive && backdrop != null) {
+                CompositionLocalProvider(
+                    LocalIosTabScale provides { lerp(1f, 1.2f, dampedDrag.pressProgress) },
+                    LocalContentColor provides accentColor,
+                    LocalFloatingBottomBarPassive provides true,
+                    LocalFloatingBottomBarContentColor provides accentColor,
+                    LocalFloatingBottomBarActiveIndex provides activeIndex,
+                    LocalFloatingBottomBarIsDragging provides dragging,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clearAndSetSemantics {}
+                            .alpha(0f)
+                            .layerBackdrop(tabsBackdrop)
+                            .graphicsLayer { translationX = panelOffset }
+                            .drawBackdrop(
                                 backdrop = backdrop,
                                 shape = { pillShape },
                                 effects = {
-                                    if (!disableRefraction) {
-                                        vibrancy()
-                                    }
-                                    blur(
-                                        resolvedLiquidGlassConfig.blurRadiusDp.coerceAtLeast(0f).dp.toPx(),
-                                        resolvedLiquidGlassConfig.blurRadiusDp.coerceAtLeast(0f).dp.toPx(),
+                                    vibrancy()
+                                    blur(config.blurRadiusDp.coerceAtLeast(0f).dp.toPx(), config.blurRadiusDp.coerceAtLeast(0f).dp.toPx())
+                                    lens(
+                                        refractionHeight = config.refractionHeightDp.coerceAtLeast(0f).dp.toPx(),
+                                        refractionAmount = config.refractionAmountDp.coerceAtLeast(0f).dp.toPx(),
+                                            chromaticAberration = config.chromaticAberration,
                                     )
-                                    if (!disableRefraction) {
-                                        lens(
-                                            refractionHeight = resolvedLiquidGlassConfig.refractionHeightDp
-                                                .coerceAtLeast(0f).dp.toPx(),
-                                            refractionAmount = resolvedLiquidGlassConfig.refractionAmountDp
-                                                .coerceAtLeast(0f).dp.toPx(),
-                                            chromaticAberration = resolvedLiquidGlassConfig.chromaticAberration,
-                                        )
-                                    }
-                                },
-                                highlight = { baseHighlight.copy(alpha = 0.75f) },
-                                layerBlock = {
-                                    val width = size.width.coerceAtLeast(1f)
-                                    val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDragAnimation.pressProgress)
-                                    scaleX = s
-                                    scaleY = s
                                 },
                                 onDrawSurface = { drawRect(containerColor) },
                             )
-                        } else if (isBlurMode && backdrop != null) {
-                            Modifier.drawBackdrop(
-                                backdrop = backdrop,
-                                shape = { pillShape },
-                                effects = {
-                                    blur(25.dp.toPx(), 25.dp.toPx())
-                                },
-                                onDrawSurface = {
-                                    drawRect(containerColor.copy(alpha = 0.65f))
-                                },
-                            )
-                        } else {
-                            Modifier.background(containerColor, pillShape)
-                        }
+                            .then(interactiveHighlight.modifier)
+                            .height(56.dp)
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        content = tabsContent,
                     )
-                    .then(if (isLiquidGlassMode && interactiveHighlight != null) interactiveHighlight.modifier else Modifier)
-                    .height(64.dp)
-                    .padding(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                content = content
-            )
-        }
-
-        if (useLayeredSelection) {
-            CompositionLocalProvider(
-                LocalFloatingBottomBarTabScale provides {
-                    lerp(1f, 1.2f, dampedDragAnimation.pressProgress)
-                },
-                LocalFloatingBottomBarContentColor provides colors.activeContentColor,
-                LocalFloatingBottomBarActiveIndex provides activeTabIndex,
-                LocalFloatingBottomBarIsDragging provides isDragging
-            ) {
-                Row(
-                    Modifier
-                        .clearAndSetSemantics {}
-                        .alpha(0f)
-                        .layerBackdrop(tabsBackdrop)
-                        .graphicsLayer { translationX = panelOffset }
-                        .drawBackdrop(
-                            backdrop = backdrop,
-                            shape = { pillShape },
-                            effects = {
-                                if (!disableRefraction) {
-                                    vibrancy()
-                                }
-                                blur(
-                                    resolvedLiquidGlassConfig.blurRadiusDp.coerceAtLeast(0f).dp.toPx(),
-                                    resolvedLiquidGlassConfig.blurRadiusDp.coerceAtLeast(0f).dp.toPx(),
-                                )
-                                if (!disableRefraction) {
-                                    lens(
-                                        refractionHeight = resolvedLiquidGlassConfig.refractionHeightDp
-                                            .coerceAtLeast(0f).dp.toPx(),
-                                        refractionAmount = resolvedLiquidGlassConfig.refractionAmountDp
-                                            .coerceAtLeast(0f).dp.toPx(),
-                                        chromaticAberration = resolvedLiquidGlassConfig.chromaticAberration,
-                                    )
-                                }
-                            },
-                            onDrawSurface = { drawRect(containerColor) },
-                        )
-                        .then(interactiveHighlight?.modifier ?: Modifier)
-                        .height(56.dp)
-                        .padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    content()
                 }
             }
-        }
 
-        if (tabWidthPx > 0f) {
-            val tabWidthDp = with(density) { tabWidthPx.toDp() }
-            if (isLiquidGlassMode && combinedBackdrop != null) {
-                Box(
-                    Modifier
-                        .padding(horizontal = 4.dp)
-                        .graphicsLayer {
-                            val progressOffset = dampedDragAnimation.value * tabWidthPx
-                            translationX = if (isLtr) progressOffset + panelOffset else -progressOffset + panelOffset
-                        }
-                        .then(interactiveHighlight?.gestureModifier ?: Modifier)
-                        .then(dampedDragAnimation.modifier)
-                        .drawBackdrop(
-                            backdrop = combinedBackdrop,
-                            shape = { pillShape },
-                            effects = {
-                                val progress = dampedDragAnimation.pressProgress
-                                if (!disableRefraction) {
+            if (tabWidthPx > 0f) {
+                val tabWidthDp = with(density) { tabWidthPx.toDp() }
+                if (isBlurActive && combinedBackdrop != null) {
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .graphicsLayer {
+                                val singleTabWidth = tabWidthPx
+                                val progressOffset = dampedDrag.value * singleTabWidth
+                                translationX = if (isLtr) progressOffset + panelOffset else -progressOffset + panelOffset
+                            }
+                            .drawBackdrop(
+                                backdrop = combinedBackdrop,
+                                shape = { pillShape },
+                                effects = {
+                                    val progress = dampedDrag.pressProgress
                                     lens(
-                                        refractionHeight = resolvedLiquidGlassConfig.refractionHeightDp
-                                            .coerceAtLeast(0f).dp.toPx() * progress,
-                                        refractionAmount = resolvedLiquidGlassConfig.refractionAmountDp
-                                            .coerceAtLeast(0f).dp.toPx() * progress,
+                                        refractionHeight = 10.dp.toPx() * progress,
+                                        refractionAmount = 14.dp.toPx() * progress,
                                         depthEffect = true,
-                                        chromaticAberration = resolvedLiquidGlassConfig.chromaticAberration,
+                                        chromaticAberration = 0.5f,
                                     )
-                                }
-                            },
-                            highlight = { pillHighlight.copy(alpha = dampedDragAnimation.pressProgress) },
-                            layerBlock = {
-                                scaleX = dampedDragAnimation.scaleX
-                                scaleY = dampedDragAnimation.scaleY
-                                val velocity = dampedDragAnimation.velocity / 10f
-                                scaleX /= 1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f)
-                                scaleY *= 1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)
-                            },
-                            onDrawSurface = {
-                                val progress = dampedDragAnimation.pressProgress
-                                drawRect(
-                                    color = if (!isInDark) Color.Black.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.1f),
-                                    alpha = 1f - progress,
+                                },
+                                highlight = { pillHighlight.value.copy(alpha = dampedDrag.pressProgress) },
+                                layerBlock = {
+                                    scaleX = dampedDrag.scaleX
+                                    scaleY = dampedDrag.scaleY
+                                    val v = dampedDrag.velocity / 10f
+                                    scaleX /= 1f - (v * 0.75f).coerceIn(-0.2f, 0.2f)
+                                    scaleY *= 1f - (v * 0.25f).coerceIn(-0.2f, 0.2f)
+                                },
+                                onDrawSurface = {
+                                    val progress = dampedDrag.pressProgress
+                                    drawRect(
+                                        color = if (!isDark) Color.Black.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.1f),
+                                        alpha = 1f - progress,
+                                    )
+                                    drawRect(Color.Black.copy(alpha = 0.03f * progress))
+                                },
+                            )
+                            .innerShadow(shape = pillShape) {
+                                InnerShadow(
+                                    radius = 8.dp * dampedDrag.pressProgress,
+                                    color = Color.Black.copy(alpha = 0.15f),
+                                    alpha = dampedDrag.pressProgress,
                                 )
-                                drawRect(Color.Black.copy(alpha = 0.03f * progress))
-                            },
-                        )
-                        .innerShadow(shape = pillShape) {
-                            InnerShadow(
-                                radius = 8.dp * dampedDragAnimation.pressProgress,
-                                color = Color.Black.copy(alpha = 0.15f),
-                                alpha = dampedDragAnimation.pressProgress,
+                            }
+                            .height(56.dp)
+                            .width(tabWidthDp),
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .graphicsLayer {
+                                val progressOffset = dampedDrag.value * tabWidthPx
+                                translationX = if (isLtr) progressOffset + panelOffset else -progressOffset + panelOffset
+                            }
+                            .clip(pillShape)
+                            .background(accentColor.copy(alpha = 0.15f), pillShape)
+                            .height(56.dp)
+                            .width(tabWidthDp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        CompositionLocalProvider(LocalFloatingBottomBarPassive provides true, LocalContentColor provides accentColor, LocalFloatingBottomBarContentColor provides accentColor, LocalFloatingBottomBarActiveIndex provides activeIndex, LocalFloatingBottomBarIsDragging provides dragging) {
+                            Row(
+                                modifier = Modifier
+                                    .clearAndSetSemantics {}
+                                    .wrapContentWidth(align = Alignment.Start, unbounded = true)
+                                    .requiredWidth(with(density) { (totalWidthPx - 8.dp.toPx()).toDp() })
+                                    .height(56.dp)
+                                    .graphicsLayer {
+                                        val progressOffset = dampedDrag.value * tabWidthPx
+                                        translationX = if (isLtr) -progressOffset else progressOffset
+                                    },
+                                verticalAlignment = Alignment.CenterVertically,
+                                content = tabsContent,
                             )
                         }
-                        .height(56.dp)
-                        .width(tabWidthDp)
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 4.dp)
-                        .graphicsLayer {
-                            val progressOffset = dampedDragAnimation.value * tabWidthPx
-                            translationX = if (isLtr) progressOffset + panelOffset else -progressOffset + panelOffset
-                        }
-                        .then(dampedDragAnimation.modifier)
-                        .clip(pillShape)
-                        .background(colors.indicatorColor.copy(alpha = 0.15f), pillShape)
-                        .height(56.dp)
-                        .width(tabWidthDp),
-                    // Force start alignment for the Box container to prevent centering
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    // Provide the active content color to the non-blur active layer
-                    CompositionLocalProvider(
-                        LocalFloatingBottomBarContentColor provides colors.activeContentColor,
-                        LocalFloatingBottomBarActiveIndex provides activeTabIndex,
-                        LocalFloatingBottomBarIsDragging provides isDragging
-                    ) {
-                        Row(
-                            Modifier
-                                .clearAndSetSemantics {}
-                                .wrapContentWidth(align = Alignment.Start, unbounded = true)
-                                .requiredWidth(with(density) { (totalWidthPx - 8.dp.toPx()).toDp() })
-                                .height(56.dp)
-                                .graphicsLayer {
-                                    val progressOffset = dampedDragAnimation.value * tabWidthPx
-                                    translationX = if (isLtr) -progressOffset else progressOffset
-                                },
-                            verticalAlignment = Alignment.CenterVertically,
-                            content = content
-                        )
                     }
                 }
             }

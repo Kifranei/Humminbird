@@ -7,6 +7,32 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MainRoutesTest {
+    @Test fun searchReturnsToItsOpeningPageForDockAndPagerNavigation() {
+        val library = Screen.Library.route
+        val artists = Screen.Artist.createRoute(fromDock = true)
+        val search = Screen.LibrarySearch.createRoute()
+        val state = MainPageState(library).apply { routes = listOf(Screen.Home.route, library, artists, search) }
+        assertTrue(state.select(search))
+        assertEquals(library, state.searchReturnRoute)
+        assertTrue(state.exitSearch())
+        assertEquals(library, state.selectedRoute)
+        state.settle(artists)
+        state.settle(search)
+        assertEquals(artists, state.searchReturnRoute)
+        val restored = MainPageState(state.selectedRoute, state.searchReturnRoute).apply { routes = state.routes }
+        assertTrue(restored.exitSearch())
+        assertEquals(artists, restored.selectedRoute)
+        assertFalse(restored.exitSearch())
+    }
+    @Test fun folderPlaylistDockRouteIsSelectableAndKeepsBrowsingBackgrounds() {
+        assertEquals(Screen.FolderPlaylists.route, Screen.FolderPlaylists.route.toCurrentTabRoute())
+        assertTrue(Screen.FolderPlaylists.route.isBottomDockRoute())
+        for (route in listOf(Screen.Album.createRoute(true), Screen.Artist.createRoute(true),
+            Screen.Folder.createRoute(true), Screen.MetadataCategory.createRoute("genre", true))) {
+            assertTrue(com.ella.music.ui.components.supportsNowPlayingFlowBackground(route))
+        }
+        assertFalse(com.ella.music.ui.components.supportsNowPlayingFlowBackground(Screen.MetadataCategoryDetail.createRoute("genre", "Jazz")))
+    }
     @Test
     fun dockSettingsPatternResolvesToFirstLevelTab() {
         val route = resolvedCurrentRoute(

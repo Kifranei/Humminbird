@@ -147,6 +147,17 @@ internal fun CoverPageContent(
     drawBackground: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    var spectrumSong by remember { mutableStateOf<Song?>(null) }
+    spectrumSong?.let { selected ->
+        com.ella.music.ui.components.SpectrumViewerChoiceSheet(
+            show = true,
+            onDismiss = { spectrumSong = null },
+            onSelect = { viewerId ->
+                spectrumSong = null
+                SpectrumViewerLauncher.open(context, selected, viewerId)
+            }
+        )
+    }
     var actionMenuInitialPage by remember { mutableStateOf(PlayerActionSheetPage.Main) }
     val abRepeatState by playerViewModel.abRepeatState.collectAsState()
     val currentQueueIndex by playerViewModel.currentQueueIndex.collectAsState()
@@ -411,7 +422,7 @@ internal fun CoverPageContent(
             val current = song
             if (current != null) {
                 onMenuExpandedChange(false)
-                scope.launch { SpectrumViewerLauncher.openSelected(context, current) }
+                scope.launch { SpectrumViewerLauncher.openSelected(context, current) { spectrumSong = it } }
             } else {
                 Toast.makeText(context, context.getString(R.string.player_no_song_playing), Toast.LENGTH_SHORT).show()
             }

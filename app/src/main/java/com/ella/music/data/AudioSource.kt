@@ -25,4 +25,5 @@ fun String.isFileUriAudioSource(): Boolean =
     startsWith("file://", ignoreCase = true)
 
 fun String.isUriAudioSource(): Boolean =
-    isContentAudioSource() || isHttpAudioSource() || isFileUriAudioSource()
+    isContentAudioSource() || isHttpAudioSource() || isFileUriAudioSource() || startsWith("smb://", ignoreCase = true) ||
+        startsWith("ftp://", ignoreCase = true) || startsWith("ftps://", ignoreCase = true) || startsWith("sftp://", ignoreCase = true)

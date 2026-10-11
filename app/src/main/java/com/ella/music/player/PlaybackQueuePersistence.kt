@@ -72,7 +72,8 @@ internal data class PendingPlaylist(
     val songs: List<Song>,
     val startIndex: Int,
     val honorShuffle: Boolean = true,
-    val resetQueueLock: Boolean = true
+    val resetQueueLock: Boolean = true,
+    val startPlayback: Boolean = true
 )
 
 internal fun shouldHydrateSavedQueue(

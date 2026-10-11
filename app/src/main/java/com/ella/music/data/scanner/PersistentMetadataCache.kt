@@ -119,7 +119,9 @@ internal class PersistentMetadataCache internal constructor(
         val lyricist: String,
         val trackNumber: Int,
         val discNumber: Int,
-        val folderAlbumConfirmed: Boolean = false
+        val folderAlbumConfirmed: Boolean = false,
+        val customTags: Map<String, List<String>> = emptyMap(),
+        val customTagsLoaded: Boolean = false
     ) {
         fun applyTo(shallow: Song): Song = shallow.copy(
             title = title.ifBlank { shallow.title },
@@ -132,7 +134,9 @@ internal class PersistentMetadataCache internal constructor(
             arranger = arranger.ifBlank { shallow.arranger },
             lyricist = lyricist.ifBlank { shallow.lyricist },
             trackNumber = if (trackNumber > 0) trackNumber else shallow.trackNumber,
-            discNumber = if (discNumber > 0) discNumber else shallow.discNumber
+            discNumber = if (discNumber > 0) discNumber else shallow.discNumber,
+            customTags = if (customTagsLoaded) customTags else shallow.customTags,
+            customTagsLoaded = customTagsLoaded || shallow.customTagsLoaded
         )
 
         fun toJson(): JSONObject = JSONObject()
@@ -150,6 +154,8 @@ internal class PersistentMetadataCache internal constructor(
             .put("lyricist", lyricist)
             .put("trackNumber", trackNumber)
             .put("discNumber", discNumber)
+            .put("customTags", JSONObject().apply { customTags.forEach { (key, values) -> put(key, JSONArray(values)) } })
+            .put("customTagsLoaded", customTagsLoaded)
             .apply { if (folderAlbumConfirmed) put("folderAlbumConfirmed", true) }
 
         companion object {
@@ -168,7 +174,9 @@ internal class PersistentMetadataCache internal constructor(
                 lyricist = song.lyricist,
                 trackNumber = song.trackNumber,
                 discNumber = song.discNumber,
-                folderAlbumConfirmed = folderAlbumConfirmed
+                folderAlbumConfirmed = folderAlbumConfirmed,
+                customTags = song.customTags,
+                customTagsLoaded = song.customTagsLoaded
             )
 
             fun fromJson(obj: JSONObject): CachedMetadata? {
@@ -191,7 +199,14 @@ internal class PersistentMetadataCache internal constructor(
                     lyricist = obj.optString("lyricist", ""),
                     trackNumber = obj.optInt("trackNumber", 0),
                     discNumber = obj.optInt("discNumber", 0),
-                    folderAlbumConfirmed = obj.optBoolean("folderAlbumConfirmed", false)
+                    folderAlbumConfirmed = obj.optBoolean("folderAlbumConfirmed", false),
+                    customTags = obj.optJSONObject("customTags")?.let { tags ->
+                        tags.keys().asSequence().associateWith { key ->
+                            val values = tags.optJSONArray(key)
+                            (0 until (values?.length() ?: 0)).mapNotNull { index -> values?.opt(index) as? String }
+                        }
+                    }.orEmpty(),
+                    customTagsLoaded = obj.optBoolean("customTagsLoaded", false)
                 )
             }
         }

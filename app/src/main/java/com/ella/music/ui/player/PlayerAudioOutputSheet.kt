@@ -185,24 +185,24 @@ internal fun AudioOutputInfoSheetContent(
 }
 
 @Composable
-private fun AudioOutputInfoSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+internal fun AudioOutputInfoSection(title: String, content: @Composable ColumnScope.() -> Unit) {
     Text(
         text = title,
         fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
         color = MiuixTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 5.dp)
+        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 5.dp)
     )
     PlayerActionMenuGroup(content = content)
 }
 
 @Composable
-private fun AudioOutputInfoRow(
+internal fun AudioOutputInfoRow(
     label: String,
     value: String,
     forceLtrValue: Boolean = false
 ) {
-    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp)) {
+    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = label,

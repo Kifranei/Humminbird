@@ -1,5 +1,8 @@
 package com.ella.music.ui.folder
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -865,7 +868,7 @@ fun FolderPlaylistDetailScreen(
             FolderPlaylistTab.Songs -> {
                 LazyColumn(
                     state = songsListState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().dragSelectList(songsListState, selectionMode, displayedKeysForTab, currentSelectedKeys, onSelectionChange = { setSelectedKeys(it); rangeAnchorKey = null; rangeTargetKey = null }, onToggle = ::toggleKey, excludedEndWidth = 112.dp),
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 130.dp)
                 ) {
                     item {
@@ -1018,7 +1021,7 @@ fun FolderPlaylistDetailScreen(
             FolderPlaylistTab.Folders -> {
                 LazyColumn(
                     state = foldersListState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().dragSelectList(foldersListState, selectionMode, displayedKeysForTab, currentSelectedKeys, onSelectionChange = { setSelectedKeys(it); rangeAnchorKey = null; rangeTargetKey = null }, onToggle = ::toggleKey, excludedEndWidth = 112.dp),
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 130.dp)
                 ) {
                     item {
@@ -1173,6 +1176,10 @@ fun FolderPlaylistDetailScreen(
                 allSelected = displayedKeysForTab.isNotEmpty() && selectedVisibleCount == displayedKeysForTab.size,
                 onRangeSelect = ::applyRangeSelection,
                 onSelectAll = ::selectAllCurrent,
+                onInvertSelection = {
+                    setSelectedKeys(com.ella.music.ui.components.invertedSelection(displayedKeysForTab, currentSelectedKeys))
+                    rangeAnchorKey = null; rangeTargetKey = null; selectionMode = true
+                },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = LibraryFloatingControlsEndPadding, bottom = LibraryFloatingControlsBottomPadding)

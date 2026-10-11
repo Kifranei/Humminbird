@@ -1,5 +1,8 @@
 package com.ella.music.ui.artist
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -606,7 +609,7 @@ fun ArtistScreen(
         } else {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().dragSelectList(listState, selection, currentSelectionIds, itemIdsByKey = remember(currentSelectionIds, sortedArtistMusicVideos) { currentSelectionIds.associate { (it as Any) to listOf(it) } + sortedArtistMusicVideos.associate { ("${it.song.id}:${it.source.failureKey}" as Any) to listOf(it.song.id) } }),
             contentPadding = PaddingValues(bottom = 120.dp, end = if (showScrollIndicator) ScrollIndicatorListEndPadding else 0.dp)
         ) {
             item {
@@ -717,7 +720,7 @@ fun ArtistScreen(
                         )
                     }
 
-                    itemsIndexed(sortedArtistSongs) { index, song ->
+                    itemsIndexed(sortedArtistSongs, key = { _, song -> song.id }) { index, song ->
                         val selected = song.id in selection.selectedIds
                         val albumArtUri = remember(song.albumId) {
                             song.albumId
@@ -1254,6 +1257,7 @@ fun ArtistScreen(
             allSelected = currentSelectionIds.isNotEmpty() && selectedVisibleCount == currentSelectionIds.size,
             onRangeSelect = { selection.applyRangeSelection(currentSelectionIds, currentSelectionIndexById) },
             onSelectAll = { selection.toggleSelectAll(currentSelectionIds) },
+            onInvertSelection = { selection.invertSelection(currentSelectionIds) },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = LibraryFloatingControlsEndPadding, bottom = LibraryFloatingControlsBottomPadding)
@@ -1385,6 +1389,7 @@ fun ArtistScreen(
                     initialIndex = initialIdx,
                     title = artistPreviewTitle,
                     saveName = artistName,
+                    imageKind = com.ella.music.data.ExportImageKind.Artist,
                     onDismiss = { artistCoverPreviewVisible = false }
                 )
             }

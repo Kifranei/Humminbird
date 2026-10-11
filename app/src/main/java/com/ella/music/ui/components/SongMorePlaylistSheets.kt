@@ -205,8 +205,16 @@ fun AddToPlaylistSheet(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 18.dp)
             )
         } else {
+            val dragState = androidx.compose.foundation.lazy.rememberLazyListState()
+            val selectableIds = remember(visiblePlaylists, targetSongKeys) {
+                visiblePlaylists.filterNot { playlist -> targetSongKeys.isNotEmpty() && targetSongKeys.all { key -> playlist.songs.any { it.key == key } } }.map { it.id }
+            }
+            if (multiSelect) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                InvertSelectionButton({ selectedIds = invertedSelection(selectableIds, selectedIds) })
+            }
             LazyColumn(
-                modifier = Modifier
+                state = dragState,
+                modifier = Modifier.dragSelectList(dragState, multiSelect, selectableIds, selectedIds, onSelectionChange = { selectedIds = it })
                     .fillMaxWidth()
                     .weight(1f, fill = false),
                 verticalArrangement = Arrangement.spacedBy(6.dp)

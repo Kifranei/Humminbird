@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.collectAsState
@@ -140,6 +141,15 @@ sealed class Screen(val route: String) {
         fun createRoute(playlistId: String) = "playlist/${java.net.URLEncoder.encode(playlistId, "UTF-8")}"
     }
     data object WebDav : Screen("webdav")
+    data object Smb : Screen("smb")
+    data object WebDavLibrary : Screen("webdav_library")
+    data object SmbLibrary : Screen("smb_library")
+    data object TransferLibrary : Screen("transfer_library/{source}") {
+        fun createRoute(source: String): String {
+            require(source in setOf(SettingsManager.LIBRARY_SOURCE_FTP, SettingsManager.LIBRARY_SOURCE_SFTP))
+            return "transfer_library/$source"
+        }
+    }
     data object FolderDetail : Screen("folder/{folderPath}") {
         fun createRoute(folderPath: String) = "folder/${java.net.URLEncoder.encode(folderPath, "UTF-8")}"
     }
@@ -233,12 +243,15 @@ sealed class Screen(val route: String) {
 }
 
 @Composable
-fun AppNavigation(
+internal fun AppNavigation(
     navController: NavHostController,
     mainViewModel: MainViewModel,
     playerViewModel: PlayerViewModel,
     initialBottomDockItems: List<String> = SettingsManager.DEFAULT_BOTTOM_DOCK_ITEMS.split(','),
     initialStartDestination: String = Screen.Home.route,
+    mainPageState: com.ella.music.MainPageState? = null,
+    mainPageRoutes: List<String> = emptyList(),
+    mainPageSwipeEnabled: Boolean = true,
     modifier: Modifier = Modifier,
     onNavigateToPlayer: () -> Unit = {},
     posterWallBottomPadding: Dp = 0.dp,
@@ -249,15 +262,338 @@ fun AppNavigation(
     )
     fun isDockItem(itemId: String): Boolean = itemId in bottomDockItems
 
+    androidx.compose.runtime.SideEffect { mainPageState?.routes = mainPageRoutes }
     val closeSettings: () -> Unit = {
         // Do not save or restore the settings graph. This intentionally removes every nested
         // settings destination, so the next visit always starts at the settings home page.
-        navController.navigate(Screen.Home.route) {
+        if (!com.ella.music.MainPageNavigation.select(navController, Screen.Home.route)) navController.navigate(Screen.Home.route) {
             popUpTo(navController.graph.findStartDestination().id) {
                 saveState = false
             }
             launchSingleTop = true
             restoreState = false
+        }
+    }
+
+
+    fun navigateRestorableTopLevel(route: String) {
+        if (com.ella.music.MainPageNavigation.select(navController, route)) return
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    @Composable
+    fun mainDestination(destination: String, backStackEntry: androidx.navigation.NavBackStackEntry,
+        pageRoute: String = "", fromPager: Boolean = false) {
+        val pageArguments = remember(fromPager, pageRoute, backStackEntry) {
+            if (!fromPager) backStackEntry.arguments else android.os.Bundle().apply {
+            val uri = android.net.Uri.parse("https://main/" + pageRoute)
+            uri.queryParameterNames.forEach { key ->
+                val value = uri.getQueryParameter(key)
+                if (key in listOf("fromDock", "localOnly", "focus")) putBoolean(key, value == "true")
+                else putString(key, value)
+            }
+            putBoolean("fromDock", true)
+            if (destination == Screen.MetadataCategory.route) putString("type", uri.encodedPath.orEmpty().substringAfterLast('/'))
+            }
+        }
+        val onMainPageBack: () -> Unit = {
+            if (fromPager) {
+                if (!com.ella.music.MainPageNavigation.exitSearch(navController))
+                    com.ella.music.MainPageNavigation.select(navController, Screen.Home.route)
+            } else navController.popBackStack()
+        }
+        when (destination) {
+            Screen.Home.route -> {
+                HomeScreen(
+                    mainViewModel = mainViewModel,
+                    playerViewModel = playerViewModel,
+                    onNavigateToLibrary = { navigateRestorableTopLevel(Screen.Library.route) },
+                    onNavigateToArtist = { navigateRestorableTopLevel(Screen.Artist.createRoute()) },
+                    onNavigateToAlbum = { navigateRestorableTopLevel(Screen.Album.createRoute()) },
+                    onNavigateToFolder = { navigateRestorableTopLevel(Screen.Folder.createRoute()) },
+                    onNavigateToFolderPlaylists = { navigateRestorableTopLevel(Screen.FolderPlaylists.route) },
+                    onNavigateToPlaylists = { navigateRestorableTopLevel(Screen.Playlists.createRoute()) },
+                    onNavigateToMusicFreeOnline = { navController.navigate(Screen.MusicFreeOnline.route) },
+                    onNavigateToLxOnline = { navController.navigate(Screen.LxOnline.route) },
+                    onNavigateToWebDav = { navController.navigate(Screen.WebDavLibrary.route) },
+                    onNavigateToAnalytics = { navController.navigate(Screen.Analytics.route) },
+                    onNavigateToRecentPlayback = { navController.navigate(Screen.RecentPlayback.createRoute()) },
+                    onNavigateToPosterWall = { navController.navigate(Screen.PosterWall.route) },
+                    onNavigateToMetadataCategory = { type -> navigateRestorableTopLevel(Screen.MetadataCategory.createRoute(type)) },
+                    onNavigateToPlayer = onNavigateToPlayer,
+                    onNavigateToSettings = {
+                        if (isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_SETTINGS)) {
+                            navigateRestorableTopLevel(Screen.Settings.createRoute(fromDock = true))
+                        } else {
+                            navController.navigate(Screen.Settings.createRoute())
+                        }
+                    }
+                )
+
+            }
+            Screen.Library.route -> {
+                LibraryScreen(
+                    mainViewModel = mainViewModel,
+                    playerViewModel = playerViewModel,
+                    onNavigateToPlayer = onNavigateToPlayer,
+                    onNavigateToAbout = { navController.navigate(Screen.About.route) },
+                    onNavigateToSearch = { navController.navigate(Screen.LibrarySearch.createRoute()) },
+                    onNavigateToAlbum = { albumId -> navController.navigate(Screen.AlbumDetail.createRoute(albumId)) },
+                    onNavigateToArtist = { artistName -> navController.navigate(Screen.ArtistDetail.createRoute(artistName)) },
+                    onNavigateToAnalytics = { navController.navigate(Screen.Analytics.route) },
+                    onNavigateToSettings = {
+                        if (isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_SETTINGS)) {
+                            navigateRestorableTopLevel(Screen.Settings.createRoute(fromDock = true))
+                        } else {
+                            navController.navigate(Screen.Settings.createRoute())
+                        }
+                    }
+                )
+
+            }
+            Screen.LibrarySearch.route -> {
+                LibrarySearchScreen(
+                    mainViewModel = mainViewModel,
+                    playerViewModel = playerViewModel,
+                    localOnly = pageArguments?.getBoolean("localOnly") == true,
+                    initialFilterType = pageArguments?.getString("type"),
+                    initialQuery = pageArguments?.getString("keyword"),
+                    autoFocusSearch = pageArguments?.getBoolean("focus") == true,
+                    showBackButton = false,
+                    onBack = onMainPageBack,
+                    onNavigateToAlbum = { albumId -> navController.navigate(Screen.AlbumDetail.createRoute(albumId)) },
+                    onNavigateToArtist = { artistName -> navController.navigate(Screen.ArtistDetail.createRoute(artistName)) },
+                    onNavigateToPlaylist = { playlistId -> navController.navigate(Screen.PlaylistDetail.createRoute(playlistId)) },
+                    onNavigateToMetadataCategory = { type, name ->
+                        navController.navigate(Screen.MetadataCategoryDetail.createRoute(type, name))
+                    },
+                    onNavigateToPlayer = onNavigateToPlayer
+                )
+
+            }
+            Screen.Album.route -> {
+                val fromDock = pageArguments?.getBoolean("fromDock") == true
+                val restoreScrollRequest by backStackEntry.savedStateHandle
+                    .getStateFlow(AlbumListRestoreScrollRequestKey, 0)
+                    .collectAsState()
+                val restoreAnchorAlbumId by backStackEntry.savedStateHandle
+                    .getStateFlow<Long?>(AlbumListRestoreAnchorIdKey, null)
+                    .collectAsState()
+                val restoreAnchorOffset by backStackEntry.savedStateHandle
+                    .getStateFlow(AlbumListRestoreAnchorOffsetKey, 0)
+                    .collectAsState()
+                AlbumScreen(
+                    mainViewModel = mainViewModel,
+                    playerViewModel = playerViewModel,
+                    showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_ALBUM)),
+                    onBack = onMainPageBack,
+                    onAlbumClick = { albumId, anchorAlbumId, anchorOffset ->
+                        backStackEntry.savedStateHandle[AlbumListRestoreAnchorIdKey] = anchorAlbumId
+                        backStackEntry.savedStateHandle[AlbumListRestoreAnchorOffsetKey] = anchorOffset
+                        // Sidecar probe only (cheap) — custom-folder matches resolve after enter.
+                        AlbumDetailLayoutHint.rememberForNavigation(
+                            albumId,
+                            mainViewModel.getSongsForAlbum(albumId).any { it.hasSearchableDynamicCover() }
+                        )
+                        navController.navigate(Screen.AlbumDetail.createRoute(albumId))
+                    },
+                    restoreScrollRequest = restoreScrollRequest,
+                    restoreAnchorAlbumId = restoreAnchorAlbumId,
+                    restoreAnchorOffset = restoreAnchorOffset
+                )
+
+            }
+            Screen.Artist.route -> {
+                val fromDock = pageArguments?.getBoolean("fromDock") == true
+                ArtistListScreen(
+                    mainViewModel = mainViewModel,
+                    playerViewModel = playerViewModel,
+                    showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_ARTIST)),
+                    onBack = onMainPageBack,
+                    onArtistClick = { artistName ->
+                        navController.navigate(Screen.ArtistDetail.createRoute(artistName))
+                    }
+                )
+
+            }
+            Screen.Folder.route -> {
+                val fromDock = pageArguments?.getBoolean("fromDock") == true
+                FolderScreen(
+                    mainViewModel = mainViewModel,
+                    playerViewModel = playerViewModel,
+                    showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_FOLDER_TREE)),
+                    onBack = onMainPageBack,
+                    onNavigateToPlayer = onNavigateToPlayer,
+                    onNavigateToLibraryAnalysis = { navController.navigate(Screen.LibraryAnalysis.route) },
+                    onNavigateToScanSettings = { navController.navigate(Screen.ScanSettings.createRoute()) },
+                    onFolderClick = { folderPath ->
+                        navController.navigate(Screen.FolderDetail.createRoute(folderPath))
+                    }
+                )
+
+            }
+            Screen.ScanSettings.route -> {
+                val fromDock = pageArguments?.getBoolean("fromDock") == true
+                SettingsLevel3Or4Scope(closeSettings) {
+                    ScanSettingsScreen(
+                        mainViewModel = mainViewModel,
+                        showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_SCAN_SETTINGS)),
+                        onBack = onMainPageBack,
+                        highlightKey = pageArguments?.getString("highlight").orEmpty()
+                    )
+                }
+
+            }
+            Screen.FolderPlaylists.route -> {
+                FolderPlaylistsScreen(
+                    mainViewModel = mainViewModel,
+                    playerViewModel = playerViewModel,
+                    showBackButton = !fromPager,
+                    onBack = onMainPageBack,
+                    onOpenPlaylist = { playlistId ->
+                        navController.navigate(Screen.FolderPlaylistDetail.createRoute(playlistId))
+                    }
+                )
+
+            }
+            Screen.MetadataCategory.route -> {
+                val type = java.net.URLDecoder.decode(
+                    pageArguments?.getString("type").orEmpty(),
+                    "UTF-8"
+                )
+                val fromDock = pageArguments?.getBoolean("fromDock") == true
+                MetadataCategoryScreen(
+                    type = type,
+                    mainViewModel = mainViewModel,
+                    playerViewModel = playerViewModel,
+                    showBackButton = !(fromDock && type.bottomDockItemIdForMetadataCategory() in bottomDockItems),
+                    onBack = onMainPageBack,
+                    onCategoryClick = { name ->
+                        navController.navigate(Screen.MetadataCategoryDetail.createRoute(type, name))
+                    }
+                )
+
+            }
+            Screen.Playlists.route -> {
+                val fromDock = pageArguments?.getBoolean("fromDock") == true
+                PlaylistScreen(
+                    mainViewModel = mainViewModel,
+                    playerViewModel = playerViewModel,
+                    showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_PLAYLISTS)),
+                    onBack = onMainPageBack,
+                    onPlaylistClick = { playlistId ->
+                        navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                    }
+                )
+
+            }
+            Screen.Settings.route -> {
+                val fromDock = pageArguments?.getBoolean("fromDock") == true
+                SettingsScreen(
+                    onNavigateToSearchPage = { navController.navigate(it) },
+                    onNavigateToSearchAppearancePage = { navController.navigate(Screen.AppearanceSubpage.createRoute(it)) },
+                    onNavigateToAbout = { navController.navigate(Screen.About.route) },
+                    onNavigateToAppearanceSettings = { navController.navigate(Screen.SettingsDetail.createRoute()) },
+                    onNavigateToLibrarySettings = { navController.navigate(Screen.LibrarySettings.createRoute()) },
+                    onNavigateToIntegrationSettings = { navController.navigate(Screen.IntegrationSettings.createRoute()) },
+                    onNavigateToLyricSettings = { navController.navigate(Screen.LyricSettings.createRoute()) },
+                    onNavigateToAudioSettings = { navController.navigate(Screen.AudioSettings.createRoute()) },
+                    onNavigateToBackupSettings = { navController.navigate(Screen.BackupSettings.createRoute()) },
+                    onNavigateToLogs = { navController.navigate(Screen.Logs.route) },
+                    onNavigateToBottomNavigationSettings = {
+                        navController.navigate(Screen.BottomNavigationSettings.route)
+                    },
+                    onNavigateToPlayerShortcutSettings = { mode ->
+                        navController.navigate(Screen.PlayerShortcutSettings.createRoute(mode))
+                    },
+                    onNavigateToHomeDisplaySettings = { highlight ->
+                        navController.navigate(Screen.HomeDisplaySettings.createRoute(highlight))
+                    },
+                    onNavigateToScanFolders = { navController.navigate(Screen.ScanSettings.createRoute()) },
+                    onNavigateToHighlightedScanFolders = { highlight ->
+                        navController.navigate(Screen.ScanSettings.createRoute(highlight))
+                    },
+                    onNavigateToLyricFont = { navController.navigate(Screen.LyricFont.route) },
+                    onNavigateToLyricPluginSources = { navController.navigate(Screen.LyricPluginSources.route) },
+                    onNavigateToHighlightedLyricSettings = { highlight ->
+                        navController.navigate(Screen.LyricSettings.createRoute(highlight))
+                    },
+                    onNavigateToHighlightedAppearanceSettings = { highlight ->
+                        when {
+                            highlight.isBlank() || highlight == "appearance" -> {
+                                navController.navigate(Screen.SettingsDetail.createRoute(highlight))
+                            }
+                            highlight == "lyric_font" || highlight == "font_settings" -> {
+                                navController.navigate(Screen.LyricFont.route)
+                            }
+                            else -> {
+                                navController.navigate(
+                                    Screen.AppearanceSubpage.createRoute(
+                                        appearanceSubpageForHighlight(highlight),
+                                        highlight
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    onNavigateToHighlightedLibrarySettings = { highlight ->
+                        navController.navigate(Screen.LibrarySettings.createRoute(highlight))
+                    },
+                    onNavigateToHighlightedIntegrationSettings = { highlight ->
+                        navController.navigate(Screen.IntegrationSettings.createRoute(highlight))
+                    },
+                    onNavigateToHighlightedAudioSettings = { highlight ->
+                        navController.navigate(Screen.AudioSettings.createRoute(highlight))
+                    },
+                    onNavigateToHighlightedBackupSettings = { highlight ->
+                        navController.navigate(Screen.BackupSettings.createRoute(highlight))
+                    },
+                    onNavigateToEqualizer = { navController.navigate(Screen.Equalizer.createRoute()) },
+                    onNavigateToHighlightedEqualizer = { highlight ->
+                        navController.navigate(Screen.Equalizer.createRoute(highlight))
+                    },
+                    onNavigateToCoverMediaSettings = { navController.navigate(Screen.CoverMediaSettings.createRoute()) },
+                    onNavigateToHighlightedCoverMediaSettings = { highlight ->
+                        navController.navigate(Screen.CoverMediaSettings.createRoute(highlight))
+                    },
+                    onNavigateToSetupWizard = { navController.navigate(Screen.SettingsWizard.route) },
+                    onNavigateToMaintenance = { navController.navigate(Screen.SettingsMaintenance.route) },
+                    onBack = onMainPageBack,
+                    showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_SETTINGS)),
+                    mainViewModel = mainViewModel,
+                    playerViewModel = playerViewModel
+                )
+
+            }
+            Screen.Analytics.route -> {
+                AnalyticsScreen(
+                    mainViewModel = mainViewModel,
+                    onBack = onMainPageBack,
+                    showBackButton = !isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_ANALYTICS),
+                    onNavigateToHistory = { navController.navigate(Screen.PlaybackHistory.route) }
+                )
+
+            }
+            Screen.LibraryAnalysis.route -> {
+                LibraryAnalysisScreen(
+                    mainViewModel = mainViewModel,
+                    playerViewModel = playerViewModel,
+                    onBack = onMainPageBack,
+                    showBackButton = !isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_LIBRARY_ANALYSIS),
+                    onNavigateToPlayer = onNavigateToPlayer,
+                    onNavigateToAlbum = { albumId ->
+                        navController.navigate(Screen.AlbumDetail.createRoute(albumId))
+                    },
+                    onNavigateToArtist = { artistName ->
+                        navController.navigate(Screen.ArtistDetail.createRoute(artistName))
+                    }
+                )
+
+            }
         }
     }
 
@@ -267,7 +603,9 @@ fun AppNavigation(
     NavigationBackScope {
     NavHost(
         navController = navController,
-        startDestination = initialStartDestination,
+        startDestination = if (mainPageState != null && mainPageRoutes.any {
+            com.ella.music.mainPageIdentity(it) == com.ella.music.mainPageIdentity(initialStartDestination)
+        }) com.ella.music.MAIN_PAGES_ROUTE else initialStartDestination,
         modifier = modifier,
             enterTransition = {
                 fadeIn(animationSpec = tween(300)) + slideIntoContainer(
@@ -282,42 +620,38 @@ fun AppNavigation(
                 )
             }
         ) {
-        fun navigateRestorableTopLevel(route: String) {
-            navController.navigate(route) {
-                popUpTo(navController.graph.findStartDestination().id) {
-                    saveState = true
+
+
+        composable(com.ella.music.MAIN_PAGES_ROUTE) { backStackEntry ->
+            mainPageState?.let { state ->
+                com.ella.music.MainPagePager(state, mainPageRoutes, mainPageSwipeEnabled,
+                    onBackToHome = {
+                        if (!com.ella.music.MainPageNavigation.exitSearch(navController))
+                            com.ella.music.MainPageNavigation.select(navController, Screen.Home.route)
+                    }) { route ->
+                    val destination = when (route.substringBefore('?').substringBefore('/')) {
+                        Screen.LibrarySearch.route.substringBefore('?').substringBefore('/') -> Screen.LibrarySearch.route
+                        Screen.Album.route.substringBefore('?').substringBefore('/') -> Screen.Album.route
+                        Screen.Analytics.route.substringBefore('?').substringBefore('/') -> Screen.Analytics.route
+                        Screen.Folder.route.substringBefore('?').substringBefore('/') -> Screen.Folder.route
+                        Screen.Home.route.substringBefore('?').substringBefore('/') -> Screen.Home.route
+                        Screen.LibraryAnalysis.route.substringBefore('?').substringBefore('/') -> Screen.LibraryAnalysis.route
+                        Screen.Library.route.substringBefore('?').substringBefore('/') -> Screen.Library.route
+                        Screen.FolderPlaylists.route.substringBefore('?').substringBefore('/') -> Screen.FolderPlaylists.route
+                        Screen.Playlists.route.substringBefore('?').substringBefore('/') -> Screen.Playlists.route
+                        Screen.MetadataCategory.route.substringBefore('?').substringBefore('/') -> Screen.MetadataCategory.route
+                        Screen.ScanSettings.route.substringBefore('?').substringBefore('/') -> Screen.ScanSettings.route
+                        Screen.Artist.route.substringBefore('?').substringBefore('/') -> Screen.Artist.route
+                        Screen.Settings.route.substringBefore('?').substringBefore('/') -> Screen.Settings.route
+                        else -> Screen.Home.route
+                    }
+                    mainDestination(destination, backStackEntry, route, fromPager = true)
                 }
-                launchSingleTop = true
-                restoreState = true
             }
         }
 
-        composable(Screen.Home.route) {
-            HomeScreen(
-                mainViewModel = mainViewModel,
-                playerViewModel = playerViewModel,
-                onNavigateToLibrary = { navigateRestorableTopLevel(Screen.Library.route) },
-                onNavigateToArtist = { navigateRestorableTopLevel(Screen.Artist.createRoute()) },
-                onNavigateToAlbum = { navigateRestorableTopLevel(Screen.Album.createRoute()) },
-                onNavigateToFolder = { navigateRestorableTopLevel(Screen.Folder.createRoute()) },
-                onNavigateToFolderPlaylists = { navigateRestorableTopLevel(Screen.FolderPlaylists.route) },
-                onNavigateToPlaylists = { navigateRestorableTopLevel(Screen.Playlists.createRoute()) },
-                onNavigateToMusicFreeOnline = { navController.navigate(Screen.MusicFreeOnline.route) },
-                onNavigateToLxOnline = { navController.navigate(Screen.LxOnline.route) },
-                onNavigateToWebDav = { navController.navigate(Screen.WebDav.route) },
-                onNavigateToAnalytics = { navController.navigate(Screen.Analytics.route) },
-                onNavigateToRecentPlayback = { navController.navigate(Screen.RecentPlayback.createRoute()) },
-                onNavigateToPosterWall = { navController.navigate(Screen.PosterWall.route) },
-                onNavigateToMetadataCategory = { type -> navigateRestorableTopLevel(Screen.MetadataCategory.createRoute(type)) },
-                onNavigateToPlayer = onNavigateToPlayer,
-                onNavigateToSettings = {
-                    if (isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_SETTINGS)) {
-                        navigateRestorableTopLevel(Screen.Settings.createRoute(fromDock = true))
-                    } else {
-                        navController.navigate(Screen.Settings.createRoute())
-                    }
-                }
-            )
+        composable(Screen.Home.route) { backStackEntry ->
+            mainDestination(Screen.Home.route, backStackEntry)
         }
 
         composable(Screen.PosterWall.route) {
@@ -331,24 +665,8 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.Library.route) {
-            LibraryScreen(
-                mainViewModel = mainViewModel,
-                playerViewModel = playerViewModel,
-                onNavigateToPlayer = onNavigateToPlayer,
-                onNavigateToAbout = { navController.navigate(Screen.About.route) },
-                onNavigateToSearch = { navController.navigate(Screen.LibrarySearch.createRoute()) },
-                onNavigateToAlbum = { albumId -> navController.navigate(Screen.AlbumDetail.createRoute(albumId)) },
-                onNavigateToArtist = { artistName -> navController.navigate(Screen.ArtistDetail.createRoute(artistName)) },
-                onNavigateToAnalytics = { navController.navigate(Screen.Analytics.route) },
-                onNavigateToSettings = {
-                    if (isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_SETTINGS)) {
-                        navigateRestorableTopLevel(Screen.Settings.createRoute(fromDock = true))
-                    } else {
-                        navController.navigate(Screen.Settings.createRoute())
-                    }
-                }
-            )
+        composable(Screen.Library.route) { backStackEntry ->
+            mainDestination(Screen.Library.route, backStackEntry)
         }
 
         composable(
@@ -371,74 +689,21 @@ fun AppNavigation(
                 }
             )
         ) { backStackEntry ->
-            LibrarySearchScreen(
-                mainViewModel = mainViewModel,
-                playerViewModel = playerViewModel,
-                localOnly = backStackEntry.arguments?.getBoolean("localOnly") == true,
-                initialFilterType = backStackEntry.arguments?.getString("type"),
-                initialQuery = backStackEntry.arguments?.getString("keyword"),
-                autoFocusSearch = backStackEntry.arguments?.getBoolean("focus") == true,
-                showBackButton = false,
-                onBack = { navController.popBackStack() },
-                onNavigateToAlbum = { albumId -> navController.navigate(Screen.AlbumDetail.createRoute(albumId)) },
-                onNavigateToArtist = { artistName -> navController.navigate(Screen.ArtistDetail.createRoute(artistName)) },
-                onNavigateToPlaylist = { playlistId -> navController.navigate(Screen.PlaylistDetail.createRoute(playlistId)) },
-                onNavigateToMetadataCategory = { type, name ->
-                    navController.navigate(Screen.MetadataCategoryDetail.createRoute(type, name))
-                },
-                onNavigateToPlayer = onNavigateToPlayer
-            )
+            mainDestination(Screen.LibrarySearch.route, backStackEntry)
         }
 
         composable(
             route = Screen.Album.route,
             arguments = listOf(navArgument("fromDock") { type = NavType.BoolType; defaultValue = false })
         ) { backStackEntry ->
-            val fromDock = backStackEntry.arguments?.getBoolean("fromDock") == true
-            val restoreScrollRequest by backStackEntry.savedStateHandle
-                .getStateFlow(AlbumListRestoreScrollRequestKey, 0)
-                .collectAsState()
-            val restoreAnchorAlbumId by backStackEntry.savedStateHandle
-                .getStateFlow<Long?>(AlbumListRestoreAnchorIdKey, null)
-                .collectAsState()
-            val restoreAnchorOffset by backStackEntry.savedStateHandle
-                .getStateFlow(AlbumListRestoreAnchorOffsetKey, 0)
-                .collectAsState()
-            AlbumScreen(
-                mainViewModel = mainViewModel,
-                playerViewModel = playerViewModel,
-                showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_ALBUM)),
-                onBack = { navController.popBackStack() },
-                onAlbumClick = { albumId, anchorAlbumId, anchorOffset ->
-                    backStackEntry.savedStateHandle[AlbumListRestoreAnchorIdKey] = anchorAlbumId
-                    backStackEntry.savedStateHandle[AlbumListRestoreAnchorOffsetKey] = anchorOffset
-                    // Sidecar probe only (cheap) — custom-folder matches resolve after enter.
-                    AlbumDetailLayoutHint.rememberForNavigation(
-                        albumId,
-                        mainViewModel.getSongsForAlbum(albumId).any { it.hasSearchableDynamicCover() }
-                    )
-                    navController.navigate(Screen.AlbumDetail.createRoute(albumId))
-                },
-                restoreScrollRequest = restoreScrollRequest,
-                restoreAnchorAlbumId = restoreAnchorAlbumId,
-                restoreAnchorOffset = restoreAnchorOffset
-            )
+            mainDestination(Screen.Album.route, backStackEntry)
         }
 
         composable(
             route = Screen.Artist.route,
             arguments = listOf(navArgument("fromDock") { type = NavType.BoolType; defaultValue = false })
         ) { backStackEntry ->
-            val fromDock = backStackEntry.arguments?.getBoolean("fromDock") == true
-            ArtistListScreen(
-                mainViewModel = mainViewModel,
-                playerViewModel = playerViewModel,
-                showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_ARTIST)),
-                onBack = { navController.popBackStack() },
-                onArtistClick = { artistName ->
-                    navController.navigate(Screen.ArtistDetail.createRoute(artistName))
-                }
-            )
+            mainDestination(Screen.Artist.route, backStackEntry)
         }
 
         composable(
@@ -476,19 +741,7 @@ fun AppNavigation(
             route = Screen.Folder.route,
             arguments = listOf(navArgument("fromDock") { type = NavType.BoolType; defaultValue = false })
         ) { backStackEntry ->
-            val fromDock = backStackEntry.arguments?.getBoolean("fromDock") == true
-            FolderScreen(
-                mainViewModel = mainViewModel,
-                playerViewModel = playerViewModel,
-                showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_FOLDER_TREE)),
-                onBack = { navController.popBackStack() },
-                onNavigateToPlayer = onNavigateToPlayer,
-                onNavigateToLibraryAnalysis = { navController.navigate(Screen.LibraryAnalysis.route) },
-                onNavigateToScanSettings = { navController.navigate(Screen.ScanSettings.createRoute()) },
-                onFolderClick = { folderPath ->
-                    navController.navigate(Screen.FolderDetail.createRoute(folderPath))
-                }
-            )
+            mainDestination(Screen.Folder.route, backStackEntry)
         }
 
         composable(
@@ -498,26 +751,11 @@ fun AppNavigation(
                 navArgument("fromDock") { type = NavType.BoolType; defaultValue = false }
             )
         ) { backStackEntry ->
-            val fromDock = backStackEntry.arguments?.getBoolean("fromDock") == true
-            SettingsLevel3Or4Scope(closeSettings) {
-                ScanSettingsScreen(
-                    mainViewModel = mainViewModel,
-                    showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_SCAN_SETTINGS)),
-                    onBack = { navController.popBackStack() },
-                    highlightKey = backStackEntry.arguments?.getString("highlight").orEmpty()
-                )
-            }
+            mainDestination(Screen.ScanSettings.route, backStackEntry)
         }
 
-        composable(Screen.FolderPlaylists.route) {
-            FolderPlaylistsScreen(
-                mainViewModel = mainViewModel,
-                playerViewModel = playerViewModel,
-                onBack = { navController.popBackStack() },
-                onOpenPlaylist = { playlistId ->
-                    navController.navigate(Screen.FolderPlaylistDetail.createRoute(playlistId))
-                }
-            )
+        composable(Screen.FolderPlaylists.route) { backStackEntry ->
+            mainDestination(Screen.FolderPlaylists.route, backStackEntry)
         }
 
         composable(
@@ -549,21 +787,7 @@ fun AppNavigation(
                 navArgument("fromDock") { type = NavType.BoolType; defaultValue = false }
             )
         ) { backStackEntry ->
-            val type = java.net.URLDecoder.decode(
-                backStackEntry.arguments?.getString("type").orEmpty(),
-                "UTF-8"
-            )
-            val fromDock = backStackEntry.arguments?.getBoolean("fromDock") == true
-            MetadataCategoryScreen(
-                type = type,
-                mainViewModel = mainViewModel,
-                playerViewModel = playerViewModel,
-                showBackButton = !(fromDock && type.bottomDockItemIdForMetadataCategory() in bottomDockItems),
-                onBack = { navController.popBackStack() },
-                onCategoryClick = { name ->
-                    navController.navigate(Screen.MetadataCategoryDetail.createRoute(type, name))
-                }
-            )
+            mainDestination(Screen.MetadataCategory.route, backStackEntry)
         }
 
         composable(
@@ -604,16 +828,7 @@ fun AppNavigation(
             route = Screen.Playlists.route,
             arguments = listOf(navArgument("fromDock") { type = NavType.BoolType; defaultValue = false })
         ) { backStackEntry ->
-            val fromDock = backStackEntry.arguments?.getBoolean("fromDock") == true
-            PlaylistScreen(
-                mainViewModel = mainViewModel,
-                playerViewModel = playerViewModel,
-                showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_PLAYLISTS)),
-                onBack = { navController.popBackStack() },
-                onPlaylistClick = { playlistId ->
-                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
-                }
-            )
+            mainDestination(Screen.Playlists.route, backStackEntry)
         }
 
         composable(
@@ -644,8 +859,26 @@ fun AppNavigation(
                 mainViewModel = mainViewModel,
                 playerViewModel = playerViewModel,
                 onBack = { navController.popBackStack() },
-                onNavigateToPlayer = onNavigateToPlayer
+                onNavigateToPlayer = onNavigateToPlayer,
+                onNavigateToSmb = { navController.navigate(Screen.Smb.route) }
             )
+        }
+        composable(Screen.Smb.route) {
+            com.ella.music.ui.folder.SmbScreen(mainViewModel, playerViewModel,
+                onBack = { navController.popBackStack() }, onNavigateToPlayer = onNavigateToPlayer)
+        }
+        composable(Screen.WebDavLibrary.route) {
+            com.ella.music.ui.settings.FileLibrarySettingsScreen(SettingsManager.LIBRARY_SOURCE_WEBDAV, mainViewModel,
+                onBack = { navController.popBackStack() }, onBrowse = { navController.navigate(Screen.WebDav.route) })
+        }
+        composable(Screen.TransferLibrary.route,
+            arguments = listOf(navArgument("source") { type = NavType.StringType })) { entry ->
+            com.ella.music.ui.settings.TransferLibrarySettingsScreen(entry.arguments?.getString("source").orEmpty(), mainViewModel,
+                onBack = { navController.popBackStack() })
+        }
+        composable(Screen.SmbLibrary.route) {
+            com.ella.music.ui.settings.FileLibrarySettingsScreen(SettingsManager.LIBRARY_SOURCE_SMB, mainViewModel,
+                onBack = { navController.popBackStack() }, onBrowse = { navController.navigate(Screen.Smb.route) })
         }
 
         composable(
@@ -701,81 +934,7 @@ fun AppNavigation(
             route = Screen.Settings.route,
             arguments = listOf(navArgument("fromDock") { type = NavType.BoolType; defaultValue = false })
         ) { backStackEntry ->
-            val fromDock = backStackEntry.arguments?.getBoolean("fromDock") == true
-            SettingsScreen(
-                onNavigateToSearchPage = { navController.navigate(it) },
-                onNavigateToSearchAppearancePage = { navController.navigate(Screen.AppearanceSubpage.createRoute(it)) },
-                onNavigateToAbout = { navController.navigate(Screen.About.route) },
-                onNavigateToAppearanceSettings = { navController.navigate(Screen.SettingsDetail.createRoute()) },
-                onNavigateToLibrarySettings = { navController.navigate(Screen.LibrarySettings.createRoute()) },
-                onNavigateToIntegrationSettings = { navController.navigate(Screen.IntegrationSettings.createRoute()) },
-                onNavigateToLyricSettings = { navController.navigate(Screen.LyricSettings.createRoute()) },
-                onNavigateToAudioSettings = { navController.navigate(Screen.AudioSettings.createRoute()) },
-                onNavigateToBackupSettings = { navController.navigate(Screen.BackupSettings.createRoute()) },
-                onNavigateToLogs = { navController.navigate(Screen.Logs.route) },
-                onNavigateToBottomNavigationSettings = {
-                    navController.navigate(Screen.BottomNavigationSettings.route)
-                },
-                onNavigateToPlayerShortcutSettings = { mode ->
-                    navController.navigate(Screen.PlayerShortcutSettings.createRoute(mode))
-                },
-                onNavigateToHomeDisplaySettings = { highlight ->
-                    navController.navigate(Screen.HomeDisplaySettings.createRoute(highlight))
-                },
-                onNavigateToScanFolders = { navController.navigate(Screen.ScanSettings.createRoute()) },
-                onNavigateToHighlightedScanFolders = { highlight ->
-                    navController.navigate(Screen.ScanSettings.createRoute(highlight))
-                },
-                onNavigateToLyricFont = { navController.navigate(Screen.LyricFont.route) },
-                onNavigateToLyricPluginSources = { navController.navigate(Screen.LyricPluginSources.route) },
-                onNavigateToHighlightedLyricSettings = { highlight ->
-                    navController.navigate(Screen.LyricSettings.createRoute(highlight))
-                },
-                onNavigateToHighlightedAppearanceSettings = { highlight ->
-                    when {
-                        highlight.isBlank() || highlight == "appearance" -> {
-                            navController.navigate(Screen.SettingsDetail.createRoute(highlight))
-                        }
-                        highlight == "lyric_font" || highlight == "font_settings" -> {
-                            navController.navigate(Screen.LyricFont.route)
-                        }
-                        else -> {
-                            navController.navigate(
-                                Screen.AppearanceSubpage.createRoute(
-                                    appearanceSubpageForHighlight(highlight),
-                                    highlight
-                                )
-                            )
-                        }
-                    }
-                },
-                onNavigateToHighlightedLibrarySettings = { highlight ->
-                    navController.navigate(Screen.LibrarySettings.createRoute(highlight))
-                },
-                onNavigateToHighlightedIntegrationSettings = { highlight ->
-                    navController.navigate(Screen.IntegrationSettings.createRoute(highlight))
-                },
-                onNavigateToHighlightedAudioSettings = { highlight ->
-                    navController.navigate(Screen.AudioSettings.createRoute(highlight))
-                },
-                onNavigateToHighlightedBackupSettings = { highlight ->
-                    navController.navigate(Screen.BackupSettings.createRoute(highlight))
-                },
-                onNavigateToEqualizer = { navController.navigate(Screen.Equalizer.createRoute()) },
-                onNavigateToHighlightedEqualizer = { highlight ->
-                    navController.navigate(Screen.Equalizer.createRoute(highlight))
-                },
-                onNavigateToCoverMediaSettings = { navController.navigate(Screen.CoverMediaSettings.createRoute()) },
-                onNavigateToHighlightedCoverMediaSettings = { highlight ->
-                    navController.navigate(Screen.CoverMediaSettings.createRoute(highlight))
-                },
-                onNavigateToSetupWizard = { navController.navigate(Screen.SettingsWizard.route) },
-                onNavigateToMaintenance = { navController.navigate(Screen.SettingsMaintenance.route) },
-                onBack = { navController.popBackStack() },
-                showBackButton = !(fromDock && isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_SETTINGS)),
-                mainViewModel = mainViewModel,
-                playerViewModel = playerViewModel
-            )
+            mainDestination(Screen.Settings.route, backStackEntry)
         }
 
         composable(
@@ -941,7 +1100,9 @@ fun AppNavigation(
                 onNavigateToNavidromeConfig = { navController.navigate(Screen.NavidromeServerSettings.route) },
                 onNavigateToOpenSubsonicConfig = { navController.navigate(Screen.OpenSubsonicServerSettings.route) },
                 onNavigateToEmbyConfig = { navController.navigate(Screen.EmbyServerSettings.route) },
-                onNavigateToWebDavConfig = { navController.navigate(Screen.WebDav.route) },
+                onNavigateToWebDavConfig = { navController.navigate(Screen.WebDavLibrary.route) },
+                onNavigateToSmbConfig = { navController.navigate(Screen.SmbLibrary.route) },
+                onNavigateToTransferConfig = { source -> navController.navigate(Screen.TransferLibrary.createRoute(source)) },
                 mainViewModel = mainViewModel,
                 onCloseSettings = closeSettings
             )
@@ -1101,13 +1262,8 @@ fun AppNavigation(
             LaunchedEffect(Unit) { navController.popBackStack() }
         }
 
-        composable(Screen.Analytics.route) {
-            AnalyticsScreen(
-                mainViewModel = mainViewModel,
-                onBack = { navController.popBackStack() },
-                showBackButton = !isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_ANALYTICS),
-                onNavigateToHistory = { navController.navigate(Screen.PlaybackHistory.route) }
-            )
+        composable(Screen.Analytics.route) { backStackEntry ->
+            mainDestination(Screen.Analytics.route, backStackEntry)
         }
 
         composable(Screen.PlaybackHistory.route) {
@@ -1145,20 +1301,8 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.LibraryAnalysis.route) {
-            LibraryAnalysisScreen(
-                mainViewModel = mainViewModel,
-                playerViewModel = playerViewModel,
-                onBack = { navController.popBackStack() },
-                showBackButton = !isDockItem(SettingsManager.BOTTOM_DOCK_ITEM_LIBRARY_ANALYSIS),
-                onNavigateToPlayer = onNavigateToPlayer,
-                onNavigateToAlbum = { albumId ->
-                    navController.navigate(Screen.AlbumDetail.createRoute(albumId))
-                },
-                onNavigateToArtist = { artistName ->
-                    navController.navigate(Screen.ArtistDetail.createRoute(artistName))
-                }
-            )
+        composable(Screen.LibraryAnalysis.route) { backStackEntry ->
+            mainDestination(Screen.LibraryAnalysis.route, backStackEntry)
         }
 
         composable(

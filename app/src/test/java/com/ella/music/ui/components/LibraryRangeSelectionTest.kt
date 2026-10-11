@@ -4,6 +4,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LibraryRangeSelectionTest {
+    @org.junit.Test fun inversionPreservesOtherScopesAndRespectsPickerLimits() {
+        val state = LibrarySelectionState<Int>().apply {
+            selectionMode = true; selectedIds = setOf(1, 99); rangeAnchorId = 1; rangeTargetId = 3
+        }
+        state.invertSelection(listOf(1, 2, 2, 3))
+        org.junit.Assert.assertEquals(setOf(2, 3, 99), state.selectedIds)
+        org.junit.Assert.assertNull(state.rangeAnchorId)
+        org.junit.Assert.assertNull(state.rangeTargetId)
+        state.invertSelection(listOf(1, 2, 3))
+        org.junit.Assert.assertEquals(setOf(1, 99), state.selectedIds)
+        org.junit.Assert.assertTrue(state.selectionMode)
+        org.junit.Assert.assertEquals(setOf(99, 2), invertedSelection(listOf(1, 2, 3, 4), setOf(1, 99), 2))
+        state.selectedIds = setOf(1, 2, 3)
+        state.invertSelection(listOf(1, 2, 3))
+        org.junit.Assert.assertTrue(state.selectedIds.isEmpty() && state.selectionMode)
+    }
+
     @Test fun rangePinsInDisplayOrderIncludingPreviouslySelectedEndpoints() {
         val ids = ('A'..'G').toList()
         val indexes = ids.withIndex().associate { it.value to it.index }

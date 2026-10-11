@@ -43,6 +43,7 @@ object RemoteAudioCache {
 
     @Volatile
     private var cacheDir: File? = null
+    private var appContext: Context? = null
 
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -68,6 +69,7 @@ object RemoteAudioCache {
 
     fun init(context: Context) {
         val app = context.applicationContext
+        appContext = app
         cacheDir = File(app.cacheDir, DIR_NAME).also { dir ->
             dir.mkdirs()
             val expiration = System.currentTimeMillis() - CACHE_MAX_AGE_MS
@@ -77,7 +79,7 @@ object RemoteAudioCache {
     }
 
     fun isCacheableRemoteSong(song: Song): Boolean {
-        if (song.path.isHttpAudioSource()) return true
+        if (song.path.isHttpAudioSource() || song.path.startsWith("smb://", true) || song.path.startsWith("ftp://", true) || song.path.startsWith("ftps://", true) || song.path.startsWith("sftp://", true)) return true
         // A synced Navidrome/OpenSubsonic row can lose a usable stream URL and still be
         // downloadable once the current server config reissues one.
         return song.onlineId.isNotBlank() &&
@@ -87,6 +89,7 @@ object RemoteAudioCache {
     fun cacheFileFor(song: Song): File? {
         val dir = cacheDir ?: return null
         val key = when {
+            song.onlineSource in setOf("smb", "ftp", "sftp") -> "${song.onlineSource}:${song.path}:${song.fileSize}:${song.dateModified}"
             song.onlineId.isNotBlank() -> "online:${song.onlineSource}:${song.onlineId}"
             else -> "path:${song.path}"
         }
@@ -180,7 +183,7 @@ object RemoteAudioCache {
         return job
     }
 
-    private fun downloadOne(song: Song): Boolean {
+    private suspend fun downloadOne(song: Song): Boolean {
         val target = cacheFileFor(song) ?: return false
         if (target.exists() && target.length() > 0L &&
             (song.fileSize <= 0L || target.length() == song.fileSize)
@@ -192,6 +195,44 @@ object RemoteAudioCache {
         val reservedBytes = reserveCacheBytes(target)
         if (reservedBytes <= 0L) return false
         return try {
+            if (song.path.startsWith("ftp://", true) || song.path.startsWith("ftps://", true) || song.path.startsWith("sftp://", true)) {
+                val context = requireNotNull(appContext)
+                val source = if (song.path.startsWith("sftp://", true)) "sftp" else "ftp"
+                val account = com.ella.music.data.ftp.transferAccount(context, source)
+                com.ella.music.data.ftp.transferSession(account).use { session ->
+                    tmp.outputStream().use { output -> session.read(com.ella.music.data.ftp.TransferLocation.parse(song.path)).use { input ->
+                        input.copyToBoundedOrThrow(output, reservedBytes)
+                    } }
+                }
+                check(tmp.length() > 0 && (song.fileSize <= 0L || tmp.length() == song.fileSize))
+                if (target.exists()) target.delete()
+                check(tmp.renameTo(target))
+                return true
+            }
+            if (song.path.startsWith("smb://", true)) {
+                val context = requireNotNull(appContext)
+                val account = kotlinx.coroutines.runBlocking(Dispatchers.IO) { com.ella.music.data.smb.smbAccount(context) }
+                com.ella.music.data.smb.SmbSession(account).use { session ->
+                    session.open(com.ella.music.data.smb.SmbLocation.parse(song.path)).use { file ->
+                        tmp.outputStream().use { output -> file.inputStream.use { input ->
+                            val buffer = ByteArray(64 * 1024)
+                            var total = 0L
+                            while (true) {
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                total += count
+                                if (total > reservedBytes) throw InputTooLargeException(reservedBytes)
+                                output.write(buffer, 0, count)
+                            }
+                        } }
+                    }
+                }
+                check(tmp.length() > 0 && (song.fileSize <= 0L || tmp.length() == song.fileSize))
+                if (target.exists()) target.delete()
+                check(tmp.renameTo(target))
+                return true
+            }
             val request = Request.Builder()
                 .url(song.path)
                 .header("User-Agent", NavidromeService.USER_AGENT)
@@ -221,6 +262,7 @@ object RemoteAudioCache {
             }
             true
         } catch (error: Throwable) {
+            if (error is kotlinx.coroutines.CancellationException) { tmp.delete(); throw error }
             Log.w(TAG, "cache download failed for ${song.path.take(120)}", error)
             tmp.delete()
             false

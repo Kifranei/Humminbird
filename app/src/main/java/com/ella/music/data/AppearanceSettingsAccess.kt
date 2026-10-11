@@ -307,10 +307,10 @@ internal class AppearanceSettingsAccessImpl(private val context: Context) : Appe
         context.dataStore.edit { it[SettingsManager.KEY_POSTER_WALL_INFINITE_SCROLL] = enabled }
     }
     override val posterWallLyricStyle: Flow<Int> = context.dataStore.data.map {
-        (it[SettingsManager.KEY_POSTER_WALL_LYRIC_STYLE] ?: 0).coerceIn(0, 3)
+        (it[SettingsManager.KEY_POSTER_WALL_LYRIC_STYLE] ?: 0).coerceIn(0, 4)
     }
     override suspend fun setPosterWallLyricStyle(style: Int) {
-        context.dataStore.edit { it[SettingsManager.KEY_POSTER_WALL_LYRIC_STYLE] = style.coerceIn(0, 3) }
+        context.dataStore.edit { it[SettingsManager.KEY_POSTER_WALL_LYRIC_STYLE] = style.coerceIn(0, 4) }
     }
 
     override val homeSearchTarget: Flow<String> = context.dataStore.data.map {
@@ -432,15 +432,18 @@ internal class AppearanceSettingsAccessImpl(private val context: Context) : Appe
     override val homeShortcutItems: Flow<String> = context.dataStore.data.map {
         it[SettingsManager.KEY_HOME_SHORTCUT_ITEMS] ?: migratedHomeItems(
             it[KEY_HOME_LIBRARY_TILE_ORDER] ?: DEFAULT_HOME_LIBRARY_TILE_ORDER,
-            it[KEY_HOME_HIDDEN_LIBRARY_TILES].orEmpty(), true)
+            it[KEY_HOME_HIDDEN_LIBRARY_TILES].orEmpty(), true,
+            defaultHomeShortcutCount(context.resources.configuration.smallestScreenWidthDp))
     }
     override val homeFeatureItems: Flow<String> = context.dataStore.data.map { preferences ->
         val order = preferences[KEY_HOME_LIBRARY_TILE_ORDER] ?: DEFAULT_HOME_LIBRARY_TILE_ORDER
         val hidden = preferences[KEY_HOME_HIDDEN_LIBRARY_TILES].orEmpty()
-        val shortcuts = preferences[SettingsManager.KEY_HOME_SHORTCUT_ITEMS] ?: migratedHomeItems(order, hidden, true)
+        val shortcuts = preferences[SettingsManager.KEY_HOME_SHORTCUT_ITEMS] ?: migratedHomeItems(order, hidden, true,
+            defaultHomeShortcutCount(context.resources.configuration.smallestScreenWidthDp))
         val features = preferences[SettingsManager.KEY_HOME_FEATURE_ITEMS] ?: migratedHomeItems(order, hidden, false)
         resolvePosterWallHomeFeatureItems(features, shortcuts,
             preferences[SettingsManager.KEY_HOME_POSTER_WALL_CONFIGURED] == true, hidden)
+            .split(',').filter { it.isNotBlank() && it !in shortcuts.split(',') }.distinct().joinToString(",")
     }
     override suspend fun setHomeShortcutItems(value: String) {
         context.dataStore.edit {
@@ -832,10 +835,12 @@ internal class AppearanceSettingsAccessImpl(private val context: Context) : Appe
     }
 }
 
-internal fun migratedHomeItems(order: String, hidden: String, shortcuts: Boolean): String {
+internal fun defaultHomeShortcutCount(smallestScreenWidthDp: Int): Int = if (smallestScreenWidthDp >= 600) 8 else 4
+
+internal fun migratedHomeItems(order: String, hidden: String, shortcuts: Boolean, shortcutCount: Int = 4): String {
     val defaults = SettingsManager.DEFAULT_HOME_LIBRARY_TILE_ORDER.split(',')
     val visible = (order.split(',') + defaults).distinct().filter { it in defaults && it !in hidden.split(',') }
-    return (if (shortcuts) visible.take(4) else visible.drop(4)).joinToString(",")
+    return (if (shortcuts) visible.take(shortcutCount) else visible.drop(shortcutCount)).joinToString(",")
 }
 
 internal fun normalizeHomeSearchTarget(value: String): String = "local"

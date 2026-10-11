@@ -1,5 +1,8 @@
 package com.ella.music.ui.analytics
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -423,7 +426,7 @@ internal fun LibraryAnalysisBucketDetailScreen(
                         )
                         LazyColumn(
                             state = listState,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize().dragSelectList(listState, selection, sortedSongIdsForSelection, itemIdsByKey = remember(sortedSongs) { sortedSongs.associate { (it.playlistIdentityKey() as Any) to listOf(it.id) } }),
                             contentPadding = PaddingValues(end = listEndInset, bottom = 120.dp)
                         ) {
                             itemsIndexed(
@@ -499,6 +502,7 @@ internal fun LibraryAnalysisBucketDetailScreen(
                             selection.applyRangeSelection(sortedSongIdsForSelection, sortedSongIndexByIdForSelection)
                         },
                         onSelectAll = { selection.toggleSelectAll(sortedSongIdsForSelection) },
+                        onInvertSelection = { selection.invertSelection(sortedSongIdsForSelection) },
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(

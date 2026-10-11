@@ -12,7 +12,7 @@ Project page: <https://github.com/Kifranei/Humminbird>
 - Play local music videos. A local video file is preferred.
 - Local and embedded lyrics, plus Lyrico lyric plugins. Desktop lyrics and status-bar lyrics are included.
 - Equalizer and the in-player visualizer. Spectrum viewing can be handed to an external app chosen in Settings.
-- WebDAV, Navidrome, and Emby, plus Last.fm.
+- WebDAV, SMB 2/3, FTP / explicit FTPS, SFTP, Navidrome, and Emby, plus Last.fm. Manage file-protocol libraries from library settings, scan shared folders, and browse, search, and continuously play songs, albums, artists, and folders.
 - A LAN web player.
 - Gaussian-blur floating navigation, and frosted cards that let the flowing-light background show through.
 - Languages: Simplified Chinese, Traditional Chinese, English, and Japanese. An empty font choice uses the system font.
@@ -38,4 +38,5 @@ If `release.jks` is missing, the release build is signed with the local debug ke
 ## Docs
 
 - [Changelog](CHANGELOG.md)
+- [Apache-2.0 license](LICENSE)
 - [Third-party licenses](THIRD_PARTY_LICENSES.md)

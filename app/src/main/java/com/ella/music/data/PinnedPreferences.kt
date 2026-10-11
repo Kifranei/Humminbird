@@ -27,6 +27,12 @@ internal class PinnedPreferences(private val store: DataStore<Preferences>) {
             change?.keys ?: saved
         }.distinctUntilChanged()
 
+        @Synchronized fun restore(prefs: Preferences) {
+            val saved = read(prefs)
+            persisted = saved
+            pending.value = Pending(++revision, saved, true)
+        }
+
         fun read(prefs: Preferences): List<String> = prefs[key].orEmpty()
             .split('\n').map(String::trim).filter(String::isNotBlank).distinct()
 
@@ -44,6 +50,10 @@ internal class PinnedPreferences(private val store: DataStore<Preferences>) {
     private fun entry(namespace: String): Entry = entries.getOrPut(namespace) { Entry(namespace) }
 
     fun keys(namespace: String): Flow<List<String>> = entry(namespace).flow
+
+    fun restored(preferences: Preferences, keyNames: Set<String>) {
+        entries.values.filter { it.key.name in keyNames }.forEach { it.restore(preferences) }
+    }
 
     suspend fun set(namespace: String, key: String, pinned: Boolean) {
         val clean = key.trim().takeIf(String::isNotBlank) ?: return

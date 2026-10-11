@@ -34,6 +34,8 @@ internal fun songsToLibraryCacheJsonArray(songs: List<Song>): JSONArray {
                 .put("composer", song.composer)
                 .put("arranger", song.arranger)
                 .put("lyricist", song.lyricist)
+                .put("customTags", JSONObject().apply { song.customTags.forEach { (key, values) -> put(key, JSONArray(values)) } })
+                .put("customTagsLoaded", song.customTagsLoaded)
                 .put("coverUrl", song.coverUrl)
                 .put("onlineSource", song.onlineSource)
                 .put("onlineId", song.onlineId)
@@ -138,6 +140,8 @@ private fun JsonReader.readCacheSong(): Song {
     var composer = ""
     var arranger = ""
     var lyricist = ""
+    var customTags = emptyMap<String, List<String>>()
+    var customTagsLoaded = false
     var coverUrl = ""
     var onlineSource = ""
     var onlineId = ""
@@ -168,6 +172,8 @@ private fun JsonReader.readCacheSong(): Song {
             "composer" -> composer = nextStringOrEmpty()
             "arranger" -> arranger = nextStringOrEmpty()
             "lyricist" -> lyricist = nextStringOrEmpty()
+            "customTags" -> customTags = readCustomTags()
+            "customTagsLoaded" -> customTagsLoaded = nextBoolean()
             "coverUrl" -> coverUrl = nextStringOrEmpty()
             "onlineSource" -> onlineSource = nextStringOrEmpty()
             "onlineId" -> onlineId = nextStringOrEmpty()
@@ -200,6 +206,8 @@ private fun JsonReader.readCacheSong(): Song {
         composer = composer,
         arranger = arranger,
         lyricist = lyricist,
+        customTags = customTags,
+        customTagsLoaded = customTagsLoaded,
         coverUrl = coverUrl,
         onlineSource = onlineSource,
         onlineId = onlineId,
@@ -208,6 +216,26 @@ private fun JsonReader.readCacheSong(): Song {
         onlineLyricTranslation = onlineLyricTranslation,
         onlineLyricPronunciation = onlineLyricPronunciation
     )
+}
+
+private fun JsonReader.readCustomTags(): Map<String, List<String>> {
+    if (peek() != JsonToken.BEGIN_OBJECT) { skipValue(); return emptyMap() }
+    val result = linkedMapOf<String, List<String>>()
+    beginObject()
+    while (hasNext()) {
+        val key = nextName()
+        if (peek() == JsonToken.BEGIN_ARRAY) {
+            val values = mutableListOf<String>()
+            beginArray()
+            while (hasNext()) {
+                if (peek() == JsonToken.STRING) values += nextString() else skipValue()
+            }
+            endArray()
+            result[key] = values
+        } else skipValue()
+    }
+    endObject()
+    return result
 }
 
 private fun JsonReader.nextStringOrEmpty(): String {

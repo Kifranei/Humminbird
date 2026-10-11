@@ -28,20 +28,10 @@ internal fun captureVideoFrame(
         frame
     }
     return runCatching {
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "Humminbird_MV_${System.currentTimeMillis()}.png")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Humminbird")
-            put(MediaStore.Images.Media.IS_PENDING, 1)
+        com.ella.music.data.MediaExportStorage.write(context,
+            "Humminbird_MV_${System.currentTimeMillis()}.png", "image/png", "Pictures/Halcyon/mv_screenshots/") { stream ->
+            check(result.compress(Bitmap.CompressFormat.PNG, 100, stream))
         }
-        val output = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            ?: return false
-        context.contentResolver.openOutputStream(output)?.use { stream ->
-            result.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        } ?: return false
-        context.contentResolver.update(output, ContentValues().apply {
-            put(MediaStore.Images.Media.IS_PENDING, 0)
-        }, null, null)
         true
     }.getOrDefault(false).also {
         if (result !== frame) result.recycle()

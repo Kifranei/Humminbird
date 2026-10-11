@@ -69,6 +69,8 @@ fun SettingsDetailScreen(
     onNavigateToOpenSubsonicConfig: (() -> Unit)? = null,
     onNavigateToEmbyConfig: (() -> Unit)? = null,
     onNavigateToWebDavConfig: (() -> Unit)? = null,
+    onNavigateToSmbConfig: (() -> Unit)? = null,
+    onNavigateToTransferConfig: ((String) -> Unit)? = null,
     onNavigateToLyricPluginSources: () -> Unit = {},
     onNavigateToLastFmSettings: () -> Unit = {},
     onNavigateToBottomNavigationSettings: () -> Unit = {},
@@ -263,6 +265,8 @@ fun SettingsDetailScreen(
                         onOpenOpenSubsonicConfig = onNavigateToOpenSubsonicConfig,
                         onOpenEmbyConfig = onNavigateToEmbyConfig,
                         onOpenWebDavConfig = onNavigateToWebDavConfig,
+                        onOpenSmbConfig = onNavigateToSmbConfig,
+                        onOpenTransferConfig = onNavigateToTransferConfig,
                         mainViewModel = mainViewModel
                     )
                     SettingsScanSection(highlightKey = highlightKey)

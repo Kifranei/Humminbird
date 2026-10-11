@@ -1,4 +1,7 @@
 package com.ella.music.ui.analytics
+
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
 import com.ella.music.data.netease.toNeteaseHistorySong
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 
@@ -599,6 +602,7 @@ fun RecentPlaybackScreen(
                 allSelected = visibleRows.isNotEmpty() && visibleRows.all { it.key in selection.selectedIds },
                 onRangeSelect = { selection.applyRangeSelection(orderedRowKeys, rowIndexByKey) },
                 onSelectAll = { selection.toggleSelectAll(orderedRowKeys) },
+                onInvertSelection = { selection.invertSelection(orderedRowKeys) },
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
             )
             val selectedSongs = remember(selection.selectedIds, visibleRows) {
@@ -708,7 +712,7 @@ fun RecentPlaybackScreen(
                 val daySections = remember(pageRows) { groupRowsByPlayDay(pageRows) }
                 LazyColumn(
                     state = pageListState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().dragSelectList(pageListState, selectionMode && pageTab == currentTab, remember(pageRows) { pageRows.map { it.key } }, selection.selectedIds, onSelectionChange = { selection.selectedIds = it; selection.rangeAnchorId = null; selection.rangeTargetId = null }, onToggle = selection::toggleSelection),
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 160.dp)
                 ) {
                     daySections.forEach { section ->

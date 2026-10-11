@@ -35,7 +35,18 @@ json-test = "20260814"
 compose-ui-test = "1.12.1"
 honor-media-audio = "1.2.0.301"
 
+commons-net = "3.13.0"
+jsch = "2.28.7"
+bcprov = "1.86"
+smbj = "0.14.0"
+opencc4j = "1.14.0"
+
 [libraries]
+commons-net = { module = "commons-net:commons-net", version.ref = "commons-net" }
+jsch = { module = "com.github.mwiede:jsch", version.ref = "jsch" }
+bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bcprov" }
+smbj = { module = "com.hierynomus:smbj", version.ref = "smbj" }
+opencc4j = { module = "com.github.houbb:opencc4j", version.ref = "opencc4j" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
 androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }

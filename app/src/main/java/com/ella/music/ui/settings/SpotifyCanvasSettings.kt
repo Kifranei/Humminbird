@@ -32,17 +32,17 @@ internal fun SettingsSpotifyCanvasSection() {
     val connection by repository.connection.collectAsState()
     SettingsCardGroup {
         Column {
-            // search-anchor:start
-            SettingsSearchAnchor(R.string.settings_spotify_canvas) {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_spotify_canvas) {
                 SwitchPreference(
                     title = stringResource(R.string.settings_spotify_canvas),
                     summary = stringResource(R.string.settings_spotify_canvas_summary),
                     checked = enabled,
                     onCheckedChange = { scope.launch { settings.setSpotifyCanvasEnabled(it) } }
                 )
-            } // search-anchor:end
-            // search-anchor:start
-            SettingsSearchAnchor(R.string.settings_spotify_canvas_cookie) {
+                } // search-anchor:end
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_spotify_canvas_cookie) {
                 SplitSettingTextField(
                     label = stringResource(R.string.settings_spotify_canvas_cookie),
                     value = cookie,
@@ -61,9 +61,9 @@ internal fun SettingsSpotifyCanvasSection() {
                         }
                     }
                 )
-            } // search-anchor:end
-            // search-anchor:start
-            SettingsSearchAnchor(R.string.settings_spotify_canvas_connect) {
+                } // search-anchor:end
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_spotify_canvas_connect) {
                 ArrowPreference(
                     title = stringResource(R.string.settings_spotify_canvas_connect),
                     summary = stringResource(when {
@@ -76,7 +76,7 @@ internal fun SettingsSpotifyCanvasSection() {
                     enabled = cookie.isNotBlank() && connection != SpotifyCanvasConnection.Connecting,
                     onClick = { scope.launch { repository.connect(cookie) } }
                 )
-            } // search-anchor:end
+                } // search-anchor:end
         }
     }
 }

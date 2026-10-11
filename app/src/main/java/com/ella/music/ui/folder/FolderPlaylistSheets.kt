@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import com.ella.music.ui.components.dragSelectList
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -234,8 +235,15 @@ fun LinkToFolderPlaylistSheet(
                     modifier = Modifier.padding(20.dp)
                 )
             } else {
+                val dragState = androidx.compose.foundation.lazy.rememberLazyListState()
+                if (multiSelect) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    com.ella.music.ui.components.InvertSelectionButton({
+                        selectedIds = com.ella.music.ui.components.invertedSelection(visiblePlaylists.map { it.id }, selectedIds)
+                    })
+                }
                 LazyColumn(
-                    modifier = Modifier
+                    state = dragState,
+                    modifier = Modifier.dragSelectList(dragState, multiSelect, remember(visiblePlaylists) { visiblePlaylists.map { it.id } }, selectedIds, onSelectionChange = { selectedIds = it })
                         .fillMaxWidth()
                         .heightIn(max = 400.dp),
                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
@@ -585,13 +593,28 @@ internal fun FolderPlaylistEditorSheet(
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
             )
-            Column(
+            val editorListState = androidx.compose.foundation.lazy.rememberLazyListState()
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                com.ella.music.ui.components.InvertSelectionButton({
+                    val inverted = com.ella.music.ui.components.invertedSelection(sortedFilteredFolders, selectedFolders)
+                    onSelectedFoldersChange(inverted)
+                    onPinnedFoldersChange(pinnedFolders + inverted)
+                })
+            }
+            LazyColumn(
+                state = editorListState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 430.dp)
-                    .verticalScroll(rememberScrollState())
+                    .dragSelectList(editorListState, true, sortedFilteredFolders, selectedFolders,
+                        onSelectionChange = onSelectedFoldersChange,
+                        onToggle = { folder ->
+                            if (folder in selectedFolders) onSelectedFoldersChange(selectedFolders - folder)
+                            else { onSelectedFoldersChange(selectedFolders + folder); onPinnedFoldersChange(pinnedFolders + folder) }
+                        },
+                        onDragEnd = { picked -> onPinnedFoldersChange(pinnedFolders + picked) })
             ) {
-                sortedFilteredFolders.forEach { folder ->
+                items(sortedFilteredFolders, key = { it }) { folder ->
                     val checked = folder in selectedFolders
                     fun toggle(next: Boolean) {
                         if (next) {

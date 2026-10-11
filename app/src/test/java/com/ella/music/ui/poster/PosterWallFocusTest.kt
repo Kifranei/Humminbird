@@ -50,9 +50,9 @@ class PosterWallFocusTest {
     @Test
     @Config(qualifiers = "w840dp-h900dp-television-xxhdpi")
     fun remoteFocusMovesToPlayAfterTheCardExpands() =
-        checkExpanded(412f, 674f, "remote-playback", current = true, expectRemoteFocus = true)
+        checkExpanded(412f, 674f, "remote-playback", current = true, expectRemoteFocus = true, stacked = true)
 
-    private fun checkExpanded(width: Float, height: Float, name: String, current: Boolean = false, expectRemoteFocus: Boolean = false) {
+    private fun checkExpanded(width: Float, height: Float, name: String, current: Boolean = false, expectRemoteFocus: Boolean = false, stacked: Boolean = false) {
         var plays = 0
         var seek = -1f
         val allowTapSeek = mutableStateOf(true)
@@ -80,7 +80,9 @@ class PosterWallFocusTest {
                         } },
                         controls = { PosterPlayControls(false, {}, { plays++ }, {}, showSkipButtons = false) },
                         onPlay = { plays++ }, onMore = {}, onClosed = { closed = true },
-                        onFullscreen = if (current) ({ fullscreenRequests++ }) else null)
+                        onFullscreen = if (current) ({ fullscreenRequests++ }) else null,
+                        onStackSwipe = if (stacked) ({ _ -> }) else null,
+                        stackSongs = if (stacked) listOf(song, song.copy(id = 2), song.copy(id = 3)) else emptyList())
                 }
             }
         }

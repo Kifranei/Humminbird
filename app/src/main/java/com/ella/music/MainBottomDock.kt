@@ -129,6 +129,7 @@ internal fun FloatingBottomControls(
     tabs: List<BottomDockTab>,
     currentTabRoute: String?,
     currentRoute: String?,
+    searchReturnRoute: String? = null,
     bottomDockMode: BottomDockMode,
     canCompact: Boolean,
     backdrop: top.yukonga.miuix.kmp.blur.Backdrop?,
@@ -147,7 +148,7 @@ internal fun FloatingBottomControls(
     modifier: Modifier = Modifier,
     useGlass: Boolean = true,
     stabilizeOverWallpaper: Boolean = false,
-    mergeSearch: Boolean = false
+    mergeSearch: Boolean = false,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var queueSheetExpanded by remember { mutableStateOf(false) }
@@ -193,7 +194,7 @@ internal fun FloatingBottomControls(
         }
     }
     val searchReturnTab = tabs.firstOrNull { tab ->
-        tab.route == searchDockReturnTabRoute(currentRoute, currentTabRoute, lastTabRoute)
+        (searchReturnRoute ?: searchDockReturnTabRoute(currentRoute, currentTabRoute, lastTabRoute)).matchesRoute(tab.route)
     }
     val floatingBottomBar = bottomBarStyle != BottomBarStyle.Normal
     // Normal mode intentionally keeps the same Miuix surface for both the mini-player and
@@ -619,96 +620,7 @@ private fun NormalBottomNavigationBar(
     }
 }
 
-/**
- * Switches the configured bottom-dock tabs with a horizontal swipe on the page.
- *
- * The search destination is appended because it is always the last item in the
- * navigation bar, even though it is not part of the user-configurable tab list.
- */
-@Composable
-internal fun normalBottomDockSwipeModifier(
-    enabled: Boolean,
-    tabs: List<BottomDockTab>,
-    currentRoute: String?,
-    onNavigate: (String) -> Unit,
-    onNavigateSearch: () -> Unit
-): Modifier {
-    val latestOnNavigate by rememberUpdatedState(onNavigate)
-    val latestOnNavigateSearch by rememberUpdatedState(onNavigateSearch)
-    val swipeRoutes = tabs.map { it.route }.let { routes ->
-        if (routes.any { it.isSearchRoute() }) routes else routes + Screen.LibrarySearch.createRoute()
-    }
-    val currentIndex = swipeRoutes.indexOfFirst { currentRoute.matchesRoute(it) }
 
-    if (!enabled || currentIndex < 0 || swipeRoutes.size < 2) return Modifier
-
-    return Modifier.pointerInput(enabled, swipeRoutes, currentRoute) {
-        val touchSlop = viewConfiguration.touchSlop
-        val swipeThresholdPx = 72.dp.toPx()
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            if (currentRoute?.startsWith("library_search") == true && down.position.y < 240.dp.toPx()) {
-                return@awaitEachGesture
-            }
-            var lockedHorizontal = false
-            var lockedVertical = false
-            var cancelled = false
-            var totalDx = 0f
-            var totalDy = 0f
-
-            do {
-                val event = awaitPointerEvent(PointerEventPass.Main)
-                if (event.changes.count { it.pressed } > 1) {
-                    // Do not compete with the library's two-finger pinch gesture.
-                    cancelled = true
-                    lockedHorizontal = false
-                    lockedVertical = true
-                }
-                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                if (!change.pressed) break
-
-                if (!lockedHorizontal && change.isConsumed) {
-                    // A child component (e.g. horizontal scroll bar or slider) has handled this gesture.
-                    cancelled = true
-                    break
-                }
-
-                val delta = change.position - change.previousPosition
-                totalDx += delta.x
-                totalDy += delta.y
-
-                if (!cancelled && !lockedHorizontal && !lockedVertical) {
-                    val absX = kotlin.math.abs(totalDx)
-                    val absY = kotlin.math.abs(totalDy)
-                    when {
-                        absY > touchSlop && absY > absX * 1.12f -> {
-                            // Leave vertical movement to the page's own scroll container.
-                            lockedVertical = true
-                            cancelled = true
-                        }
-                        absX > touchSlop && absX > absY * 1.12f -> {
-                            lockedHorizontal = true
-                            change.consume()
-                        }
-                    }
-                } else if (lockedHorizontal && !cancelled) {
-                    change.consume()
-                }
-            } while (true)
-
-            if (!cancelled && lockedHorizontal && kotlin.math.abs(totalDx) >= swipeThresholdPx) {
-                val targetIndex = if (totalDx < 0f) currentIndex + 1 else currentIndex - 1
-                swipeRoutes.getOrNull(targetIndex)?.let { targetRoute ->
-                    if (targetRoute.startsWith(Screen.LibrarySearch.baseRoute)) {
-                        latestOnNavigateSearch()
-                    } else {
-                        latestOnNavigate(targetRoute)
-                    }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun SearchBottomDock(

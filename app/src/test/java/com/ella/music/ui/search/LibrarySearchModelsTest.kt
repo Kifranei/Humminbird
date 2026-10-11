@@ -7,6 +7,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibrarySearchModelsTest {
+    @Test fun folderPlaylistFilterHasItsOwnRouteAndSitsBetweenFoldersAndComposers() {
+        assertEquals(SearchFilter.FolderPlaylists, SearchFilter.fromRouteType("folder_playlist"))
+        assertEquals(SearchFilter.FolderPlaylists, SearchFilter.fromRouteType("folder_playlists"))
+        assertEquals(SearchFilter.Folders.ordinal + 1, SearchFilter.FolderPlaylists.ordinal)
+        assertEquals(SearchFilter.Composers.ordinal - 1, SearchFilter.FolderPlaylists.ordinal)
+        assertTrue("folder_playlist" in SettingsManager.SEARCH_ALL_CATEGORY_TYPES)
+    }
     @Test
     fun musicVideoFilterIsASongResultFilter() {
         assertEquals(SearchFilter.MusicVideos, SearchFilter.fromRouteType("mv"))

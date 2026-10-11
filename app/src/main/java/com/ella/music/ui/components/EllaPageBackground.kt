@@ -21,19 +21,22 @@ internal fun supportsNowPlayingFlowBackground(route: String?): Boolean {
     if (route.startsWith(Screen.LibrarySearch.baseRoute) || route == Screen.LibrarySearch.route) {
         return true
     }
-    return route in setOf(
+    val path = route.substringBefore('?')
+    val categoryBase = Screen.MetadataCategory.baseRoute
+    val isCategoryRoot = path.startsWith("$categoryBase/") && '/' !in path.removePrefix("$categoryBase/")
+    return setOf(
         Screen.Home.route,
         Screen.Library.route,
-        Screen.Album.route,
-        Screen.Artist.route,
-        Screen.Folder.route,
+        Screen.Album.baseRoute,
+        Screen.Artist.baseRoute,
+        Screen.Folder.baseRoute,
         Screen.FolderPlaylists.route,
-        Screen.Playlists.route,
-        Screen.MetadataCategory.route,
+        Screen.Playlists.baseRoute,
+        Screen.MetadataCategory.route.substringBefore('/'),
         Screen.NeteaseSearch.route,
         Screen.MusicFreeOnline.route,
         Screen.LxOnline.route
-    ) || route.isSettingsGraphRoute()
+    ).any { path == it.substringBefore('?') } || isCategoryRoot || route.isSettingsGraphRoute()
 }
 
 @Composable

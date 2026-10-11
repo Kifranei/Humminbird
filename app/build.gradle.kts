@@ -16,7 +16,7 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 }
 
-val appVersionName = "1.0.0"
+val appVersionName = "1.0.1"
 val supportedAbis = listOf("arm64-v8a", "armeabi-v7a")
 val configuredAbis = providers.gradleProperty("ellaAbi")
     .orNull
@@ -126,11 +126,10 @@ android {
         applicationId = "com.kifranei.humminbird.player"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
+        versionCode = 2
         versionName = appVersionName
-        ndk {
-            abiFilters += configuredAbis
-        }
+        // Universal APKs must contain only complete, supported native architectures.
+        ndk { abiFilters += configuredAbis }
         externalNativeBuild {
             cmake {
                 cppFlags += "-std=c++17"
@@ -261,6 +260,11 @@ androidComponents {
 }
 
 dependencies {
+    implementation(libs.smbj)
+    implementation(libs.commons.net)
+    implementation(libs.jsch)
+    implementation(libs.bcprov)
+    implementation(libs.opencc4j)
     implementation(libs.androidx.appcompat)
     // Installs the bundled baseline profile (src/main/baseline-prof.txt) so ART AOT-compiles
     // the startup/library paths at install time instead of JIT-compiling them on first launch.

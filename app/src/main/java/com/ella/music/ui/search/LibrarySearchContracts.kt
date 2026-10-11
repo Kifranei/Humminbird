@@ -14,6 +14,7 @@ internal fun SearchFilter.labelRes(): Int = when (this) {
     SearchFilter.Albums -> R.string.library_search_albums
     SearchFilter.Playlists -> R.string.library_search_playlists
     SearchFilter.Folders -> R.string.library_search_folders
+    SearchFilter.FolderPlaylists -> R.string.folder_playlist_title
     SearchFilter.Composers -> R.string.library_search_composers
     SearchFilter.Arrangers -> R.string.library_search_arrangers
     SearchFilter.Lyricists -> R.string.library_search_lyricists
@@ -24,6 +25,7 @@ internal fun SearchFilter.labelRes(): Int = when (this) {
 
 internal fun String.searchLabelRes(): Int = when (this) {
     "folder" -> R.string.library_search_folders
+    "folder_playlist" -> R.string.folder_playlist_title
     "composer" -> R.string.library_search_composers
     "arranger" -> R.string.library_search_arrangers
     "lyricist" -> R.string.library_search_lyricists
@@ -44,6 +46,9 @@ internal sealed interface SearchActionTarget {
     }
 
     data class PlaylistTarget(val playlist: UserPlaylist) : SearchActionTarget {
+        override val title: String = playlist.name
+    }
+    data class FolderPlaylistTarget(val playlist: com.ella.music.data.model.FolderPlaylist) : SearchActionTarget {
         override val title: String = playlist.name
     }
 

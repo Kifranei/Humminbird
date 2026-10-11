@@ -360,7 +360,8 @@ class PlaybackService : MediaLibraryService() {
             }
         }
         val resolvingDataSourceFactory = androidx.media3.datasource.ResolvingDataSource.Factory(
-            DefaultDataSource.Factory(this, httpDataSourceFactory)
+            com.ella.music.data.ftp.TransferLibraryDataSourceFactory(this,
+                com.ella.music.data.smb.SmbDataSourceFactory(this, DefaultDataSource.Factory(this, httpDataSourceFactory)))
         ) { dataSpec ->
             if (dataSpec.uri.scheme == "halcyon-netease") {
                 throw java.io.IOException("Online account playback is not available")

@@ -318,7 +318,7 @@ class MusicFreeImportTest {
         } finally { server.stop(0) }
     }
 
-    @Test fun publicPluginStreamsUseTheirOwnRedirectTransportAndKeepPrivateLibrariesOnTheFallback() {
+    @Test fun removedOnlineSourcesAreRejectedAndPrivateLibrariesKeepTheFallbackTransport() {
         val context = RuntimeEnvironment.getApplication()
         val seenAuth = CopyOnWriteArrayList<String?>()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -337,20 +337,19 @@ class MusicFreeImportTest {
         server.start()
         try {
             val url = "http://127.0.0.1:${server.address.port}/redirect"
-            val factory = MusicFreeMediaSourceFactory(context,
-                DefaultMediaSourceFactory(DefaultDataSource.Factory(context)), OkHttpClient(), MusicFreeStreamHeaders())
-            for (source in listOf("qs", "sd", "wy", "musicfree:Test", "netease", "webdav")) {
+            val fallback = DefaultDataSource.Factory(context)
+            val factory = MusicFreeMediaSourceFactory(context, DefaultMediaSourceFactory(fallback), OkHttpClient(), MusicFreeStreamHeaders())
+            for (source in listOf("qs", "sd", "wy", "musicfree:Test", "netease")) {
                 val extras = trackWithPreview().song.copy(path = url, onlineSource = source).toMediaItemExtras()
-                if (source == "netease") extras.putBoolean(EXTRA_PLUGIN_TRANSPORT, true)
-                val item = MediaItem.Builder().setUri(url)
-                    .setMediaMetadata(MediaMetadata.Builder().setExtras(extras).build()).build()
-                val scoped = factory.scopedSource(item)
-                if (source == "webdav") {
-                    assertNull(scoped)
-                    continue
-                }
-                assertEquals(item, requireNotNull(scoped).item)
-                val dataSource = scoped.dataSourceFactory.createDataSource()
+                val item = MediaItem.Builder().setUri(url).setMediaMetadata(MediaMetadata.Builder().setExtras(extras).build()).build()
+                assertTrue(runCatching { factory.scopedSource(item) }.exceptionOrNull() is IOException)
+            }
+            assertTrue(seenAuth.isEmpty())
+            for (source in listOf("webdav", "navidrome", "opensubsonic", "emby")) {
+                val item = MediaItem.Builder().setUri(url).setMediaMetadata(MediaMetadata.Builder()
+                    .setExtras(trackWithPreview().song.copy(path = url, onlineSource = source).toMediaItemExtras()).build()).build()
+                assertNull(factory.scopedSource(item))
+                val dataSource = fallback.createDataSource()
                 try {
                     dataSource.open(DataSpec(Uri.parse(url)))
                     val result = ByteArrayOutputStream()
@@ -361,20 +360,11 @@ class MusicFreeImportTest {
                         result.write(buffer, 0, count)
                     }
                     assertEquals("audio fixture", result.toString("UTF-8"))
-                    assertEquals("/audio", dataSource.uri?.path)
                 } finally { dataSource.close() }
-                val local = item.buildUpon().setUri("file:///fixture/song.m4a").build()
-                assertNull(factory.scopedSource(local))
-                val credentialed = item.buildUpon().setUri("https://user:pass@audio.example.test/song.m4a").build()
-                assertTrue(runCatching { factory.scopedSource(credentialed) }.exceptionOrNull() is IOException)
             }
-            assertEquals(List(10) { null }, seenAuth.toList())
-            val official = MediaItem.Builder().setUri(url).setMediaMetadata(MediaMetadata.Builder()
-                .setExtras(trackWithPreview().song.copy(onlineSource = "netease").toMediaItemExtras()).build()).build()
-            assertNull(factory.scopedSource(official))
+            assertEquals(List(8) { null }, seenAuth.toList())
         } finally { server.stop(0) }
     }
-
 
     private fun source() = MusicFreePluginConfig(
         id = "test-source", url = "", name = "Test Source",

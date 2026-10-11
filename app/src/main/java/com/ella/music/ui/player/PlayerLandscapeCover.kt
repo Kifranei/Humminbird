@@ -450,11 +450,6 @@ internal fun LandscapeCoverPlayerPage(
                         .widthIn(max = if (ultraWideLandscape) 940.dp else 840.dp)
                         .padding(start = 0.dp)
                         .clipToBounds()
-                        .playerLyricPerspective(
-                            enabled = lyricPerspectiveEffect,
-                            angle = lyricPerspectiveYAngle,
-                            lyricTextAlign = lyricTextAlign
-                        )
                 ) {
                     if (hasLyrics) {
                         AppleMusicLyricsView(
@@ -472,6 +467,8 @@ internal fun LandscapeCoverPlayerPage(
                                 primaryTextSizeSp = lyricPrimaryTextSize,
                                 secondaryTextSizeSp = lyricSecondaryTextSize,
                                 lyricTextAlign = lyricTextAlign,
+                                perspectiveEffectEnabled = lyricPerspectiveEffect,
+                                perspectiveYAngle = lyricPerspectiveYAngle,
                                 contentColor = palette.onBackground,
                                 wordLiftEnabled = appleMusicWordLiftEnabled,
                                 onLineClick = onLyricLineClick,
@@ -747,11 +744,6 @@ private fun CompactPhoneLandscapeCoverPlayerPage(
                         // a 118dp gap made the lyric panel look detached from it.
                         .padding(top = 82.dp, bottom = 24.dp)
                         .clipToBounds()
-                        .playerLyricPerspective(
-                            enabled = lyricPerspectiveEffect,
-                            angle = lyricPerspectiveYAngle,
-                            lyricTextAlign = lyricTextAlign
-                        )
                 ) {
                     if (lyrics.isNotEmpty()) {
                         AppleMusicLyricsView(
@@ -769,6 +761,8 @@ private fun CompactPhoneLandscapeCoverPlayerPage(
                                 primaryTextSizeSp = primaryTextSizeSp,
                                 secondaryTextSizeSp = secondaryTextSizeSp,
                                 lyricTextAlign = lyricTextAlign,
+                                perspectiveEffectEnabled = lyricPerspectiveEffect,
+                                perspectiveYAngle = lyricPerspectiveYAngle,
                                 contentColor = palette.onBackground,
                                 wordLiftEnabled = appleMusicWordLiftEnabled,
                                 onLineClick = onLyricLineClick,

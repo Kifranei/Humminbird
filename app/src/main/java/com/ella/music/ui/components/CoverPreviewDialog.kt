@@ -118,6 +118,7 @@ internal fun CoverPreviewDialog(
     initialIndex: Int = 0,
     title: String,
     saveName: String = title,
+    imageKind: com.ella.music.data.ExportImageKind = com.ella.music.data.ExportImageKind.Song,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -433,12 +434,7 @@ internal fun CoverPreviewDialog(
                     totalCount = effectiveModels.size,
                     onSave = {
                         scope.launch {
-                            val currentSaveName = if (effectiveModels.size > 1) {
-                                "${saveName}_${pagerState.currentPage + 1}"
-                            } else {
-                                saveName
-                            }
-                            val saved = saveCoverToPictures(context, currentModel, currentSaveName)
+                            val saved = saveCoverToPictures(context, currentModel, saveName, imageKind)
                             Toast.makeText(
                                 context,
                                 context.getString(
@@ -896,70 +892,31 @@ private suspend fun writeAndShareCover(context: Context, model: Any, title: Stri
     }.getOrElse { false }
 }
 
-private suspend fun saveCoverToPictures(context: Context, model: Any, title: String): Boolean {
-    if (isCoverVideoModel(context, model)) {
-        return saveVideoToMovies(context, model, title)
-    }
+private suspend fun saveCoverToPictures(context: Context, model: Any, title: String,
+    kind: com.ella.music.data.ExportImageKind): Boolean {
+    if (isCoverVideoModel(context, model)) return saveVideoToMovies(context, model, title)
     val bitmap = loadCoverBitmapCopy(context, model) ?: return false
     return withContext(Dispatchers.IO) {
-        var uri: Uri? = null
         try {
-            val safeTitle = title.sanitizeExportFileName(fallback = "cover", maxLength = 80)
-            val displayName = "$safeTitle.png"
-            val customFolderUri = SettingsManager.getInstance(context).coverExportFolderUri.first()
-            if (customFolderUri.isNotBlank()) {
-                val root = DocumentFile.fromTreeUri(context, Uri.parse(customFolderUri))
-                    ?: return@withContext false
-                val outputFile = root.createUniqueChildFile("image/png", displayName)
-                    ?: return@withContext false
-                context.contentResolver.openOutputStream(outputFile.uri)?.use { stream ->
-                    check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
-                        "Unable to encode cover image"
-                    }
-                } ?: return@withContext false
-                return@withContext true
+            val settings = SettingsManager.getInstance(context)
+            val location = if (kind == com.ella.music.data.ExportImageKind.Artist) settings.artistImageSaveLocation.first() else "default"
+            val folder = when (location) {
+                "default" -> ""
+                "cover" -> settings.artistCoverFolderUri.first().takeIf(String::isNotBlank)
+                    ?: error("Artist cover directory is not configured")
+                else -> location
             }
-            val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
-                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                put(
-                    MediaStore.Images.Media.RELATIVE_PATH,
-                    "${Environment.DIRECTORY_PICTURES}${File.separator}Humminbird"
-                )
-                put(MediaStore.Images.Media.IS_PENDING, 1)
+            com.ella.music.data.MediaExportStorage.write(context,
+                com.ella.music.data.sanitizeMediaExportName(title, "cover") + ".png", "image/png",
+                "Pictures/Halcyon/${kind.directory}/", folder) { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
             }
-            uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-                ?: return@withContext false
-            val output = context.contentResolver.openOutputStream(uri)
-                ?: error("Unable to open the saved cover output stream")
-            output.use { stream ->
-                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
-                    "Unable to encode cover image"
-                }
-            }
-            values.clear()
-            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            context.contentResolver.update(uri, values, null, null)
             true
-        } catch (_: Throwable) {
-            uri?.let { context.contentResolver.delete(it, null, null) }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
             false
-        } finally {
-            bitmap.recycle()
-        }
+        } finally { bitmap.recycle() }
     }
-}
-
-private fun DocumentFile.createUniqueChildFile(mimeType: String, requestedName: String): DocumentFile? {
-    val baseName = requestedName.substringBeforeLast('.', requestedName).ifBlank { "cover" }
-    val extension = requestedName.substringAfterLast('.', "png")
-    var candidate = requestedName
-    var suffix = 1
-    while (findFile(candidate) != null) {
-        candidate = "$baseName ($suffix).$extension"
-        suffix++
-    }
-    return createFile(mimeType, candidate)
 }
 
 private suspend fun loadCoverBitmapCopy(context: Context, model: Any): Bitmap? =

@@ -1,6 +1,7 @@
 package com.ella.music.ui.components
 
 import com.ella.music.data.model.Song
+import com.ella.music.data.customCategoryValues
 import com.ella.music.data.splitArtistNames
 import com.ella.music.data.splitGenreNames
 import com.ella.music.data.tagIdentityKey
@@ -61,5 +62,5 @@ private fun Song.metadataCategoryNamesForCover(type: String): List<String> = whe
     "lyricist" -> splitArtistNames(lyricist)
     "genre" -> splitGenreNames(genre)
     "year" -> Regex("""\d{4}""").find(year)?.value?.let(::listOf).orEmpty()
-    else -> emptyList()
+    else -> customCategoryValues(type)
 }

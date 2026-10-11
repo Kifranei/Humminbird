@@ -47,13 +47,44 @@ private val slots = listOf(
     PosterSlot(3, 2, 2, 2), PosterSlot(1, 3, 2, 1), PosterSlot(5, 3, 1, 1)
 )
 
-internal class PosterWallGeometry(val count: Int, val cell: Float = 124f, val gap: Float = 10f, val infinite: Boolean = false) {
-    val blockCount = (count.coerceAtLeast(0) + slots.size - 1) / slots.size
+internal class PosterWallGeometry(val count: Int, val cell: Float = 124f, val gap: Float = 10f, val infinite: Boolean = false, val stacked: Boolean = false,
+    stackGroups: List<List<Int>>? = null, private val stackKeys: List<String> = emptyList()) {
+    private val groups = if (stacked) stackGroups ?: (0 until count).toList().chunked(3) else emptyList()
+    private val groupOf = IntArray(count)
+    private val depthOf = IntArray(count)
+    init {
+        if (stacked) {
+            require(groups.flatten().sorted() == (0 until count).toList())
+            require(groups.all { it.size in 1..MAX_POSTER_STACK_SIZE })
+            groups.forEachIndexed { group, indices -> indices.forEachIndexed { depth, index ->
+                groupOf[index] = group; depthOf[index] = depth
+            } }
+        }
+    }
+    fun groupIndices(index: Int): List<Int> = if (stacked) groups[groupOf[index]] else listOf(index)
+    fun depth(index: Int): Int = if (stacked) depthOf[index] else 0
+    private val rotations = FloatArray(count) { Float.NaN }
+    fun rotation(index: Int): Float {
+        if (!rotations[index].isNaN()) return rotations[index]
+        val angle = if (!stacked || groupIndices(index).size == 1) 0f else {
+            val seed = (stackKeys.getOrNull(index) ?: index.toString()).hashCode()
+            kotlin.random.Random(seed xor 0x4215).nextFloat() * 26f - 13f
+        }
+        rotations[index] = angle
+        return angle
+    }
+    private fun blockIndices(block: Int): List<Int> = if (stacked) {
+        (block * 4 until min(block * 4 + 4, groups.size)).flatMap { groups[it] }
+    } else (block * slots.size until min((block + 1) * slots.size, count)).toList()
+    val blockCount = if (stacked) (groups.size + 3) / 4 else (count.coerceAtLeast(0) + slots.size - 1) / slots.size
     val blockColumns = ceil(sqrt(blockCount.coerceAtLeast(1).toDouble())).toInt().coerceIn(1, 4)
     private val blockRows = (blockCount + blockColumns - 1) / blockColumns
     private val step = cell + gap
-    private val blockWidth = step * 6
-    private val blockHeight = step * 4
+    private val stackPitch = step * 2.70f
+    private val blockWidth = if (stacked) stackPitch * 2 else step * 6
+    private val blockHeight = if (stacked) stackPitch * 2 else step * 4
+    // Reserve room for jittered covers if a future pitch reduction crosses block boundaries.
+    private val overhang = if (stacked) max(0f, step * 2.64f - gap - stackPitch) else 0f
     val repeatWidth = blockColumns * blockWidth
     val repeatHeight = blockRows.coerceAtLeast(1) * blockHeight
     // Tight bounds also keep a single-song or short queue centred rather than leaving a mostly
@@ -61,37 +92,49 @@ internal class PosterWallGeometry(val count: Int, val cell: Float = 124f, val ga
     val width: Float
     val height: Float
 
+    private val rectangles = arrayOfNulls<PosterRect>(count)
     init {
-        val tailStart = max(0, blockCount - blockColumns) * slots.size
-        val tail = (tailStart until count.coerceAtLeast(0)).map(::rect)
-        width = max(if (blockCount > blockColumns) blockColumns * blockWidth - gap else 0f, tail.maxOfOrNull { it.right } ?: 0f)
-        height = tail.maxOfOrNull { it.bottom } ?: 0f
+        val tail = (max(0, blockCount - blockColumns) until blockCount).flatMap(::blockIndices).map(::rect)
+        width = max(if (blockCount > blockColumns) blockColumns * blockWidth + overhang - (if (stacked) 0f else gap) else 0f, tail.maxOfOrNull { it.right } ?: 0f)
+        height = max(if (stacked && blockRows > 1) blockRows * blockHeight + overhang else 0f, tail.maxOfOrNull { it.bottom } ?: 0f)
     }
 
-    fun rect(index: Int): PosterRect {
+    fun rect(index: Int): PosterRect = rectangles[index] ?: calculateRect(index).also { rectangles[index] = it }
+    private fun calculateRect(index: Int): PosterRect {
         require(index in 0 until count)
-        val block = index / slots.size
-        val slot = slots[index % slots.size]
-        return PosterRect(
-            (block % blockColumns) * blockWidth + slot.x * step,
-            (block / blockColumns) * blockHeight + slot.y * step,
-            slot.width * step - gap,
-            slot.height * step - gap
-        )
+        val block = if (stacked) groupOf[index] / 4 else index / slots.size
+        val local = if (stacked) stackRect(groupOf[index] % 4, index) else localRect(index % slots.size)
+        return local.copy(x = local.x + (block % blockColumns) * blockWidth,
+            y = local.y + (block / blockColumns) * blockHeight)
+    }
+
+    private fun localRect(index: Int): PosterRect {
+        val slot = slots[index]
+        return PosterRect(slot.x * step, slot.y * step, slot.width * step - gap, slot.height * step - gap)
+    }
+
+    private fun stackRect(group: Int, index: Int): PosterRect {
+        val random = kotlin.random.Random((stackKeys.getOrNull(index) ?: index.toString()).hashCode())
+        val scattered = groupIndices(index).size > 1
+        // Stable irregular offsets and angles give larger piles a loosely stacked book feel.
+        val dx = if (scattered) random.nextFloat() * step * 0.30f else 0f
+        val dy = if (scattered) random.nextFloat() * step * 0.30f else 0f
+        return PosterRect((group % 2) * stackPitch + step * 0.24f + dx,
+            (group / 2) * stackPitch + step * 0.24f + dy, step * 2.1f - gap, step * 2.1f - gap)
     }
 
     /** Visits blocks in the viewport, never scans the library. Overscan warms the next covers. */
     fun visibleIndices(bounds: PosterRect, overscan: Float = step): List<Int> {
         if (count <= 0 || bounds.width <= 0 || bounds.height <= 0) return emptyList()
         val expanded = PosterRect(bounds.x - overscan, bounds.y - overscan, bounds.width + overscan * 2, bounds.height + overscan * 2)
-        val firstColumn = max(0, floor(expanded.x / blockWidth).toInt())
+        val firstColumn = max(0, floor((expanded.x - overhang) / blockWidth).toInt())
         val lastColumn = min(blockColumns - 1, floor(expanded.right / blockWidth).toInt())
-        val firstRow = max(0, floor(expanded.y / blockHeight).toInt())
+        val firstRow = max(0, floor((expanded.y - overhang) / blockHeight).toInt())
         val lastRow = min(blockRows - 1, floor(expanded.bottom / blockHeight).toInt())
         return buildList {
             for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
-                val start = (row * blockColumns + column) * slots.size
-                for (index in start until min(start + slots.size, count)) {
+                val block = row * blockColumns + column
+                for (index in blockIndices(block)) {
                     if (rect(index).intersects(expanded)) add(index)
                 }
             }
@@ -104,12 +147,21 @@ internal class PosterWallGeometry(val count: Int, val cell: Float = 124f, val ga
         if (count <= 0 || bounds.width <= 0 || bounds.height <= 0) return emptyList()
         val expanded = PosterRect(bounds.x - overscan, bounds.y - overscan, bounds.width + overscan * 2, bounds.height + overscan * 2)
         return buildList {
-            for (row in floor(expanded.y / blockHeight).toInt()..floor(expanded.bottom / blockHeight).toInt()) {
-                for (column in floor(expanded.x / blockWidth).toInt()..floor(expanded.right / blockWidth).toInt()) {
+            for (row in floor((expanded.y - overhang) / blockHeight).toInt()..floor(expanded.bottom / blockHeight).toInt()) {
+                for (column in floor((expanded.x - overhang) / blockWidth).toInt()..floor(expanded.right / blockWidth).toInt()) {
                     val block = Math.floorMod(row, blockRows) * blockColumns + Math.floorMod(column, blockColumns)
-                    slots.forEachIndexed { slotIndex, slot ->
-                        val posterRect = PosterRect(column * blockWidth + slot.x * step, row * blockHeight + slot.y * step,
-                            slot.width * step - gap, slot.height * step - gap)
+                    if (stacked) {
+                        repeat(4) { localGroup ->
+                            val group = (block * 4 + localGroup) % groups.size
+                            groups[group].forEachIndexed { depth, index ->
+                                val local = stackRect(localGroup, index)
+                                val posterRect = local.copy(x = column * blockWidth + local.x, y = row * blockHeight + local.y)
+                                if (posterRect.intersects(expanded)) add(PosterPlacement(index, posterRect, "$row:$column:$localGroup:$depth"))
+                            }
+                        }
+                    } else slots.forEachIndexed { slotIndex, _ ->
+                        val local = localRect(slotIndex)
+                        val posterRect = local.copy(x = column * blockWidth + local.x, y = row * blockHeight + local.y)
                         if (posterRect.intersects(expanded)) {
                             add(PosterPlacement((block * slots.size + slotIndex) % count, posterRect, "$row:$column:$slotIndex"))
                         }
@@ -118,6 +170,10 @@ internal class PosterWallGeometry(val count: Int, val cell: Float = 124f, val ga
             }
         }
     }
+
+    fun stackGroupKey(placement: PosterPlacement): String = if (infinite) {
+        placement.key.substringBeforeLast(':')
+    } else groupOf[placement.index].toString()
 
     fun nearestRect(index: Int, bounds: PosterRect): PosterRect {
         val rect = rect(index)

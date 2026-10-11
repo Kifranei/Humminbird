@@ -113,52 +113,57 @@ fun rememberSongArtworkState(
         else -> coverUrl ?: albumArtUri
     }
 
-    val state by produceState(
-        initialValue = SongArtworkState(
-            model = initialModel,
-            showDefaultCover = showDefaultWhenMissing && initialModel == null && !shouldTryEmbedded
-        ),
-        song?.id,
-        song?.path,
-        song?.title,
-        song?.artist,
-        song?.album,
-        song?.albumArtist,
-        song?.dateModified,
-        song?.fileSize,
-        coverUrl,
-        albumArtUri,
-        cacheFamily,
-        shouldTryEmbedded,
-        loadOriginalCoverArt,
-        cacheVariant,
-        resolutionGeneration
-    ) {
-        val currentSong = song
-        value = if (currentSong == null) {
-            SongArtworkState(null, showDefaultWhenMissing)
-        } else if (!shouldTryEmbedded) {
-            SongArtworkState(initialModel, showDefaultWhenMissing && initialModel == null)
-        } else {
-            val embeddedCover = withContext(Dispatchers.IO) {
-                runCatching {
-                    CoverLoadLimiter.run {
-                        loadOriginalCoverArt?.invoke(currentSong) ?: loadCoverArt?.invoke(currentSong)
-                    }
-                }.getOrNull()
+    // Changing produceState's inputs restarts its loader but retains the remembered value.
+    // A different song needs a fresh state before the mini player paints its next frame.
+    val state = androidx.compose.runtime.key(cacheKey) {
+        val resolvedState by produceState(
+            initialValue = SongArtworkState(
+                model = initialModel,
+                showDefaultCover = showDefaultWhenMissing && initialModel == null && !shouldTryEmbedded
+            ),
+            song?.id,
+            song?.path,
+            song?.title,
+            song?.artist,
+            song?.album,
+            song?.albumArtist,
+            song?.dateModified,
+            song?.fileSize,
+            coverUrl,
+            albumArtUri,
+            cacheFamily,
+            shouldTryEmbedded,
+            loadOriginalCoverArt,
+            cacheVariant,
+            resolutionGeneration
+        ) {
+            val currentSong = song
+            value = if (currentSong == null) {
+                SongArtworkState(null, showDefaultWhenMissing)
+            } else if (!shouldTryEmbedded) {
+                SongArtworkState(initialModel, showDefaultWhenMissing && initialModel == null)
+            } else {
+                val embeddedCover = withContext(Dispatchers.IO) {
+                    runCatching {
+                        CoverLoadLimiter.run {
+                            loadOriginalCoverArt?.invoke(currentSong) ?: loadCoverArt?.invoke(currentSong)
+                        }
+                    }.getOrNull()
+                }
+                val resolved: Any? = coverUrl ?: embeddedCover ?: albumArtUri
+                // Bitmap models are cached too: keeping them alive lets a layout switch (list /
+                // two-column / grid) display instantly instead of flashing placeholders and
+                // re-running the async cover load.
+                if (resolved != null && cacheKey != null) {
+                    ArtworkModelMemoryCache.put(cacheKey, resolved)
+                }
+                SongArtworkState(
+                    model = resolved,
+                    showDefaultCover = showDefaultWhenMissing && resolved == null
+                )
             }
-            val resolved: Any? = coverUrl ?: embeddedCover ?: albumArtUri
-            // Bitmap models are cached too: keeping them alive lets a layout switch (list /
-            // two-column / grid) display instantly instead of flashing placeholders and
-            // re-running the async cover load.
-            if (resolved != null && cacheKey != null) {
-                ArtworkModelMemoryCache.put(cacheKey, resolved)
-            }
-            SongArtworkState(
-                model = resolved,
-                showDefaultCover = showDefaultWhenMissing && resolved == null
-            )
         }
+        resolvedState
     }
     return state
 }

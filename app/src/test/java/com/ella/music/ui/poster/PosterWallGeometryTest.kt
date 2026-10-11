@@ -5,6 +5,53 @@ import org.junit.Test
 import kotlin.math.abs
 
 class PosterWallGeometryTest {
+    @org.junit.Test fun pendingSwipeRejectsOldPlaybackAndChecksDuplicateQueueOccurrence() {
+        org.junit.Assert.assertFalse(posterPlaybackConfirmed("next" to -1, "old", 0))
+        org.junit.Assert.assertTrue(posterPlaybackConfirmed("next" to -1, "next", 0))
+        org.junit.Assert.assertFalse(posterPlaybackConfirmed("same" to 2, "same", 1))
+        org.junit.Assert.assertTrue(posterPlaybackConfirmed("same" to 2, "same", 2))
+        org.junit.Assert.assertTrue(posterPlaybackConfirmed(null, "external", 3))
+    }
+
+    @Test fun stackedPostersKeepEverySongAndStayVisibleAcrossInfiniteRebases() {
+        val finite = PosterWallGeometry(12, stacked = true)
+        assertTrue(finite.rect(0).intersects(finite.rect(1)))
+        assertTrue(finite.rect(1).intersects(finite.rect(2)))
+        assertFalse("Keep breathing room between neighboring piles", finite.rect(0).intersects(finite.rect(3)))
+        assertEquals((0 until 12).toSet(), finite.visibleIndices(PosterRect(0f, 0f, finite.width, finite.height), 0f).toSet())
+        val geometry = PosterWallGeometry(13, infinite = true, stacked = true)
+        val bounds = PosterRect(-6000f, 8800f, 700f, 500f)
+        val shown = geometry.visiblePosters(bounds, 0f)
+        assertTrue(shown.isNotEmpty())
+        assertEquals(shown.size, shown.map { it.key }.distinct().size)
+        assertTrue(shown.all { it.index in 0 until 13 && it.rect.intersects(bounds) })
+        val nearest = geometry.nearestRect(12, bounds)
+        assertTrue(geometry.visiblePosters(nearest, 0f).any { it.index == 12 })
+    }
+
+    @Test fun denseStacksCullOverhangingCoversAcrossBlockBoundaries() {
+        val groups = (0 until 500).toList().chunked(10)
+        val geometry = PosterWallGeometry(500, stacked = true, stackGroups = groups)
+        for (x in listOf(-40f, 430f, 890f, 1340f, 1770f)) for (y in listOf(0f, 460f, 900f, 1380f)) {
+            val viewport = PosterRect(x, y, 412f, 640f)
+            val expected = (0 until 500).filter { geometry.rect(it).intersects(viewport) }.toSet()
+            assertEquals(expected, geometry.visibleIndices(viewport, 0f).toSet())
+        }
+        (0 until 500).map(geometry::rect).forEach {
+            assertTrue(it.right <= geometry.width && it.bottom <= geometry.height)
+        }
+        val repeating = PosterWallGeometry(500, stacked = true, infinite = true, stackGroups = groups)
+        val broad = PosterRect(-1000f, -1000f, 3000f, 3000f)
+        val exhaustive = repeating.visiblePosters(broad, 0f)
+        for (x in listOf(-450f, 440f, 890f)) for (y in listOf(-400f, 430f, 880f)) {
+            val viewport = PosterRect(x, y, 60f, 60f)
+            assertEquals(exhaustive.filter { it.rect.intersects(viewport) }.map { it.key }.toSet(),
+                repeating.visiblePosters(viewport, 0f).map { it.key }.toSet())
+        }
+        val huge = PosterWallGeometry(100_000, stacked = true)
+        assertTrue(huge.visibleIndices(PosterRect(800f, 12_000f, 600f, 900f)).size < 200)
+    }
+
     @Test fun remoteNavigationKeepsSelectingPhysicalPostersAcrossInfiniteCameraRebases() {
         val geometry = PosterWallGeometry(1, infinite = true)
         val state = PosterWallState().apply { resize(412f, 680f, geometry) }

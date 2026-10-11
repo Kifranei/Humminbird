@@ -7,6 +7,40 @@ import org.junit.Test
 import kotlin.math.*
 
 class PosterLyricWordsTest {
+    @Test fun sourceWhitespaceIsRecoveredWhenTimedWordsOmitIt() {
+        val glyphs = posterTimedGlyphs(LyricLine(100, "through the storm", words = listOf(
+            LyricWord("throu", 100, 400), LyricWord("gh", 400, 500),
+            LyricWord("the", 600, 900), LyricWord("storm", 1000, 1500))))
+        assertEquals("through the storm", glyphs.joinToString("") { it.text })
+        assertEquals(600L, glyphs.first { it.text == "t" && it.startMs >= 600 }.startMs)
+        assertEquals(1500L, glyphs.last().endMs)
+    }
+    @Test fun cinematicGlyphsKeepPunctuationClustersAndDoNotHighlightFutureWords() {
+        val line = LyricLine(100, "so? é🙂", words = listOf(LyricWord("so? ", 100, 500), LyricWord("é🙂", 800, 1200)))
+        val glyphs = posterTimedGlyphs(line)
+        assertEquals(listOf("s", "o", "?", " ", "é", "🙂"), glyphs.map { it.text })
+        assertEquals("so? é🙂", glyphs.joinToString("") { it.text })
+        assertEquals(0f, posterGlyphProgress(glyphs[4], 700), 0f)
+        assertEquals(0.5f, posterGlyphProgress(glyphs[4], 900), 0.001f)
+        assertEquals(1f, posterGlyphProgress(glyphs.last(), 1200), 0f)
+        val front = posterRingGlyph(0f, 200f)
+        val rear = posterRingGlyph(PI.toFloat(), 200f)
+        assertEquals(-45f, front.rotation, 0.001f)
+        assertTrue(front.scale > rear.scale && front.alpha > rear.alpha)
+        assertTrue(rear.rotation in -90f..90f)
+    }
+    @Test fun cinematicCollageFitsLongLinesAndPreservesWordOrderAtDifferentAspectRatios() {
+        for (sonnet in listOf(false, true)) for (seed in 0..9) for ((w, h) in listOf(840f to 340f, 412f to 640f)) {
+            val widths = (0 until 20).map { 20f + it * 9f }
+            val boxes = posterTypeLayout(widths, 50f, w, h, seed, sonnet)
+            assertEquals(widths.size, boxes.size)
+            assertEquals(boxes, posterTypeLayout(widths, 50f, w, h, seed, sonnet))
+            boxes.forEach {
+                assertTrue(abs(it.x) <= w / 2 && abs(it.y) <= h / 2)
+                if (sonnet) { assertFalse(it.vertical); assertTrue(abs(it.rotation) <= 10f) }
+            }
+        }
+    }
     @Test fun tiltedHelixSharesAFortyFiveDegreeAxisAndFitsItsViewportThroughoutRotation() {
         for ((width, height) in listOf(700f to 220f, 340f to 150f)) {
             val wordWidth = 72f

@@ -63,7 +63,8 @@ fun WebDavScreen(
     mainViewModel: MainViewModel,
     playerViewModel: PlayerViewModel,
     onBack: () -> Unit,
-    onNavigateToPlayer: () -> Unit
+    onNavigateToPlayer: () -> Unit,
+    onNavigateToSmb: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -214,22 +215,7 @@ fun WebDavScreen(
         load(startUrl)
     }
 
-    LaunchedEffect(currentUrl, savedUrl, savedUser, savedPassword, loading) {
-        if (loading || savedUrl.isBlank() || items.isEmpty()) return@LaunchedEffect
-        val songsToPrefetch = items
-            .asSequence()
-            .filterNot { it.isDirectory }
-            .filter { WebDavClient.isAudioFile(it.name) }
-            .map { it.toRemoteSong() }
-            .take(80)
-            .toList()
-        if (songsToPrefetch.isEmpty()) return@LaunchedEffect
-        runCatching {
-            mainViewModel.prefetchWebDavMetadataHeaders(songsToPrefetch, maxItems = 80)
-        }.onFailure {
-            logWebDavError("Metadata prefetch failed", it)
-        }
-    }
+
 
     Column(
         modifier = Modifier
@@ -250,6 +236,7 @@ fun WebDavScreen(
                 }
             },
             actions = {
+                top.yukonga.miuix.kmp.basic.Button(onClick = onNavigateToSmb) { Text("SMB") }
                 IconButton(onClick = { showSettings = true }) {
                     Icon(
                         imageVector = MiuixIcons.Regular.Settings,
@@ -377,7 +364,13 @@ fun WebDavScreen(
                                         val resolvedSong = withContext(Dispatchers.IO) {
                                             mainViewModel.resolveSongForPlayback(item.toRemoteSong())
                                         }
-                                        playerViewModel.setPlaylist(listOf(resolvedSong), 0)
+                                        val folderSongs = items.filter { !it.isDirectory && WebDavClient.isAudioFile(it.name) }
+                                            .map { it.toRemoteSong() }.toMutableList()
+                                        val selectedIndex = folderSongs.indexOfFirst { it.path == item.toRemoteSong().path }
+                                        if (selectedIndex >= 0) {
+                                            folderSongs[selectedIndex] = resolvedSong
+                                            playerViewModel.setPlaylist(folderSongs, selectedIndex)
+                                        }
                                         if (openPlayerOnPlay) onNavigateToPlayer()
                                     }.onFailure {
                                         logWebDavError("Play remote item failed", it)

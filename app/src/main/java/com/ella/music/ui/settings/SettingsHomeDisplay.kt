@@ -159,12 +159,16 @@ internal fun HomeDisplaySettingsPage(
         } // search-anchor:end
 
     }
-    HomeTileEditors(tileItems, highlightKey)
-    if (onlineItems.isNotEmpty()) {
+    val customCategories by styleSettings.customMetadataCategories.collectAsState(initial = emptyList())
+    CustomCategorySettings(styleSettings)
+    HomeTileEditors(tileItems + customCategories.map { HomePreferenceItem(it.type, it.name, it.tagKey) }, highlightKey)
+    if (onlineItems.isNotEmpty() /* search-reveal */ || SettingsSearchFocus.reveals(R.string.settings_home_online_tiles_custom_title)) {
         SmallTitle(text = stringResource(R.string.settings_home_online_grid_title))
         SettingsCardGroup(highlight = highlightKey == "home_online_tiles") {
             val enabledOnlineTitles = orderedOnlineTiles.filter { it.id !in hiddenOnlineTileIds }.map { it.title }
             SettingsSearchAnchor(R.string.settings_home_online_tiles_custom_title) {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_home_online_tiles_custom_title) {
                 ArrowPreference(
                     title = stringResource(R.string.settings_home_online_tiles_custom_title),
                     summary = if (enabledOnlineTitles.isNotEmpty()) {
@@ -174,6 +178,7 @@ internal fun HomeDisplaySettingsPage(
                     },
                     onClick = { showOnlineTileSheet = true }
                 )
+                } // search-anchor:end
             }
         }
     }
@@ -409,7 +414,8 @@ private fun HomeTileEditors(items: List<HomePreferenceItem>, highlightKey: Strin
     listOf(true, false).forEach { shortcut ->
         val selected = if (shortcut) shortcuts else features
         val ids = selected.split(',').filter { it.isNotBlank() }
-        val defaults = SettingsManager.DEFAULT_HOME_LIBRARY_TILE_ORDER.split(',').let { if (shortcut) it.take(4) else it.drop(4) }
+        val shortcutCount = com.ella.music.data.defaultHomeShortcutCount(context.resources.configuration.smallestScreenWidthDp)
+        val defaults = SettingsManager.DEFAULT_HOME_LIBRARY_TILE_ORDER.split(',').let { if (shortcut) it.take(shortcutCount) else it.drop(shortcutCount) }
         val ordered = (ids.mapNotNull { id -> items.find { it.id == id } } + items.filter { it.id !in ids })
         var show by remember { mutableStateOf(false) }
         val title = stringResource(if (shortcut) R.string.settings_home_shortcuts else R.string.settings_home_features)

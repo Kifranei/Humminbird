@@ -43,7 +43,7 @@ import kotlin.random.Random
 
 internal enum class PosterLyricStyle(val titleRes: Int) {
     Orbit(R.string.poster_lyric_orbit), Clock(R.string.poster_lyric_clock),
-    ColorField(R.string.poster_lyric_color), Glow(R.string.poster_lyric_glow);
+    ColorField(R.string.poster_lyric_color), Glow(R.string.poster_lyric_glow), Sonnet(R.string.poster_lyric_sonnet);
     companion object {
         fun fromSetting(value: Int) = entries.getOrElse(value) { Orbit }
     }
@@ -81,6 +81,15 @@ internal fun PosterLyricScene(
 ) {
     val safeIndex = currentIndex.takeIf { it in lyrics.indices }
         ?: lyrics.indexOfFirst { it.hasMiniLyric() }
+    if (style != PosterLyricStyle.Clock) {
+        CompositionLocalProvider(LocalKaraokeRainbowOverride provides false) {
+            Box(modifier.fillMaxSize().clipToBounds().background(Color(0xFF07080C)).testTag("lyric-scene-${style.name}")) {
+                PosterCinematicScene(style, lyrics, safeIndex, position, time, fallbackTitle,
+                    showTranslation, showPronunciation, fontFamily, translationFontFamily, fontWeight, fontScale)
+            }
+        }
+        return
+    }
     val line = lyrics.getOrNull(safeIndex)
     val previous = lyrics.getOrNull(safeIndex - 1)
     val next = lyrics.getOrNull(safeIndex + 1)
@@ -95,10 +104,10 @@ internal fun PosterLyricScene(
         }
         val diagonal = style == PosterLyricStyle.Orbit
         val detachedCaption = diagonal || style == PosterLyricStyle.ColorField
-        val clockCaptionWidth = minOf(maxWidth * 0.62f, maxHeight * (0.20f / sin(14f * PI.toFloat() / 180f)))
+        val clockCaptionWidth = maxWidth * 0.63f
         previous?.text?.takeIf { it.isNotBlank() && !detachedCaption }?.let { text ->
             Text(text, color = Color.White.copy(alpha = 0.46f), fontFamily = fontFamily,
-                fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                fontSize = 16.sp * fontScale, maxLines = 3, overflow = TextOverflow.Clip,
                 modifier = if (style == PosterLyricStyle.Clock) Modifier.align(Alignment.CenterStart)
                     .offset(x = maxWidth * 0.31f, y = -maxHeight * 0.18f).width(clockCaptionWidth)
                     .graphicsLayer { rotationZ = -14f; transformOrigin = TransformOrigin(0f, 0.5f) }
@@ -108,7 +117,7 @@ internal fun PosterLyricScene(
         }
         next?.text?.takeIf { it.isNotBlank() && !detachedCaption }?.let { text ->
             Text(text, color = Color.White.copy(alpha = 0.20f), fontFamily = fontFamily,
-                fontSize = 19.sp, maxLines = if (style == PosterLyricStyle.Clock) 1 else 2, overflow = TextOverflow.Ellipsis,
+                fontSize = 19.sp * fontScale, maxLines = 3, overflow = TextOverflow.Clip,
                 modifier = if (style == PosterLyricStyle.Clock) Modifier.align(Alignment.CenterStart)
                     .offset(x = maxWidth * 0.31f, y = maxHeight * 0.18f).width(clockCaptionWidth)
                     .graphicsLayer { rotationZ = 14f; transformOrigin = TransformOrigin(0f, 0.5f) }
@@ -144,7 +153,7 @@ internal fun PosterLyricScene(
                     showTranslation = showTranslation && !detachedCaption, showPronunciation = showPronunciation,
                     fontFamily = fontFamily, translationFontFamily = translationFontFamily,
                     fontWeight = fontWeight, fontScale = fontScale, secondaryFontScale = 1f,
-                    primaryTextSizeSp = when (style) { PosterLyricStyle.Orbit -> 43f; PosterLyricStyle.Clock -> 31f; PosterLyricStyle.ColorField -> 44f; PosterLyricStyle.Glow -> 37f },
+                    primaryTextSizeSp = when (style) { PosterLyricStyle.Orbit -> 43f; PosterLyricStyle.Clock -> 31f; PosterLyricStyle.ColorField -> 44f; PosterLyricStyle.Glow -> 37f; PosterLyricStyle.Sonnet -> 44f },
                     secondaryTextSizeSp = 16f,
                     lyricTextAlign = if (style == PosterLyricStyle.Clock) SettingsManager.PLAYER_LYRIC_ALIGN_LEFT else SettingsManager.PLAYER_LYRIC_ALIGN_CENTER,
                     contentColor = if (style == PosterLyricStyle.Glow) Color(0xFFFFF6DC) else Color.White,
@@ -194,6 +203,7 @@ private fun PosterSceneBackdrop(style: PosterLyricStyle, time: State<Float>, mod
         val phase = time.value
         val center = Offset(size.width * 0.5f, size.height * 0.5f)
         when (style) {
+            PosterLyricStyle.Sonnet -> Unit
             PosterLyricStyle.Orbit -> {
                 rotate(POSTER_ORBIT_AXIS_DEGREES, center) {
                     drawLine(Color.White.copy(alpha = 0.23f), center - Offset(0f, size.height * 0.62f), center + Offset(0f, size.height * 0.62f), 1.dp.toPx())

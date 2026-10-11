@@ -55,8 +55,8 @@ internal val LocalPlayerLyricPositionProvider =
 private fun Modifier.lyricViewportEdges(enabled: Boolean, scrollable: Boolean): Modifier = then(
     when {
         !enabled -> Modifier.clipToBounds()
-        // The full lyric page needs only a small transition below its song header.
-        scrollable -> Modifier.miniLyricsEdgeFeather(topEdgeHeight = 16.dp, bottomEdgeHeight = 0.dp)
+        // Keep short transitions at the song header and playback controls, outside the perspective plane.
+        scrollable -> Modifier.miniLyricsEdgeFeather(topEdgeHeight = 16.dp, bottomEdgeHeight = 16.dp)
         else -> Modifier.miniLyricsEdgeFeather()
     }
 )
@@ -95,6 +95,8 @@ internal fun AppleMusicLyricsView(
     useFocusLeadingPadding: Boolean = true,
     nonCurrentLineBlurEnabled: Boolean = true,
     edgeFeatherEnabled: Boolean = true,
+    perspectiveEffectEnabled: Boolean = false,
+    perspectiveYAngle: Int = 25,
     userScrollEnabled: Boolean = true,
     reserveExtraLyricSpace: Boolean = false,
     singleLine: Boolean = false,
@@ -147,7 +149,7 @@ internal fun AppleMusicLyricsView(
         lyrics.all { it.timeMs == timestamp }
     } == true
     if (singleTimestampTimeline) {
-        Box(modifier = modifier.fillMaxSize().lyricViewportEdges(edgeFeatherEnabled, userScrollEnabled), contentAlignment = Alignment.Center) {
+        Box(modifier = modifier.fillMaxSize().lyricViewportEdges(edgeFeatherEnabled, userScrollEnabled).playerLyricPerspective(perspectiveEffectEnabled, perspectiveYAngle, lyricTextAlign), contentAlignment = Alignment.Center) {
             Column(
                 verticalArrangement = Arrangement.spacedBy(lineSpacing),
                 modifier = Modifier.fillMaxWidth()
@@ -380,7 +382,7 @@ internal fun AppleMusicLyricsView(
         else -> TextAlign.Start
     }
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize().lyricViewportEdges(edgeFeatherEnabled, userScrollEnabled)) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize().lyricViewportEdges(edgeFeatherEnabled, userScrollEnabled).playerLyricPerspective(perspectiveEffectEnabled, perspectiveYAngle, lyricTextAlign)) {
         val trailingLineHeight = with(LocalDensity.current) { trailingLineHeightPx.toDp() }
         // The first lyric has no preceding rows that LazyColumn can scroll through. Reserve its
         // focus offset as actual leading content so 00:00 lyrics land at the same visual anchor

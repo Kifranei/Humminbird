@@ -41,7 +41,9 @@ data class Song(
      * queue item, rather than in a map keyed by the song identity, lets the same song be queued
      * from two different categories without one occurrence overwriting the other.
      */
-    val playbackSourceKey: String? = null
+    val playbackSourceKey: String? = null,
+    val customTags: Map<String, List<String>> = emptyMap(),
+    val customTagsLoaded: Boolean = false
 ) {
     val durationText: String
         get() = duration.formatPlaybackDuration()

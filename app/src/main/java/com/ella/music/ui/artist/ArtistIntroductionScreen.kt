@@ -82,6 +82,7 @@ internal fun ArtistIntroductionScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember(context) { ArtistDescriptionStore.getInstance(context) }
+    val biographyRules by com.ella.music.data.SettingsManager.getInstance(context).artistBiographyMatchRules.collectAsState(initial = emptyList())
     val displayName = artistName.ifBlank { stringResource(R.string.player_unknown_artist) }
     val contentKey = remember(artistName, songs) {
         buildString {
@@ -294,20 +295,15 @@ internal fun ArtistIntroductionScreen(
                         color = MiuixTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    androidx.compose.foundation.text.selection.SelectionContainer {
-                        Text(
-                            text = record?.text?.takeIf(String::isNotBlank)
-                                ?: stringResource(R.string.artist_introduction_empty),
-                            modifier = Modifier.fillMaxWidth(),
-                            fontSize = 16.sp,
-                            lineHeight = 26.sp,
-                            color = if (record?.text.isNullOrBlank()) {
-                                MiuixTheme.colorScheme.onSurfaceVariantSummary
-                            } else {
-                                MiuixTheme.colorScheme.onSurface
-                            }
-                        )
-                    }
+                    com.ella.music.ui.components.SystemSelectableText(
+                        text = record?.text?.takeIf(String::isNotBlank)
+                            ?: stringResource(R.string.artist_introduction_empty),
+                        modifier = Modifier.fillMaxWidth(),
+                        fontSize = 16.sp,
+                        lineHeight = 26.sp,
+                        color = if (record?.text.isNullOrBlank()) MiuixTheme.colorScheme.onSurfaceVariantSummary
+                            else MiuixTheme.colorScheme.onSurface
+                    )
                 }
             }
         }
@@ -328,7 +324,8 @@ internal fun ArtistIntroductionScreen(
                         artistName = artistName,
                         regionCode = option.regionCode,
                         apiKey = lastFmCredentials.apiKey,
-                        preferredSource = option.source
+                        preferredSource = option.source,
+                        matchRules = biographyRules
                     )
                 }
             }
@@ -365,6 +362,8 @@ internal fun ArtistIntroductionScreen(
                     ).show()
                 }
             }.onFailure { error ->
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                android.util.Log.w("ArtistBiography", "Fetch failed; artist=$artistName; source=${option.source.id}; language=${option.regionCode}", error)
                 if (error is LastFmVerificationRequiredException) {
                     pendingFetchOption = option
                     challengeUrl = error.url

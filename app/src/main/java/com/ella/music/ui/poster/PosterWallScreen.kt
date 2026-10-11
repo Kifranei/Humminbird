@@ -29,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import com.ella.music.R
 import com.ella.music.data.CategoryResumeKeys
 import com.ella.music.data.model.playlistIdentityKey
@@ -64,6 +66,9 @@ fun PosterWallScreen(
     val queue by playerViewModel.playlist.collectAsState()
     val currentSong by playerViewModel.currentSong.collectAsState()
     val queueIndex by playerViewModel.currentQueueIndex.collectAsState()
+    val stacked by mainViewModel.settingsManager.posterWallStacked.collectAsState(initial = false)
+    val savedLayouts by mainViewModel.settingsManager.posterWallStackLayouts.collectAsState(initial = "{}")
+    val librarySource by mainViewModel.settingsManager.librarySource.collectAsState(initial = "local")
     val infinite by mainViewModel.settingsManager.posterWallInfiniteScroll.collectAsState(initial = false)
     var wallFullscreen by rememberSaveable { mutableStateOf(false) }
     var lyricTheater by rememberSaveable { mutableStateOf(false) }
@@ -72,11 +77,29 @@ fun PosterWallScreen(
     DisposableEffect(Unit) { onDispose { fullscreenChanged(false) } }
     if (wallFullscreen && !lyricTheater) PosterImmersiveWindow(landscape = false)
     var source by rememberSaveable { mutableStateOf(if (queue.isEmpty()) "library" else "queue") }
+    val savedSource by mainViewModel.settingsManager.posterWallSource.collectAsState(initial = null)
+    var sourceRestored by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(savedSource) {
+        if (!sourceRestored && savedSource != null) {
+            if (savedSource == "queue" || savedSource == "library") source = savedSource!!
+            sourceRestored = true
+        }
+    }
+    LaunchedEffect(source, sourceRestored) {
+        if (sourceRestored) mainViewModel.settingsManager.setPosterWallSource(source)
+    }
     var query by rememberSaveable { mutableStateOf("") }
     var search by rememberSaveable { mutableStateOf(false) }
     var locateRequest by remember { mutableIntStateOf(0) }
     var shuffleSeed by rememberSaveable { mutableIntStateOf(0) }
     var expanded by remember { mutableStateOf<ExpandedPoster?>(null) }
+    var pendingPosterPlayback by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    LaunchedEffect(pendingPosterPlayback) {
+        val pending = pendingPosterPlayback ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(3000)
+        if (pendingPosterPlayback == pending) pendingPosterPlayback = null
+    }
+    LaunchedEffect(expanded == null) { if (expanded == null) pendingPosterPlayback = null }
     BackHandler(enabled = wallFullscreen && expanded == null && !lyricTheater) { wallFullscreen = false }
     var actionSong by remember { mutableStateOf<Song?>(null) }
     val scope = rememberCoroutineScope()
@@ -84,15 +107,30 @@ fun PosterWallScreen(
     val remoteInput = LocalInputModeManager.current.inputMode == InputMode.Keyboard ||
         LocalConfiguration.current.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     val sourceSongs = if (source == "queue") queue else library
-    val dataset by produceState<PosterWallDataset?>(null, sourceSongs, query, source, shuffleSeed) {
+    val stackScope = "$librarySource:$source"
+    var pendingLayout by remember(stackScope) { mutableStateOf<String?>(null) }
+    val storedLayout = remember(savedLayouts, stackScope) {
+        runCatching { org.json.JSONObject(savedLayouts).optJSONArray(stackScope)?.toString() }.getOrNull().orEmpty()
+    }
+    LaunchedEffect(storedLayout) { if (storedLayout == pendingLayout) pendingLayout = null }
+    val layoutJson = pendingLayout ?: storedLayout
+    val dataset by produceState<PosterWallDataset?>(null, sourceSongs, query, source, shuffleSeed, layoutJson) {
         value = withContext(Dispatchers.Default) {
-            PosterWallDataset(source, query, rearrangePosterWallItems(buildPosterWallItems(sourceSongs, source, query), shuffleSeed), shuffleSeed)
+            val all = buildPosterWallItems(sourceSongs, source, "")
+            val visible = if (query.isBlank()) all else buildPosterWallItems(sourceSongs, source, query)
+            PosterWallDataset(source, query, rearrangePosterWallItems(visible, shuffleSeed), shuffleSeed,
+                PosterStackLayout.resolve(all, layoutJson), all)
         }
     }
     val ready = dataset?.let { it.source == source && it.query == query } == true
     val items = if (ready) dataset?.items.orEmpty() else emptyList()
-    val geometry = remember(items.size, infinite) { PosterWallGeometry(items.size, infinite = infinite) }
-    val wall = rememberSaveable(source, query, saver = PosterWallState.Saver) { PosterWallState() }
+    val stackLayout = if (ready) dataset?.stackLayout else null
+    val itemKeys = remember(items) { items.map { it.stackKey } }
+    val geometry = remember(itemKeys, infinite, stacked, stackLayout) {
+        PosterWallGeometry(items.size, infinite = infinite, stacked = stacked,
+            stackGroups = stackLayout?.indices(items), stackKeys = itemKeys)
+    }
+    val wall = rememberSaveable(source, query, stacked, saver = PosterWallState.Saver) { PosterWallState() }
     val currentIndex = remember(items, currentSong, queueIndex, source) {
         val key = currentSong?.playlistIdentityKey()
         if (source == "queue") items.indexOfFirst { it.sourceIndex == queueIndex && it.song.playlistIdentityKey() == key }
@@ -103,18 +141,49 @@ fun PosterWallScreen(
     BackHandler(enabled = !lyricTheater && !wallFullscreen && expanded == null && (search || query.isNotBlank())) {
         query = ""; search = false; focusManager.clearFocus()
     }
-    fun playPoster(poster: ExpandedPoster) {
+    fun playPoster(poster: ExpandedPoster, startPlayback: Boolean = true) {
         if (source == "queue") {
             // Never replace a shuffled/lazy online queue from its filtered visual snapshot.
             val index = resolvePosterQueueIndex(queue, poster.song, poster.sourceIndex)
-            if (index >= 0) playerViewModel.playQueueIndex(index)
+            if (index >= 0) playerViewModel.playQueueIndex(index, startPlayback)
         } else {
-            val index = library.indexOfFirst { it.playlistIdentityKey() == poster.song.playlistIdentityKey() }
-            if (index >= 0) playerViewModel.setPlaylist(library, index, resumeCategoryKey = CategoryResumeKeys.HOME)
+            val group = if (stacked) poster.stackKey?.let { key ->
+                val members = stackLayout?.members(key).orEmpty().asReversed()
+                members.mapNotNull { dataset?.itemsByStackKey?.get(it) }.map { it.song }
+            }.orEmpty() else emptyList()
+            val songs = group.ifEmpty { library }
+            val index = songs.indexOfFirst { it.playlistIdentityKey() == poster.song.playlistIdentityKey() }
+            if (index >= 0) playerViewModel.setPlaylist(songs, index, resumeCategoryKey = CategoryResumeKeys.HOME, startPlayback = startPlayback)
         }
+    }
+    fun swipeStack(direction: Int) {
+        val poster = expanded ?: return
+        val members = poster.stackKey?.let { stackLayout?.members(it) }.orEmpty().asReversed()
+        if (members.size < 2) return
+        val index = members.indexOf(poster.stackKey)
+        if (index < 0) return
+        val nextKey = members[Math.floorMod(index + direction, members.size)]
+        val next = dataset?.itemsByStackKey?.get(nextKey) ?: return
+        val changed = poster.copy(song = next.song, sourceIndex = next.sourceIndex, stackKey = next.stackKey)
+        pendingPosterPlayback = changed.song.playlistIdentityKey() to if (source == "queue") changed.sourceIndex else -1
+        expanded = changed
+        playPoster(changed, startPlayback = playerViewModel.playWhenReady.value)
+    }
+    LaunchedEffect(currentSong?.playlistIdentityKey(), if (source == "queue") queueIndex else -1, stacked, pendingPosterPlayback) {
+        val poster = expanded ?: return@LaunchedEffect
+        if (!stacked) return@LaunchedEffect
+        val playingKey = currentSong?.playlistIdentityKey() ?: return@LaunchedEffect
+        if (!posterPlaybackConfirmed(pendingPosterPlayback, playingKey, queueIndex)) return@LaunchedEffect
+        pendingPosterPlayback = null
+        val members = poster.stackKey?.let { stackLayout?.members(it) }.orEmpty()
+        val playing = members.asSequence().mapNotNull { dataset?.itemsByStackKey?.get(it) }.firstOrNull {
+            it.song.playlistIdentityKey() == playingKey && (source != "queue" || it.sourceIndex == queueIndex)
+        } ?: return@LaunchedEffect
+        expanded = poster.copy(song = playing.song, sourceIndex = playing.sourceIndex, stackKey = playing.stackKey)
     }
     val accent = MiuixTheme.colorScheme.primary
     val density = LocalDensity.current.density
+    val context = LocalContext.current
     var canvasOrigin by remember { mutableStateOf(Offset.Zero) }
     // Covers fill the entire page behind the app's glass mini-player. Only the actionable
     // overlays and expanded card reserve the dock; there is no opaque footer strip.
@@ -138,8 +207,15 @@ fun PosterWallScreen(
                     wall.stop(); expanded = null; focusManager.clearFocus()
                     val seed = shuffleSeed
                     scope.launch {
-                        val next = withContext(Dispatchers.Default) { nextPosterWallShuffleSeed(items, seed) }
-                        if (shuffleSeed == seed) shuffleSeed = next
+                        if (stacked && stackLayout != null) {
+                            val rearranged = withContext(Dispatchers.Default) { stackLayout.rearranged(seed + 1).encode() }
+                            pendingLayout = rearranged
+                            mainViewModel.settingsManager.setPosterWallStackLayout(stackScope, rearranged)
+                            shuffleSeed = seed + 1
+                        } else {
+                            val next = withContext(Dispatchers.Default) { nextPosterWallShuffleSeed(items, seed) }
+                            if (shuffleSeed == seed) shuffleSeed = next
+                        }
                     }
                 }) {
                     Icon(MiuixIcons.Regular.Refresh, stringResource(R.string.poster_wall_refresh), tint = Color.White, modifier = Modifier.size(22.dp))
@@ -178,13 +254,38 @@ fun PosterWallScreen(
                 if (items.isNotEmpty()) {
                     PosterWallCanvas(items, geometry, wall, currentIndex,
                         artwork = { song, modifier, size -> PosterArtwork(song, mainViewModel, modifier, sizePx = size) }, scope = scope,
-                        onExpand = { index, rect -> focusManager.clearFocus(); val item = items[index]; expanded = ExpandedPoster(item.song, item.sourceIndex, rect.copy(x = rect.x + canvasOrigin.x, y = rect.y + canvasOrigin.y), 13f * wall.camera.scale) },
+                        onExpand = { index, rect ->
+                            focusManager.clearFocus()
+                            val item = items[index]
+                            val poster = ExpandedPoster(item.song, item.sourceIndex,
+                                rect.copy(x = rect.x + canvasOrigin.x, y = rect.y + canvasOrigin.y), 13f * wall.camera.scale,
+                                stackKey = if (stacked) item.stackKey else null, originRotation = geometry.rotation(index))
+                            expanded = poster
+                        },
+                        onMoveStack = { from, to, before ->
+                            val layout = stackLayout
+                            val next = layout?.move(items[from].stackKey, items[to].stackKey, before)
+                            if (next != null) {
+                                val encoded = next.encode()
+                                pendingLayout = encoded
+                                scope.launch { mainViewModel.settingsManager.setPosterWallStackLayout(stackScope, encoded) }
+                            } else if (items[from].stackKey !in layout?.members(items[to].stackKey).orEmpty() &&
+                                layout?.members(items[to].stackKey)?.size == MAX_POSTER_STACK_SIZE) {
+                                Toast.makeText(context, R.string.poster_wall_stack_full, Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         onMore = { actionSong = it },
                         remoteEnabled = expanded == null && !lyricTheater && actionSong == null,
                         fullscreen = wallFullscreen, searching = search)
                     if (!wallFullscreen) Column(Modifier.align(Alignment.BottomCenter).padding(bottom = bottomInset + 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.Center,
                         verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.padding(end = 8.dp).clip(CircleShape).background(PosterPanel.copy(alpha = 0.92f)).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val label = stringResource(R.string.poster_wall_stacked)
+                        Text(label, color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp))
+                        Switch(stacked, { enabled -> expanded = null; scope.launch { mainViewModel.settingsManager.setPosterWallStacked(enabled) } },
+                            Modifier.semantics { contentDescription = label })
+                    }
                     Row(Modifier.padding(end = 8.dp).clip(CircleShape).background(PosterPanel.copy(alpha = 0.92f)).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         val label = stringResource(R.string.poster_wall_infinite_scroll)
                         Text(label, color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp))
@@ -199,7 +300,7 @@ fun PosterWallScreen(
                         PosterIconButton(stringResource(R.string.poster_wall_zoom_in), { zoom(1.18f) }) { Text("+", color = Color.White, fontSize = 22.sp) }
                     }
                     }
-                    Text(stringResource(if (remoteInput) R.string.poster_wall_remote_hint else R.string.poster_wall_gesture_hint), color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp,
+                    Text(stringResource(if (remoteInput) R.string.poster_wall_remote_hint else if (stacked) R.string.poster_wall_stack_gesture_hint else R.string.poster_wall_gesture_hint), color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp,
                         modifier = Modifier.padding(top = 6.dp).clip(CircleShape).background(PosterInk.copy(alpha = 0.65f)).padding(horizontal = 10.dp, vertical = 3.dp))
                     }
                 } else {
@@ -215,17 +316,22 @@ fun PosterWallScreen(
         if (!lyricTheater) expanded?.let { poster ->
             val playingKey = currentSong?.playlistIdentityKey()
             val isCurrent = poster.song.playlistIdentityKey() == playingKey && (source != "queue" || poster.sourceIndex == queueIndex)
+            // Playback follows the visible deck from its top layer downwards.
+            val stackKeys = poster.stackKey?.let { stackLayout?.members(it) }.orEmpty().asReversed()
+            val stackSongs = stackKeys.mapNotNull { dataset?.itemsByStackKey?.get(it)?.song }
             PosterExpandedCard(poster, focusViewport, isCurrent,
                 artwork = { song, modifier -> PosterArtwork(song, mainViewModel, modifier, large = true) },
                 lyrics = { modifier -> PosterPlayerLyrics(playerViewModel, onOpenPlayer, modifier) },
                 seekBar = { compact -> PosterPlayerProgress(playerViewModel, compact) },
                 controls = {
                     val playing by playerViewModel.isPlaying.collectAsState()
-                    PosterPlayControls(playing, playerViewModel::skipToPrevious, playerViewModel::togglePlayPause,
-                        playerViewModel::skipToNext, showSkipButtons = false)
+                    PosterPlayControls(playing, {}, playerViewModel::togglePlayPause, {}, showSkipButtons = false)
                 },
                 onPlay = { playPoster(poster) }, onMore = { actionSong = poster.song; expanded = null }, onClosed = { expanded = null },
-                onFullscreen = if (isCurrent) ({ lyricTheater = true }) else null)
+                onFullscreen = if (isCurrent) ({ lyricTheater = true }) else null,
+                onStackSwipe = if (stacked && poster.stackKey != null) ({ direction -> swipeStack(direction) }) else null,
+                stackPosition = poster.stackKey?.let { key -> "${stackKeys.indexOf(key) + 1} / ${stackKeys.size}" },
+                stackSongs = stackSongs, stackIndex = stackKeys.indexOf(poster.stackKey).coerceAtLeast(0))
         }
         if (lyricTheater) PosterLyricTheaterScreen(playerViewModel, onBack = { lyricTheater = false })
     }

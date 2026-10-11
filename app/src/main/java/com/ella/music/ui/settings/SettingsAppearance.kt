@@ -972,6 +972,8 @@ internal fun SettingsAppearanceSection(
 
             }
             SettingsSearchAnchor(R.string.settings_recents_icon_system_theme) {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_recents_icon_system_theme) {
                 SwitchPreference(
                     title = stringResource(R.string.settings_recents_icon_system_theme),
                     summary = stringResource(R.string.settings_recents_icon_system_theme_summary),
@@ -980,6 +982,7 @@ internal fun SettingsAppearanceSection(
                         scope.launch { settingsManager.setRecentsIconFollowsSystemTheme(enabled) }
                     }
                 )
+                } // search-anchor:end
             }
             SettingsFocusAnchor(active = highlightKey == "desktop_shortcuts") {
                 SettingsAppShortcutsPreference(
@@ -1897,6 +1900,8 @@ internal fun SettingsAppearanceSection(
                     DropdownItem(title = stringResource(R.string.settings_player_clock_color_white)),
                     DropdownItem(title = stringResource(R.string.settings_player_clock_color_light_gray))
                 )
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_player_clock_color) {
                 WindowSpinnerPreference(
                     title = stringResource(R.string.settings_player_clock_color),
                     summary = clockColorEntries[playerClockColor].text,
@@ -1904,6 +1909,7 @@ internal fun SettingsAppearanceSection(
                     selectedIndex = playerClockColor,
                     onSelectedIndexChange = { color -> scope.launch { settingsManager.setPlayerClockColor(color) } }
                 )
+                } // search-anchor:end
             }
             SettingsFocusAnchor(active = highlightKey == "transport_button_outlines") {
                 // search-anchor:start

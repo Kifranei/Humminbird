@@ -172,13 +172,15 @@ internal fun ArtistScreenSurfaces(
     }
 
     songInfoSheetSong?.let { song ->
+        val pickerTitle = androidx.compose.runtime.remember(song.id) { androidx.compose.runtime.mutableStateOf<String?>(null) }
         EllaMiuixBottomSheet(
             show = true,
             enableNestedScroll = false,
-            title = stringResource(R.string.player_song_info),
+            title = pickerTitle.value ?: stringResource(R.string.player_song_info),
             onDismissRequest = { onSongInfoSheetSongChange(null) }
         ) {
             ArtistSongInfoMenu(
+                onPickerTitleChange = { pickerTitle.value = it },
                 song = song,
                 mainViewModel = mainViewModel,
                 onDismiss = { onSongInfoSheetSongChange(null) }

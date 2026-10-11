@@ -1,5 +1,8 @@
 package com.ella.music.ui.album
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import com.ella.music.ui.components.EllaMiuixBottomSheet
 
 import androidx.activity.compose.BackHandler
@@ -516,7 +519,7 @@ fun AlbumScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(safeGridColumns),
                         state = gridState,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().dragSelectGrid(gridState, selection, sortedAlbumIds),
                         contentPadding = PaddingValues(
                             end = if (showAlbumSideIndex) SideIndexListEndPadding else 0.dp,
                             bottom = 160.dp
@@ -603,6 +606,7 @@ fun AlbumScreen(
                     allSelected = sortedAlbums.isNotEmpty() && selectedVisibleAlbumCount == sortedAlbums.size,
                     onRangeSelect = { selection.applyRangeSelection(sortedAlbumIds, albumIndexById) },
                     onSelectAll = { selection.toggleSelectAll(sortedAlbumIds) },
+                    onInvertSelection = { selection.invertSelection(sortedAlbumIds) },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(end = LibraryFloatingControlsEndPadding, bottom = LibraryFloatingControlsBottomPadding)

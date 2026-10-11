@@ -25,6 +25,7 @@ internal enum class SearchFilter {
     Albums,
     Playlists,
     Folders,
+    FolderPlaylists,
     Composers,
     Arrangers,
     Lyricists,
@@ -42,6 +43,7 @@ internal enum class SearchFilter {
                 "album", "albums" -> Albums
                 "playlist", "playlists" -> Playlists
                 "folder", "folders" -> Folders
+                "folder_playlist", "folder_playlists" -> FolderPlaylists
                 "composer", "composers" -> Composers
                 "arranger", "arrangers" -> Arrangers
                 "lyricist", "lyricists" -> Lyricists

@@ -69,13 +69,16 @@ internal fun SongMoreInfoActionSheets(
     }
 
     infoSong?.let { song ->
+        val pickerTitle = androidx.compose.runtime.remember(song.id) { androidx.compose.runtime.mutableStateOf<String?>(null) }
         EllaMiuixBottomSheet(
             show = true,
             enableNestedScroll = false,
-            title = stringResource(R.string.player_song_info),
+            title = pickerTitle.value ?: stringResource(R.string.player_song_info),
             onDismissRequest = { onInfoSongChange(null) }
         ) {
             SongInfoSheet(
+                onPickerTitleChange = { pickerTitle.value = it },
+                mainViewModel = mainViewModel,
                 song = song,
                 audioInfoLoader = mainViewModel::getAudioInfo,
                 tagInfoLoader = mainViewModel::getSongTagInfo,

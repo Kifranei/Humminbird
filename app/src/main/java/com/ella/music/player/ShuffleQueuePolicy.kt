@@ -8,6 +8,17 @@ internal data class ShuffleQueuePlan(
     val currentIndex: Int
 )
 
+/** A repeat callback alone is not proof that the queue completed a round. */
+internal fun isShuffleQueueCycleBoundary(
+    previousIndex: Int,
+    currentIndex: Int,
+    queueSize: Int,
+    previousMediaId: String?,
+    currentMediaId: String?
+): Boolean = queueSize > 1 && previousIndex == queueSize - 1 && currentIndex == 0 &&
+    !previousMediaId.isNullOrBlank() && !currentMediaId.isNullOrBlank() &&
+    previousMediaId != currentMediaId
+
 internal fun buildShuffleQueueKeepingCurrent(
     sourceOrder: List<Song>,
     current: Song,

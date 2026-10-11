@@ -22,10 +22,29 @@ internal class MusicLibraryCacheStore(
     val libraryCacheFile = File(context.filesDir, "music_library_cache.json")
     val localScanBaselineFile = File(context.filesDir, "music_local_scan_baseline.json")
 
-    fun remoteLibraryCacheFile(source: String): File =
-        File(context.filesDir, if (source == SettingsManager.LIBRARY_SOURCE_NETEASE)
+    suspend fun remoteLibraryCacheFile(source: String): File {
+        if (source == SettingsManager.LIBRARY_SOURCE_WEBDAV || source == SettingsManager.LIBRARY_SOURCE_SMB) {
+            val identity = if (source == SettingsManager.LIBRARY_SOURCE_WEBDAV) listOf(
+                settingsManager.webDavUrl.first().trim().trimEnd('/'), settingsManager.webDavUsername.first(),
+                settingsManager.webDavCustomHeaders.first().toString()
+            ) else listOf(settingsManager.smbUrl.first().trim().trimEnd('/'), settingsManager.smbUsername.first(),
+                settingsManager.smbDomain.first(), settingsManager.smbProtocol.first())
+            val key = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(identity.joinToString("\u0000").toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }.take(24)
+            return File(context.filesDir, "remote_library_${source}_$key.json")
+        }
+        if (source in setOf(SettingsManager.LIBRARY_SOURCE_FTP, SettingsManager.LIBRARY_SOURCE_SFTP)) {
+            val config = settingsManager.transferLibraryConfig(source).first()
+            val key = java.security.MessageDigest.getInstance("SHA-256")
+                .digest("${config.url}\u0000${config.username}\u0000${config.hostKey}".toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }.take(24)
+            return File(context.filesDir, "remote_library_${source}_$key.json")
+        }
+        return File(context.filesDir, if (source == SettingsManager.LIBRARY_SOURCE_NETEASE)
             "remote_library_netease_${com.ella.music.data.netease.NeteaseAccountStore.getInstance(context).account.value.userId}.json"
         else "remote_library_$source.json")
+    }
 
     fun saveLibraryCacheTo(file: File, songs: List<Song>, albums: List<Album>) {
         runCatching {

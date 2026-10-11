@@ -1,5 +1,8 @@
 package com.ella.music.ui.playlist
 
+import com.ella.music.ui.components.dragSelectList
+import com.ella.music.ui.components.dragSelectGrid
+
 import com.ella.music.ui.components.EllaMiuixBottomSheet
 
 import android.widget.Toast
@@ -417,7 +420,7 @@ fun PlaylistDetailScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().dragSelectList(listState, selection, remember(reorderableSongs) { reorderableSongs.map { it.playlistIdentityKey() } }, excludedEndWidth = 112.dp),
                 // Keep the hero's gradient full width; reserve the scrollbar space on actions.
                 contentPadding = PaddingValues(bottom = 150.dp)
             ) {
@@ -732,6 +735,7 @@ fun PlaylistDetailScreen(
                 allSelected = displayedSongs.isNotEmpty() && selectedVisibleSongCount == displayedSongs.size,
                 onRangeSelect = { selection.applyRangeSelection(displayedSongs.map { it.playlistIdentityKey() }, displayedSongIndexByKey) },
                 onSelectAll = { selection.toggleSelectAll(displayedSongs.map { it.playlistIdentityKey() }) },
+                onInvertSelection = { selection.invertSelection(displayedSongs.map { it.playlistIdentityKey() }) },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = LibraryFloatingControlsEndPadding, bottom = LibraryFloatingControlsBottomPadding)

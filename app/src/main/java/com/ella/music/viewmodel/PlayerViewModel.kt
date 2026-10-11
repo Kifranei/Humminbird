@@ -28,6 +28,7 @@ import com.ella.music.data.remote.isSubsonicLike
 import com.ella.music.data.repository.CoverUsage
 import com.ella.music.data.repository.MusicRepository
 import com.ella.music.data.repository.isWebDavRemoteSong
+import com.ella.music.data.repository.isFileLibraryRemoteSong
 import com.ella.music.player.DesktopLyricBridge
 import com.ella.music.player.ExoPlayerManager
 import com.ella.music.player.LyricGetterBridge
@@ -1008,7 +1009,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 // enters the player, but an old playlist can bypass that path. Resolve the
                 // active occurrence here as well so its embedded cover/lyrics cache is ready
                 // before the first lyric and artwork lookup.
-                val activeSong = if (song.isWebDavRemoteSong()) {
+                val activeSong = if (song.isFileLibraryRemoteSong()) {
                     val resolved = withContext(Dispatchers.IO) {
                         repository.resolveSongForPlayback(song)
                     }
@@ -1116,7 +1117,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             repository.webDavMetadataRevision.collect {
                 if (it == 0L) return@collect
                 val current = playerManager.currentSong.value ?: return@collect
-                if (!current.isWebDavRemoteSong()) return@collect
+                if (!current.isFileLibraryRemoteSong()) return@collect
+                com.ella.music.ui.components.clearArtworkModelMemoryCache()
                 val enriched = repository.songs.value.firstOrNull { song -> song.path == current.path } ?: current
                 if (playerManager.currentSong.value?.path != current.path) return@collect
                 if (enriched != current) {
@@ -1569,7 +1571,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         songs: List<Song>,
         startIndex: Int = 0,
         resumeCategoryKey: String? = null,
-        songSources: Map<String, String>? = null
+        songSources: Map<String, String>? = null,
+        startPlayback: Boolean = true
     ) {
         lazyOnlineQueueController.clear()
         if (!songSources.isNullOrEmpty()) {
@@ -1591,7 +1594,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _playbackSourceKey.value = queueSource
         com.ella.music.data.PlaybackSourceNavigation.updateSource(queueSource)
         sourceAwareSongs.getOrNull(safeStartIndex)?.let(::recordCategoryResume)
-        playerManager.setPlaylist(sourceAwareSongs, safeStartIndex)
+        playerManager.setPlaylist(sourceAwareSongs, safeStartIndex, startPlayback = startPlayback)
     }
 
     fun setShuffledPlaylist(
@@ -1901,8 +1904,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun livePositionMs(): Long = playerManager.livePositionMs()
 
-    fun playQueueIndex(index: Int) {
-        if (!lazyOnlineQueueController.playIndex(index)) playerManager.playQueueIndex(index)
+    fun playQueueIndex(index: Int, startPlayback: Boolean = true) {
+        if (!lazyOnlineQueueController.playIndex(index, shouldPlay = startPlayback)) playerManager.playQueueIndex(index, startPlayback)
     }
 
     fun removeFromPlaylist(index: Int) {
