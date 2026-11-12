@@ -47,6 +47,9 @@ internal suspend fun buildApplicationBackupJson(
             if (BackupType.PlaybackStats in selectedTypes) {
                 put("playback", PlaybackStatsStore.getInstance(context).exportJson(librarySongs))
             }
+            if (BackupType.AiConfigAndChat in selectedTypes) {
+                put("aiChat", exportAiChatBackupJson(context))
+            }
             if (BackupType.LibraryAndScan in selectedTypes) {
                 // Descriptions are packed as separate files in descriptions/*.properties; omitted from root JSON to avoid duplication
             }

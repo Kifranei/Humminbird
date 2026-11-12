@@ -12,6 +12,7 @@ class NeteaseLinksAndHistoryTest {
         assertEquals("https://y.music.163.com/m/mv?id=42", NeteaseLinks.build(web, NeteaseLinkKind.MusicVideo, "42"))
         val app = NeteaseLinkSettings(target = NeteaseLinkTarget.App)
         assertEquals("orpheus://mv/42", NeteaseLinks.build(app, NeteaseLinkKind.MusicVideo, "42"))
+        assertEquals("orpheus://comment?threadId=R_SO_4_7", NeteaseLinks.build(app, NeteaseLinkKind.Comment, "7"))
         val honor = NeteaseLinkSettings(target = NeteaseLinkTarget.HonorApp)
         assertEquals("honororpheus://album/9", NeteaseLinks.build(honor, NeteaseLinkKind.Album, "9"))
         assertEquals("honororpheus://rnpage?component=music-reactnative-artistwiki&artistId=3", NeteaseLinks.build(honor, NeteaseLinkKind.ArtistWiki, "3"))

@@ -31,6 +31,20 @@ internal object MusicVideoLauncher {
         )
     }
 
+    fun openVideo(context: Context, uri: Uri, title: String, mimeType: String? = null) {
+        val song = Song(id = -uri.toString().hashCode().toLong(), title = title, artist = "", album = "",
+            albumId = 0, duration = 0, path = uri.toString(), fileName = title, mimeType = mimeType.orEmpty())
+        com.ella.music.player.PlaybackService.pausePlayback()
+        context.startActivity(Intent(context, MusicVideoActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            .putExtra(EXTRA_SONG, song.toMusicVideoJson().toString())
+            .putExtra(EXTRA_VIDEO_URI, uri.toString())
+            .putExtra(EXTRA_VIDEO_KEY, "video:$uri")
+            .putExtra(EXTRA_GENERIC_VIDEO, true)
+            .putExtra("video_tools_mime", mimeType)
+            .apply { clipData = ClipData.newUri(context.contentResolver, title, uri) })
+    }
+
     fun openNetease(context: Context, song: Song?, mvId: String) {
         if ((mvId.toLongOrNull() ?: 0L) <= 0L) return
         if (com.ella.music.data.netease.NeteaseLinks.current(context).openMusicVideoExternally) {
@@ -40,6 +54,25 @@ internal object MusicVideoLauncher {
         open(context, song, DynamicCoverSource(
             uri = Uri.parse("halcyon-netease-mv://mv/$mvId"),
             failureKey = "netease-mv:$mvId",
+            role = com.ella.music.ui.player.PlayerVideoRole.MusicVideo
+        ))
+    }
+
+    /** Online-MV entry point for list rows: dispatches by the URL scheme the row produced. */
+    fun openOnline(context: Context, song: Song?, url: String) {
+        val uri = Uri.parse(url)
+        if (uri.scheme == "halcyon-plugin-mv") {
+            openSourcePlugin(context, song, uri.host.orEmpty(), uri.lastPathSegment.orEmpty())
+        } else {
+            openNetease(context, song, uri.getQueryParameter("id").orEmpty())
+        }
+    }
+
+    fun openSourcePlugin(context: Context, song: Song?, pluginId: String, mvId: String) {
+        if (pluginId.isBlank() || mvId.isBlank()) return
+        open(context, song, DynamicCoverSource(
+            uri = Uri.parse("halcyon-plugin-mv://$pluginId/${Uri.encode(mvId)}"),
+            failureKey = "plugin-mv:$pluginId:$mvId",
             role = com.ella.music.ui.player.PlayerVideoRole.MusicVideo
         ))
     }

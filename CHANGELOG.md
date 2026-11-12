@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.3.1
+
+### 中文
+
+与 Halcyon `e8347ab6`（dev: 1.3.1）全量同步，版本号与 `versionCode` 对齐为 `1.3.1` / `41`。保留 Humminbird 精简范围：四种界面语言（简中 / 繁中 / 英 / 日）、`arm64-v8a` 与 `armeabi-v7a` 两个 ABI、独立包名与更新渠道；二次元 / 萝莉图标维持退役状态，应用图标选项为「原版 / 传统」。
+
+同步要点（详见 Halcyon 1.3.1 更新日志）：
+- HyperOS 4 悬浮胶囊底栏（默认样式）与顶栏液态玻璃渐进模糊；下拉/筛选菜单全面换用 OS4 玻璃弹层并恢复预测性返回。
+- 音源插件系统：导入 .js 脚本接入第三方音乐平台（登录/收藏/歌单/搜索/播放/歌词/评论/MV），脚本与主程序分离；支持 zip 包批量导入，附酷我/酷狗/QQ音乐/咪咕/汽水五个参考插件。
+- Miuix 组件同步至 ac0af467：新增 GlassNavigationRail 等液态组件，顶栏液态按钮按 demo 规范重做；悬浮底栏左右滑页时气泡即时跟随（此前停稳才跳）。
+- 音乐回忆扩展（#698）：排行卡片进独立排行页（多时间范围）、卡片范围与数量可配、长期偏好可点击、日历行距修复、海报墙剧场模式入口。
+- 桌面歌词大改造（#727）：行距/原文位/宽度滚动/光晕强度/透明度设置；开头空白歌词逐字渐亮，拖动改进度条预览、松手才跳转。
+- 页内搜索独立滚动容器（#777）、全局搜索状态语义（#778）、输入框延迟弹键盘（#776）。
+- 修复：顶栏动作按钮不显示、底层面板恢复不透明样式（去边缘泛光）、远端 Subsonic TTML 歌词优先级、逐字歌词回退、单曲循环被交叉淡出截尾。
+- 介绍页 3D 专辑盒、标签批量修改重做（#725）、艺术家图片搜索、制作人分类（#728）、分类合集（#744）、专辑合并策略（#752/#749）。
+- MusicFree JS 适配层重写（#732）、MCP 服务、本地视频工具、OriginOS 媒体岛。
+
+### English
+
+Full sync with Halcyon `e8347ab6` (dev: 1.3.1); version aligned to `1.3.1` / `versionCode` `41`. The trimmed scope stays: four UI languages (Simplified Chinese, Traditional Chinese, English, Japanese), `arm64-v8a` + `armeabi-v7a` only, independent package name and update channel; anime/loli icons remain retired, leaving "Default / Traditional" icon choices.
+
+Highlights (see Halcyon's 1.3.1 changelog for the full list):
+- HyperOS 4 floating capsule dock (default) and liquid-glass top bar; all dropdown/filter menus are OS4 glass popups with predictive back.
+- Source-plugin system: import .js scripts to add third-party music platforms (login/favorites/playlists/search/playback/lyrics/comments/MV) fully separated from the app; zip bulk import supported, with five reference plugins (Kuwo/Kugou/QQ Music/Migu/Soda).
+- Miuix components synced to ac0af467: new glass components, demo-spec top-bar glass buttons, and the floating dock bubble now tracks page swipes live instead of jumping after settle.
+- Music Memories expansion (#698): standalone ranking pages with time ranges, per-card range/count config, clickable long-term favorites, calendar row-gap fix, poster-wall lyric theater entry.
+- Desktop lyrics overhaul (#727): line metrics, original/pronunciation/translation ordering, long-line scrolling, glow strength and opacity settings; opening gap lyrics render word-by-word and drags drive a seek preview.
+- Per-page search gets an isolated scroll container (#777), global search state semantics (#778), deferred keyboard pop-up in input dialogs (#776).
+- Fixes: missing top-bar action buttons, opaque action sheets again (no edge bloom), remote Subsonic TTML lyric priority, karaoke line regression, repeat-one cut short by crossfade.
+- 3D album case, batch tag editor rework (#725), artist image search, Producer category (#728), category collections (#744), album merge rules (#752/#749).
+- MusicFree JS adapter rewrite (#732), MCP server, local video tools, OriginOS media island.
+
 ## 1.0.1
 
 ### 中文

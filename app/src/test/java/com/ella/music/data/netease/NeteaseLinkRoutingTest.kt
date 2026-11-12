@@ -1,6 +1,7 @@
 package com.ella.music.data.netease
 
 import android.app.Application
+import android.content.Context
 import android.content.Intent
 import org.junit.After
 import org.junit.Before
@@ -25,7 +26,28 @@ class NeteaseLinkRoutingTest {
     }
     @Before @After fun reset() {
         NeteaseLinks.update(RuntimeEnvironment.getApplication()) { NeteaseLinkSettings() }
+        NeteaseLinks.commentSheetTarget.value = null
         NeteaseLinks.webSheetUrl.value = null
+    }
+
+    @Test fun blankCustomCommentsOpenEachNativeResource() {
+        val context = RuntimeEnvironment.getApplication()
+        NeteaseLinks.update(context) { NeteaseLinkSettings(NeteaseLinkTarget.Custom) }
+        listOf(
+            NeteaseLinkKind.Comment to NeteaseCommentResource.Song,
+            NeteaseLinkKind.AlbumComment to NeteaseCommentResource.Album,
+            NeteaseLinkKind.MusicVideoComment to NeteaseCommentResource.MusicVideo
+        ).forEach { (kind, resource) ->
+            NeteaseLinks.open(context, kind, "123")
+            assertEquals(NeteaseCommentTarget("123", resource), NeteaseLinks.commentSheetTarget.value)
+        }
+    }
+
+    @Test fun customCommentRulesAreIndependentForEachResource() {
+        val settings = NeteaseLinkSettings(NeteaseLinkTarget.Custom, custom = mapOf(NeteaseLinkKind.Comment to "orpheus://comment/{id}"))
+        assertFalse(NeteaseLinks.usesNativeComments(settings, NeteaseLinkKind.Comment))
+        assertTrue(NeteaseLinks.usesNativeComments(settings, NeteaseLinkKind.AlbumComment))
+        assertTrue(NeteaseLinks.usesNativeComments(settings, NeteaseLinkKind.MusicVideoComment))
     }
 
     @Test fun webAndBlankCustomAlbumsUseSystemWebIntent() {
@@ -71,4 +93,30 @@ class NeteaseLinkRoutingTest {
         assertEquals("orpheus://artist/123", app.dataString)
     }
 
+    @Test fun missingAndInvalidCommentDefaultKeepTheExistingRecommendedTab() {
+        val context = RuntimeEnvironment.getApplication()
+        val prefs = context.getSharedPreferences("netease_links", Context.MODE_PRIVATE)
+        prefs.edit().remove("comment_default_sort").apply()
+        assertEquals(NeteaseCommentSort.Recommend, NeteaseLinks.read(context).defaultCommentSort)
+        prefs.edit().putInt("comment_default_sort", 99).apply()
+        assertEquals(NeteaseCommentSort.Recommend, NeteaseLinks.read(context).defaultCommentSort)
+    }
+
+    @Test fun selectedCommentDefaultSurvivesReloadAndIndependentLinkChanges() {
+        val context = RuntimeEnvironment.getApplication()
+        val custom = mapOf(NeteaseLinkKind.Comment to "orpheus://comment/{id}")
+        NeteaseLinks.update(context) {
+            NeteaseLinkSettings(NeteaseLinkTarget.Custom, openMusicVideoExternally = true, custom = custom)
+        }
+        for (sort in NeteaseCommentSort.entries) {
+            NeteaseLinks.update(context) { it.copy(defaultCommentSort = sort) }
+            val reloaded = NeteaseLinks.read(context)
+            assertEquals(sort, reloaded.defaultCommentSort)
+            assertEquals(NeteaseLinkTarget.Custom, reloaded.target)
+            assertTrue(reloaded.openMusicVideoExternally)
+            assertEquals(custom, reloaded.custom)
+        }
+        NeteaseLinks.update(context) { it.copy(target = NeteaseLinkTarget.Web) }
+        assertEquals(NeteaseCommentSort.Latest, NeteaseLinks.read(context).defaultCommentSort)
+    }
 }

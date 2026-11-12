@@ -65,14 +65,6 @@ internal class MusicFreeMediaSourceFactory(
         val uri = mediaItem.localConfiguration?.uri ?: return null
         if (uri.scheme !in setOf("http", "https")) return null
         if (!uri.userInfo.isNullOrEmpty()) throw IOException("Playback URLs must not contain embedded credentials")
-        val onlineSource = mediaItem.toSongFromMediaItemExtras()?.onlineSource.orEmpty()
-        if (mediaItem.mediaMetadata.extras?.getBoolean(EXTRA_PLUGIN_TRANSPORT) == true ||
-            onlineSource == "netease" ||
-            onlineSource.startsWith("musicfree:") ||
-            onlineSource in setOf("kw", "wy", "kg", "tx", "mg", "qs", "sd")
-        ) {
-            throw IOException("Online audio sources are not available")
-        }
         val url = uri.toString()
         val resolved = streamHeaders.resolveStream(url, httpClient)
         if (resolved == null) {

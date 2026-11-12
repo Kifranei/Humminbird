@@ -25,6 +25,12 @@ class PinnedBackupCategoryTest {
     }
 
     @Test
+    fun aiProtocolFollowsAiBackupSelection() {
+        assertEquals(BackupType.AiConfigAndChat, "ai_api_protocol".backupType())
+        assertEquals(BackupType.AiConfigAndChat, "openai_model".backupType())
+    }
+
+    @Test
     fun lyricoPluginSettingsFollowOnlineSourcesBackupSelection() {
         assertEquals(BackupType.OnlineSources, "lyrico_plugin_enabled_ids".backupType())
         assertEquals(BackupType.OnlineSources, "lyrico_plugin_cache".backupType())

@@ -19,7 +19,7 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.preference.WindowSpinnerPreference
+import com.ella.music.ui.components.EllaSpinnerPreference
 import java.util.Locale
 
 internal data class HomePreferenceItem(
@@ -76,7 +76,7 @@ internal fun HomeDisplaySettingsPage(
     SettingsCardGroup {
         // search-anchor:start
         SettingsSearchAnchor(R.string.settings_home_feature_style) {
-        WindowSpinnerPreference(
+        EllaSpinnerPreference(
             title = stringResource(R.string.settings_home_feature_style),
             items = featureStyleLabels.map { DropdownItem(title = it) },
             selectedIndex = featureStyle,
@@ -143,7 +143,7 @@ internal fun HomeDisplaySettingsPage(
     SettingsCardGroup(highlight = highlightKey == "home_recent_section_mode") {
         // search-anchor:start
         SettingsSearchAnchor(R.string.settings_home_recent_content) {
-        WindowSpinnerPreference(
+        EllaSpinnerPreference(
             title = stringResource(R.string.settings_home_recent_content),
             summary = stringResource(R.string.settings_home_recent_content_summary),
             items = listOf(
@@ -162,25 +162,22 @@ internal fun HomeDisplaySettingsPage(
     val customCategories by styleSettings.customMetadataCategories.collectAsState(initial = emptyList())
     CustomCategorySettings(styleSettings)
     HomeTileEditors(tileItems + customCategories.map { HomePreferenceItem(it.type, it.name, it.tagKey) }, highlightKey)
-    if (onlineItems.isNotEmpty() /* search-reveal */ || SettingsSearchFocus.reveals(R.string.settings_home_online_tiles_custom_title)) {
-        SmallTitle(text = stringResource(R.string.settings_home_online_grid_title))
-        SettingsCardGroup(highlight = highlightKey == "home_online_tiles") {
-            val enabledOnlineTitles = orderedOnlineTiles.filter { it.id !in hiddenOnlineTileIds }.map { it.title }
-            SettingsSearchAnchor(R.string.settings_home_online_tiles_custom_title) {
-                // search-anchor:start
-                SettingsSearchAnchor(R.string.settings_home_online_tiles_custom_title) {
-                ArrowPreference(
-                    title = stringResource(R.string.settings_home_online_tiles_custom_title),
-                    summary = if (enabledOnlineTitles.isNotEmpty()) {
-                        enabledOnlineTitles.joinToString(" / ")
-                    } else {
-                        stringResource(R.string.custom_sort_or_hide_summary)
-                    },
-                    onClick = { showOnlineTileSheet = true }
-                )
-                } // search-anchor:end
-            }
-        }
+    SmallTitle(text = stringResource(R.string.settings_home_online_grid_title))
+    SettingsCardGroup(highlight = highlightKey == "home_online_tiles") {
+        val enabledOnlineTitles = orderedOnlineTiles.filter { it.id !in hiddenOnlineTileIds }.map { it.title }
+        // search-anchor:start
+        SettingsSearchAnchor(R.string.settings_home_online_tiles_custom_title) {
+        ArrowPreference(
+            title = stringResource(R.string.settings_home_online_tiles_custom_title),
+            summary = if (enabledOnlineTitles.isNotEmpty()) {
+                enabledOnlineTitles.joinToString(" / ")
+            } else {
+                stringResource(R.string.custom_sort_or_hide_summary)
+            },
+            onClick = { showOnlineTileSheet = true }
+        )
+        } // search-anchor:end
+
     }
     SettingsCardGroup(highlight = highlightKey == "home_tile_pin_buttons") {
         // search-anchor:start
@@ -410,7 +407,7 @@ private fun HomeTileEditors(items: List<HomePreferenceItem>, highlightKey: Strin
     val settings = remember(context) { SettingsManager.getInstance(context) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val shortcuts by settings.homeShortcutItems.collectAsState(initial = "artist,album,recent_playback,folder")
-    val features by settings.homeFeatureItems.collectAsState(initial = "folder_tree,folder_playlist,playlist,genre,year,composer,arranger,lyricist")
+    val features by settings.homeFeatureItems.collectAsState(initial = "folder_tree,folder_playlist,playlist,genre,year,composer,arranger,lyricist,producer")
     listOf(true, false).forEach { shortcut ->
         val selected = if (shortcut) shortcuts else features
         val ids = selected.split(',').filter { it.isNotBlank() }

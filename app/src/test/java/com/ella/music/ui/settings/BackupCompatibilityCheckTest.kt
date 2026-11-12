@@ -13,6 +13,7 @@ class BackupCompatibilityCheckTest {
     private val schema = linkedMapOf(
         "theme_mode" to SettingsBackupValueType.INT,
         "app_language" to SettingsBackupValueType.STRING,
+        "openai_model" to SettingsBackupValueType.STRING,
         "new_toggle" to SettingsBackupValueType.BOOLEAN
     )
 
@@ -21,14 +22,14 @@ class BackupCompatibilityCheckTest {
         val root = JSONObject()
             .put("version", 2)
             .put(BACKUP_APP_VERSION_NAME_FIELD, "1.2.9")
-            .put(BACKUP_SETTINGS_KEYS_FIELD, JSONArray(listOf("theme_mode", "app_language", "lyric_font_path", "old_key")))
+            .put(BACKUP_SETTINGS_KEYS_FIELD, JSONArray(listOf("theme_mode", "app_language", "openai_model", "old_key")))
             .put(
                 "settings",
                 JSONObject()
                     .put("theme_mode", "dark") // format changed
                     .put("app_language", "en")
                     .put("old_key", true) // obsolete
-                    .put("lyric_font_path", "/fonts/custom.ttf") // Fonts category, not selected below
+                    .put("openai_model", 5) // AI category, not selected below
             )
             .put("playlists", JSONObject())
 

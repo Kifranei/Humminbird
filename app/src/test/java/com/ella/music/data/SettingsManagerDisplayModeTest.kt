@@ -211,6 +211,12 @@ class SettingsManagerDisplayModeTest {
     }
 
     @Test
+    fun `new installations default to DeepSeek AI provider`() {
+        assertEquals("https://api.deepseek.com/v1", SettingsManager.DEFAULT_OPENAI_BASE_URL)
+        assertEquals("deepseek-flash", SettingsManager.DEFAULT_OPENAI_MODEL)
+    }
+
+    @Test
     fun `biography providers expose compact source labels`() {
         assertEquals("N", com.ella.music.data.lastfm.ArtistBioMenuSource.Netease.shortLabel)
         assertEquals("L", com.ella.music.data.lastfm.ArtistBioMenuSource.LastFm.shortLabel)

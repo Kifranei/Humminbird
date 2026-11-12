@@ -150,7 +150,10 @@ internal data class BundledFontSpec(
     val assetPath: String
 )
 
-internal val BUNDLED_FONT_SPECS = emptyList<BundledFontSpec>()
+internal val BUNDLED_FONT_SPECS = listOf(
+    BundledFontSpec("Inter Bold", "Inter-Bold.ttf", "fonts/Inter-Bold.ttf"),
+    BundledFontSpec("MiSans Bold", "MiSans-Bold.ttf", "fonts/MiSans-Bold.ttf")
+)
 
 private fun Context.resolveDisplayName(uri: Uri): String {
     return contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->

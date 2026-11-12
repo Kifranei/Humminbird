@@ -37,6 +37,7 @@ import com.ella.music.player.buildLiveLyricSecondaryText
 import com.ella.music.player.buildLiveLyricNotificationText
 import com.ella.music.player.LyriconBridge
 import com.ella.music.player.MediaNotificationLyricPatchPolicy
+import com.ella.music.player.OriginOsMediaIslandLyrics
 import com.ella.music.player.PlaybackService
 import com.ella.music.player.PlaybackWidgetUpdater
 import com.ella.music.player.SuperLyricBridge
@@ -65,6 +66,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val LYRIC_POSITION_BACKWARD_DRIFT_TOLERANCE_MS = 600L
 // Compose lyrics interpolate between position samples on the display clock. 10 Hz is therefore
@@ -72,6 +74,7 @@ private const val LYRIC_POSITION_BACKWARD_DRIFT_TOLERANCE_MS = 600L
 private const val PLAYBACK_POSITION_UPDATE_INTERVAL_MS = 100L
 private const val SEEK_EXTERNAL_LYRIC_SYNC_DEBOUNCE_MS = 80L
 private const val LIVE_UPDATE_ARTWORK_SIZE = 256
+private const val NOTIFICATION_ARTWORK_TIMEOUT_MS = 6_000L
 private const val AB_REPEAT_MIN_LENGTH_MS = 300L
 private const val AB_REPEAT_LOOP_GUARD_MS = 250L
 
@@ -1072,13 +1075,27 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     )
                     emptyList()
                 }
+                if (playerManager.currentSong.value?.lyricIdentityKey() != loadedKey) {
+                    // A newer emission normally re-runs this block and re-arms the flag, but a
+                    // transient identity mismatch without a follow-up emission would otherwise
+                    // leave the lyric page pinned on the loading state forever.
+                    _lyricsLoading.value = false
+                    return@collectLatest
+                }
+                loadedLyricSongKey = loadedKey
+                setLoadedLyrics(activeSong, songLyrics, notifyExternal = false)
+                _lyricsLoading.value = false
+                // Artwork is a notification nicety; it must never pin the lyric page in a
+                // loading state, so it gets a bounded fetch after lyrics are committed.
                 val notificationArtwork = try {
-                    withContext(Dispatchers.IO) {
-                        repository.getCoverArtBitmap(
-                            song = activeSong,
-                            maxSize = LIVE_UPDATE_ARTWORK_SIZE,
-                            usage = CoverUsage.Notification
-                        ) ?: remoteNotificationArtwork(activeSong)
+                    withTimeoutOrNull(NOTIFICATION_ARTWORK_TIMEOUT_MS) {
+                        withContext(Dispatchers.IO) {
+                            repository.getCoverArtBitmap(
+                                song = activeSong,
+                                maxSize = LIVE_UPDATE_ARTWORK_SIZE,
+                                usage = CoverUsage.Notification
+                            ) ?: remoteNotificationArtwork(activeSong)
+                        }
                     }
                 } catch (error: CancellationException) {
                     throw error
@@ -1092,12 +1109,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     null
                 }
                 if (playerManager.currentSong.value?.lyricIdentityKey() != loadedKey) {
+                    _lyricsLoading.value = false
                     return@collectLatest
                 }
                 liveUpdateArtwork = notificationArtwork
-                loadedLyricSongKey = loadedKey
-                setLoadedLyrics(activeSong, songLyrics, notifyExternal = false)
-                _lyricsLoading.value = false
                 val displayedLyrics = loadedLyricsForCurrentSong()
 
                 if (lyriconBridge.isEnabled()) {
@@ -1180,6 +1195,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             // The backing list may still contain the previous song while the replacement is being
             // fetched. Never advance/send that list against the new song's position.
             if (_currentLyricIndex.value != -1) _currentLyricIndex.value = -1
+            OriginOsMediaIslandLyrics.clear()
             liveLyricNotificationBridge.clear()
             lastLiveUpdateLyricPayload = null
             lastLyricPositionSongKey = songKey
@@ -1188,6 +1204,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
         val currentLyrics = _lyrics.value
         if (currentLyrics.isEmpty()) {
+            OriginOsMediaIslandLyrics.clear()
             liveLyricNotificationBridge.clear()
             lastLiveUpdateLyricPayload = null
             lastLyricPositionSongKey = songKey
@@ -1240,6 +1257,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             sendLiveUpdateLyric(index, currentLyrics, effectivePosition)
             sendXiaomiSuperIslandLyric(index, currentLyrics, effectivePosition)
         }
+        // Whole-line island text is independent of notification/translation lyric settings.
+        // StateFlow suppresses the unchanged line during the existing position ticker.
+        OriginOsMediaIslandLyrics.update(currentSong.value, currentLyrics.getOrNull(index))
         lastLyricPositionSongKey = songKey
         lastLyricPositionMs = effectivePosition
     }
@@ -1407,7 +1427,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             positionMs = effectiveLyricPositionMs(),
             showTranslation = _showLyricTranslation.value,
             showPronunciation = _showLyricPronunciation.value,
-            interlude = desktopInterludeAt(currentLyrics, effectiveLyricPositionMs())
+            interlude = desktopInterludeAt(currentLyrics, effectiveLyricPositionMs()),
+            songHasPronunciation = desktopLyricSetHasPronunciation(currentLyrics),
+            songHasTranslation = desktopLyricSetHasTranslation(currentLyrics)
         )
     }
 
@@ -1420,9 +1442,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         desktopLyricBridge.sendLyric(
             currentLyrics.getOrNull(index), position,
             _showLyricTranslation.value, _showLyricPronunciation.value,
-            desktopInterludeAt(currentLyrics, position)
+            desktopInterludeAt(currentLyrics, position),
+            songHasPronunciation = desktopLyricSetHasPronunciation(currentLyrics),
+            songHasTranslation = desktopLyricSetHasTranslation(currentLyrics)
         )
     }
+
+    // The floating desktop lyric reserves secondary rows so the original text never shifts when
+    // a line lacks a row other lines have (#727). Only report presence the user opted to display:
+    // the view reserves slots unconditionally once a flag says the song has them.
+    private fun desktopLyricSetHasPronunciation(lyrics: List<LyricLine>): Boolean =
+        lyrics.any { !it.pronunciation.isNullOrBlank() || it.pronunciationWords.isNotEmpty() }
+
+    private fun desktopLyricSetHasTranslation(lyrics: List<LyricLine>): Boolean =
+        lyrics.any { !it.translation.isNullOrBlank() }
 
     /**
      * The lyric page and Live Update already use [lastLyricPositionMs], which filters the small
@@ -1466,6 +1499,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         // again only after the display-time offset/blacklist pipeline has completed.
         _lyricsSongKey.value = null
         _currentLyricIndex.value = -1
+        OriginOsMediaIslandLyrics.clear()
         _rawLyrics.value = rawLyrics
         applyCurrentLyricOffset(song = song, notifyExternal = notifyExternal)
         _lyricsSongKey.value = song.lyricIdentityKey()
@@ -1747,6 +1781,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             suppressLeadingZero = positionMs in 0L until LEADING_ZERO_LYRIC_SUPPRESSION_MS
         ).index
         _currentLyricIndex.value = index
+        OriginOsMediaIslandLyrics.update(currentSong.value, lyrics.getOrNull(index))
         scheduleSeekExternalLyricSync(positionMs)
     }
 
@@ -1940,6 +1975,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         playerManager.cyclePlaybackMode()
     }
 
+    fun setPlaybackMode(shuffle: Boolean, repeatMode: Int) {
+        playerManager.applyExternalPlaybackMode(shuffle, repeatMode)
+    }
+
     fun toggleAbRepeat() {
         val song = currentSong.value ?: return
         val songKey = song.lyricIdentityKey()
@@ -2106,6 +2145,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                         if (error is CancellationException) throw error
                         android.widget.Toast.makeText(getApplication(), getApplication<Application>().getString(com.ella.music.R.string.netease_sync_failed), android.widget.Toast.LENGTH_SHORT).show()
                     }
+            } else if (com.ella.music.data.sourceplugin.isSourcePluginKey(song.onlineSource)) {
+                val store = com.ella.music.data.sourceplugin.SourcePluginRegistry
+                    .libraryStore(getApplication(), com.ella.music.data.sourceplugin.sourcePluginKeyOf(song.onlineSource))
+                if (store != null) {
+                    runCatching { store.toggleFavorite(song) }
+                        .onFailure { error ->
+                            if (error is CancellationException) throw error
+                            android.widget.Toast.makeText(getApplication(), getApplication<Application>().getString(com.ella.music.R.string.netease_sync_failed), android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                } else {
+                    playlistStore.toggleFavorite(song)
+                }
             } else if (openSubsonicCollectionsStore.isManagedFavorite(song)) {
                 runCatching { openSubsonicCollectionsStore.toggleFavorite(song) }
             } else {
@@ -2502,6 +2553,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         super.onCleared()
         externalLyricResendJob?.cancel()
         positionUpdateJob?.cancel()
+        OriginOsMediaIslandLyrics.clear()
         seekExternalLyricSyncJob?.cancel()
         sleepTimerController.dispose()
         tickerBridge.clearLyric()

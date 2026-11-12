@@ -29,7 +29,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 internal fun LibrarySearchTopBar(
     query: String,
-    autoFocus: Boolean?,
+    autoFocus: Boolean,
     autoSelectAll: Boolean = false,
     selectionRequestKey: Int = 0,
     onAutoSelectAllConsumed: () -> Unit = {},
@@ -37,7 +37,8 @@ internal fun LibrarySearchTopBar(
     onBack: () -> Unit,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    active: Boolean = true
 ) {
     Row(
         modifier = modifier
@@ -67,6 +68,7 @@ internal fun LibrarySearchTopBar(
             placeholder = stringResource(R.string.library_search_page_placeholder),
             modifier = Modifier.weight(1f),
             autoFocus = autoFocus,
+            active = active,
             autoSelectAll = autoSelectAll,
             selectionRequestKey = selectionRequestKey,
             onAutoSelectAllConsumed = onAutoSelectAllConsumed
@@ -115,6 +117,7 @@ internal fun LibrarySearchFilterBar(
                 SearchFilter.Composers -> categoryResultsByType["composer"].orEmpty().size
                 SearchFilter.Arrangers -> categoryResultsByType["arranger"].orEmpty().size
                 SearchFilter.Lyricists -> categoryResultsByType["lyricist"].orEmpty().size
+                SearchFilter.Producers -> categoryResultsByType["producer"].orEmpty().size
                 SearchFilter.Genres -> categoryResultsByType["genre"].orEmpty().size
                 SearchFilter.Years -> categoryResultsByType["year"].orEmpty().size
             }
@@ -243,6 +246,7 @@ internal fun LibrarySearchSelectionToolbar(
     onRangeSelect: () -> Unit,
     onSelectAll: () -> Unit,
     onInvertSelection: () -> Unit,
+    onBatchEdit: () -> Unit,
     onPlayNext: () -> Unit,
     onAddToPlaylist: () -> Unit,
     onAddToQueue: () -> Unit,
@@ -267,6 +271,7 @@ internal fun LibrarySearchSelectionToolbar(
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        com.ella.music.ui.components.SelectionBatchEditButton(onClick = onBatchEdit)
         IconButton(onClick = onPlayNext) {
             com.ella.music.ui.components.PlayNextActionIcon(
                 contentDescription = stringResource(R.string.song_more_play_next),

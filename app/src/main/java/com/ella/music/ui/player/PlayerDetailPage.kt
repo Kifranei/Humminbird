@@ -73,12 +73,14 @@ internal fun PlayerDetailPage(
     onComposer: (String) -> Unit,
     onArranger: (String) -> Unit,
     onLyricist: (String) -> Unit,
+    onProducer: (String) -> Unit,
     onYear: (String) -> Unit,
     onGenre: (String) -> Unit,
     onNeteaseSong: () -> Unit,
     onNeteaseMusicVideo: () -> Unit,
     onNeteaseArtist: (String) -> Unit,
     onNeteaseAlbum: () -> Unit,
+    onNeteaseComments: () -> Unit = {},
     onNeteaseArtistWiki: (String) -> Unit = {},
     musicVideoEnabled: Boolean = false,
     musicVideoCustomFolders: List<String> = emptyList(),
@@ -98,6 +100,9 @@ internal fun PlayerDetailPage(
     }
     val lyricistNames = remember(tagInfo?.lyricist, song?.lyricist) {
         splitArtistNames(tagInfo?.lyricist?.ifBlank { song?.lyricist.orEmpty() }.orEmpty())
+    }
+    val producerNames = remember(tagInfo?.producer, song?.producer) {
+        splitArtistNames(tagInfo?.producer?.ifBlank { song?.producer.orEmpty() }.orEmpty())
     }
     val artistNames = remember(tagInfo?.artist, song?.artist, song?.title, parseFeaturedArtists) {
         val artistText = tagInfo?.artist?.ifBlank { song?.artist.orEmpty() }.orEmpty()
@@ -160,6 +165,16 @@ internal fun PlayerDetailPage(
                 name = name,
                 songs = effectiveLibrarySongs.filter { candidate ->
                     splitArtistNames(candidate.lyricist).any { it.equals(name, ignoreCase = true) }
+                }
+            )
+        }
+    }
+    val producerDetails = remember(producerNames, effectiveLibrarySongs) {
+        producerNames.map { name ->
+            PlayerDetailEntity(
+                name = name,
+                songs = effectiveLibrarySongs.filter { candidate ->
+                    splitArtistNames(candidate.producer).any { it.equals(name, ignoreCase = true) }
                 }
             )
         }
@@ -459,6 +474,20 @@ internal fun PlayerDetailPage(
                 }
             }
 
+            if (producerDetails.isNotEmpty()) {
+                item {
+                    PlayerDetailGroupCard(title = stringResource(R.string.player_detail_producer)) {
+                        producerDetails.forEach { detail ->
+                            PlayerDetailGroupedActionRow(
+                                title = detail.name,
+                                summary = detail.songs.stats().personSummary(),
+                                onClick = { onProducer(detail.name) }
+                            )
+                        }
+                    }
+                }
+            }
+
             if (neteaseInfo?.hasDecodedContent == true) {
                 item {
                     PlayerDetailGroupCard(title = stringResource(R.string.player_netease_section)) {
@@ -475,6 +504,11 @@ internal fun PlayerDetailPage(
                                     onClick = { com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.SongWiki, neteaseInfo.musicId) }
                                 )
                             }
+                            PlayerDetailGroupedActionRow(
+                                title = stringResource(R.string.netease_link_song_comments),
+                                summary = neteaseInfo.musicName.ifBlank { neteaseInfo.musicId },
+                                onClick = onNeteaseComments
+                            )
                         }
                         neteaseInfo.artists
                             .joinToString(" / ") { it.name.ifBlank { it.id } }
@@ -514,12 +548,22 @@ internal fun PlayerDetailPage(
                                 summary = neteaseInfo.albumName.ifBlank { neteaseInfo.albumId },
                                 onClick = onNeteaseAlbum
                             )
+                            PlayerDetailGroupedActionRow(
+                                title = stringResource(R.string.netease_link_album_comments),
+                                summary = neteaseInfo.albumName.ifBlank { neteaseInfo.albumId },
+                                onClick = { com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.AlbumComment, neteaseInfo.albumId) }
+                            )
                         }
                         neteaseInfo.mvId.takeIf(String::isNotBlank)?.let { mvId ->
                             PlayerDetailGroupedActionRow(
                                 title = stringResource(R.string.player_detail_music_video),
                                 summary = neteaseInfo.musicName.ifBlank { mvId },
                                 onClick = onNeteaseMusicVideo
+                            )
+                            PlayerDetailGroupedActionRow(
+                                title = stringResource(R.string.netease_link_mv_comments),
+                                summary = neteaseInfo.musicName.ifBlank { mvId },
+                                onClick = { com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.MusicVideoComment, mvId) }
                             )
                         }
                     }

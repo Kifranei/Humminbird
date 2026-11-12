@@ -105,6 +105,60 @@ internal class CatClawNeteaseClient(context: Context) {
         return reconcileNeteaseTracks(ids, byId)
     }
 
+    /** Daily recommended songs ("每日推荐"); one request, ready-to-play list. */
+    suspend fun dailyRecommendSongs(cookie: String): List<Song> = withContext(Dispatchers.IO) {
+        val root = request("/eapi/v1/discovery/recommend/songs", JSONObject(), cookie)
+        val data = root.optJSONObject("data") ?: root
+        val rows = data.optJSONArray("dailySongs")
+            ?: data.optJSONArray("recommend")
+            ?: JSONArray()
+        List(rows.length()) { rows.optJSONObject(it) }.mapNotNull(::parseNeteaseSong)
+    }
+
+    /** Daily recommended playlists; each is resolved with its full track list like user playlists. */
+    suspend fun dailyRecommendedPlaylists(account: NeteaseAccount): List<UserPlaylist> = withContext(Dispatchers.IO) {
+        val root = request("/eapi/v1/discovery/recommend/resource", JSONObject(), account.cookie)
+        val rows = root.optJSONArray("recommend") ?: JSONArray()
+        val result = mutableListOf<UserPlaylist>()
+        for (i in 0 until minOf(rows.length(), DAILY_PLAYLIST_LIMIT)) {
+            currentCoroutineContext().ensureActive()
+            val row = rows.optJSONObject(i) ?: continue
+            val id = row.optLong("id", 0).takeIf { it > 0 } ?: continue
+            val songs = runCatching { playlistSongs(id, account.cookie) }.getOrDefault(emptyList())
+            result += UserPlaylist(
+                id = "remote:netease:${account.userId}:daily:$id",
+                name = row.optString("name"),
+                songs = songs.map { it.toPlaylistSong() },
+                createdAt = row.optLong("createTime", System.currentTimeMillis()),
+                updatedAt = row.optLong("updateTime", System.currentTimeMillis()),
+                remoteSource = NETEASE_SOURCE,
+                remoteServerId = account.userId.toString(),
+                remotePlaylistId = "daily:$id",
+                remoteWritable = false
+            )
+        }
+        result
+    }
+
+    /** Heartbeat mode ("心动模式"): intelligent recommendations seeded by one song. */
+    suspend fun heartbeatFm(cookie: String, seedSongId: String, count: Int = 20): List<Song> = withContext(Dispatchers.IO) {
+        val params = JSONObject()
+            .put("id", seedSongId)
+            .put("count", count.coerceIn(1, 50))
+            .put("startTime", 0)
+            .put("type", "fromPlayOne")
+        val root = request("/eapi/playmode/intelligence/list", params, cookie)
+        val data = root.optJSONArray("data") ?: JSONArray()
+        List(data.length()) { i ->
+            val row = data.optJSONObject(i) ?: return@List null
+            parseNeteaseSong(row.optJSONObject("songInfo") ?: row)
+        }.filterNotNull()
+    }
+
+    private companion object {
+        const val DAILY_PLAYLIST_LIMIT = 20
+    }
+
     suspend fun songDetail(songId: String): JSONObject = withContext(Dispatchers.IO) {
         require((songId.toLongOrNull() ?: 0) > 0)
         request("/eapi/v3/song/detail", JSONObject().put("c", JSONArray()
@@ -180,6 +234,79 @@ internal class CatClawNeteaseClient(context: Context) {
         val root = request("/eapi/song/lyric/v1", JSONObject().put("id", songId).put("lv", -1)
             .put("tv", -1).put("rv", -1).put("yv", -1).put("ytv", -1).put("yrv", -1), cookie)
         parseNeteaseLyricsResponse(root)
+    }
+
+    /**
+     * Song comments (thread `R_SO_4_<id>`). First page: pageNo = 1, cursor = "". Later pages must
+     * pass back the previous page's [NeteaseCommentPage.sortType] and [NeteaseCommentPage.cursor].
+     */
+    suspend fun songComments(
+        songId: String,
+        sortType: Int = NeteaseCommentSort.Recommend.apiValue,
+        pageNo: Int = 1,
+        cursor: String = "",
+        pageSize: Int = 20,
+        resource: NeteaseCommentResource = NeteaseCommentResource.Song
+    ): NeteaseCommentPage = withContext(Dispatchers.IO) {
+        require((songId.toLongOrNull() ?: 0L) > 0L)
+        val page = pageNo.coerceAtLeast(1)
+        val root = request("/eapi/v2/resource/comments", JSONObject()
+            .put("threadId", resource.threadId(songId)).put("pageNo", page)
+            .put("pageSize", pageSize.coerceIn(1, 50)).put("sortType", sortType)
+            .put("cursor", if (page == 1) "" else cursor).put("showInner", true),
+            accounts.account.value.cookie)
+        parseNeteaseCommentPage(root, sortType, page)
+    }
+
+    /** Floor replies under [parentCommentId]; first page time = -1, then [NeteaseFloorPage.nextTime]. */
+    suspend fun commentFloor(
+        songId: String,
+        parentCommentId: Long,
+        time: Long = -1L,
+        limit: Int = 20,
+        resource: NeteaseCommentResource = NeteaseCommentResource.Song
+    ): NeteaseFloorPage = withContext(Dispatchers.IO) {
+        require((songId.toLongOrNull() ?: 0L) > 0L && parentCommentId > 0L)
+        val root = request("/eapi/resource/comment/floor/get", JSONObject()
+            .put("parentCommentId", parentCommentId).put("threadId", resource.threadId(songId))
+            .put("limit", limit.coerceIn(1, 50)).put("time", time), accounts.account.value.cookie)
+        parseNeteaseFloorPage(root)
+    }
+
+    /** The signed-in account, or null when comment writes would be answered with 301. */
+    fun signedInAccount(): NeteaseAccount? = accounts.account.value.takeIf { it.loggedIn }
+
+    /** Likes or unlikes a song comment; throws [NeteaseApiException] (301 = not signed in). */
+    suspend fun likeComment(songId: String, commentId: Long, like: Boolean, resource: NeteaseCommentResource = NeteaseCommentResource.Song) = withContext(Dispatchers.IO) {
+        require((songId.toLongOrNull() ?: 0L) > 0L && commentId > 0L)
+        val account = signedInAccount() ?: throw NeteaseApiException(301)
+        request(if (like) "/eapi/v1/comment/like" else "/eapi/v1/comment/unlike", JSONObject()
+            .put("threadId", resource.threadId(songId)).put("commentId", commentId), account.cookie)
+        Unit
+    }
+
+    /**
+     * Posts a top-level song comment, or a reply to [replyToCommentId] when it is > 0. The reply
+     * lands in floor [parentCommentId] (the top-level comment). Returns the created comment, or
+     * null when the server accepted it without echoing it back.
+     */
+    suspend fun postComment(
+        songId: String,
+        content: String,
+        replyToCommentId: Long = 0L,
+        parentCommentId: Long = 0L,
+        resource: NeteaseCommentResource = NeteaseCommentResource.Song
+    ): NeteaseComment? = withContext(Dispatchers.IO) {
+        val text = content.trim()
+        require((songId.toLongOrNull() ?: 0L) > 0L && text.isNotEmpty() && neteaseCommentLength(text) <= NETEASE_COMMENT_MAX_LENGTH)
+        val account = signedInAccount() ?: throw NeteaseApiException(301)
+        val params = JSONObject().put("threadId", resource.threadId(songId)).put("content", text)
+        val root = if (replyToCommentId > 0L) {
+            request("/eapi/resource/comments/reply", params.put("commentId", replyToCommentId), account.cookie)
+        } else {
+            request("/eapi/resource/comments/add", params, account.cookie)
+        }
+        parseNeteaseCreatedComment(root, if (replyToCommentId > 0L) parentCommentId else 0L)
     }
 
     suspend fun setFavorite(playlistId: String, songId: String, favorite: Boolean, cookie: String) = withContext(Dispatchers.IO) {

@@ -39,6 +39,9 @@ internal suspend fun restoreApplicationBackup(
         if (BackupType.PlaybackStats in selectedTypes) {
             root.optJSONObject("playback")?.let { PlaybackStatsStore.getInstance(appContext).restoreJson(it) }
         }
+        if (BackupType.AiConfigAndChat in selectedTypes) {
+            root.optJSONObject("aiChat")?.let { restoreAiChatBackupJson(appContext, it) }
+        }
         if (BackupType.LibraryAndScan in selectedTypes) {
             root.optJSONObject("artistDescriptions")?.let {
                 restoreDescriptionsFromJson(appContext, "artist_descriptions.properties", it)

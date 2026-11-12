@@ -78,6 +78,26 @@
         android:localeConfig="@xml/locale_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.Ella">
+        <service android:name=".video.VideoDownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <activity android:name=".VideoPlayerActivity" android:exported="true" android:label="@string/video_tools_title">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" /><data android:scheme="file" />
+                <data android:scheme="https" /><data android:scheme="http" />
+                <data android:mimeType="video/*" /><data android:mimeType="application/vnd.apple.mpegurl" />
+                <data android:mimeType="application/x-mpegURL" /><data android:mimeType="audio/x-mpegurl" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" /><data android:mimeType="video/*" />
+                <data android:mimeType="application/vnd.apple.mpegurl" /><data android:mimeType="application/x-mpegURL" />
+            </intent-filter>
+        </activity>
+        <service android:name=".data.netease.NeteaseDownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
+
         <meta-data android:name="lyricon_module" android:value="true" />
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
@@ -171,6 +191,40 @@
             android:theme="@style/Theme.Ella.Casting" />
 
         <activity
+            android:name=".ArtistImageSearchActivity"
+            android:label="@string/artist_image_search"
+            android:exported="true"
+            android:theme="@style/Theme.Ella.Casting">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="halcyon" android:host="artist-image-search" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".SpectrumViewerActivity"
+            android:label="@string/song_more_view_spectrum"
+            android:exported="true"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:theme="@style/Theme.Ella">
+            <intent-filter>
+                <action android:name="com.ella.music.action.VIEW_SPECTRUM" />
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="halcyon" android:host="spectrum" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name=".MusicVideoActivity"
             android:exported="false"
             android:launchMode="singleTop"
@@ -194,9 +248,24 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- Retired icon choices. Kept so an already-enabled alias can be switched back to the default icon. -->
         <activity-alias
             android:name="com.ella.music.AnimeLauncherAlias"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_anime"
+            android:label="@string/app_name"
+            android:banner="@drawable/tv_banner"
+            android:targetActivity="com.ella.music.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Upgrade bridge for existing launcher shortcuts; renders the default icon. -->
+        <activity-alias
+            android:name="com.ella.music.BlackHairLauncherAlias"
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
@@ -214,23 +283,7 @@
             android:name="com.ella.music.LoliLauncherAlias"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name"
-            android:banner="@drawable/tv_banner"
-            android:targetActivity="com.ella.music.MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <!-- Upgrade bridge for existing launcher shortcuts; renders the default icon. -->
-        <activity-alias
-            android:name="com.ella.music.BlackHairLauncherAlias"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher"
+            android:icon="@mipmap/ic_launcher_loli"
             android:label="@string/app_name"
             android:banner="@drawable/tv_banner"
             android:targetActivity="com.ella.music.MainActivity">
@@ -347,6 +400,11 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Live rendering of lyrics for Xiaomi Super Island" />
         </service>
+
+        <service
+            android:name=".mcp.McpServerService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false" />
 
         <service
             android:name=".web.WebMusicService"

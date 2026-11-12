@@ -85,6 +85,7 @@ internal fun ClassicSplitLandscapePlayer(
                         color = foreground.copy(alpha = 0.65f), maxLines = 1, softWrap = false,
                         modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE))
                 }
+                PlayerCommentHeaderAction(song)
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                     PlayerTransportIconButton(onClick = onPrevious, buttonSize = 42.dp) {
                         top.yukonga.miuix.kmp.basic.Icon(

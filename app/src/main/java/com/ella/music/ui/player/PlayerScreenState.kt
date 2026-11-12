@@ -21,6 +21,7 @@ internal class PlayerScreenUiState(
     createPlaylistSong: Song? = null,
     createPlaylistSongs: List<Song>? = null,
     ratingSheetSong: Song? = null,
+    aiSheetSong: Song? = null,
     deleteConfirmSong: Song? = null,
     tagEditorSong: Song? = null,
     tagEditorKind: TagEditorOptionKind = TagEditorOptionKind.Metadata,
@@ -29,7 +30,8 @@ internal class PlayerScreenUiState(
     dynamicCoverFailedPath: String? = null,
     lyricMatchSong: Song? = null,
     musicVideoVisible: Boolean = false,
-    musicVideoOwnerKey: String? = null
+    musicVideoOwnerKey: String? = null,
+    lyricTheaterExpanded: Boolean = false
 ) {
     var menuExpanded by mutableStateOf(menuExpanded)
     var dynamicCoverSheetSong by mutableStateOf(dynamicCoverSheetSong)
@@ -41,6 +43,7 @@ internal class PlayerScreenUiState(
     var createPlaylistSong by mutableStateOf(createPlaylistSong)
     var createPlaylistSongs by mutableStateOf(createPlaylistSongs)
     var ratingSheetSong by mutableStateOf(ratingSheetSong)
+    var aiSheetSong by mutableStateOf(aiSheetSong)
     var deleteConfirmSong by mutableStateOf(deleteConfirmSong)
     var tagEditorSong by mutableStateOf(tagEditorSong)
     var tagEditorKind by mutableStateOf(tagEditorKind)
@@ -52,6 +55,8 @@ internal class PlayerScreenUiState(
     var musicVideoVisible by mutableStateOf(musicVideoVisible)
     /** The song instance for which the MV switch was enabled. */
     var musicVideoOwnerKey by mutableStateOf(musicVideoOwnerKey)
+    /** Poster-wall lyric theater opened as a player action (#698). */
+    var lyricTheaterExpanded by mutableStateOf(lyricTheaterExpanded)
 }
 
 internal class PlayerLandscapeUiState(

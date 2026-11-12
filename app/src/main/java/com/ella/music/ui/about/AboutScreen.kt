@@ -65,8 +65,8 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.shader.isRenderEffectSupported
-import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.material.isRenderEffectSupported
+import top.yukonga.miuix.kmp.material.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -162,7 +162,7 @@ private fun AboutContent(
 ) {
     val backdrop = rememberLayerBackdrop()
     val isDark = colorScheme.background.luminance() < 0.5f
-    val blurEnable = isRenderEffectSupported()
+    val blurEnable by remember { mutableStateOf(isRenderEffectSupported()) }
     val shaderSupported = remember { isRuntimeShaderSupported() }
     val uriHandler = LocalUriHandler.current
 
@@ -355,6 +355,11 @@ private fun AboutContent(
                         onClick = { uriHandler.openUri("https://ffmpeg.org") },
                     )
                     BasicComponent(
+                        title = "FFmpegKit",
+                        summary = stringResource(R.string.about_summary_ffmpegkit),
+                        onClick = { uriHandler.openUri("https://github.com/arthenica/ffmpeg-kit") },
+                    )
+                    BasicComponent(
                         title = "Lyricon",
                         summary = stringResource(R.string.about_summary_lyricon),
                         onClick = { uriHandler.openUri("https://github.com/proify/lyricon") },
@@ -403,6 +408,11 @@ private fun AboutContent(
                         title = "RawS Music",
                         summary = stringResource(R.string.about_summary_raws_music),
                         onClick = { uriHandler.openUri("https://github.com/QFDY-GZC/RawS-Music") },
+                    )
+                    BasicComponent(
+                        title = "CatClawMusic · NetEase Plugin",
+                        summary = "MIT · kankejiang",
+                        onClick = { uriHandler.openUri("https://github.com/kankejiang/CatClawMusic.Plugins.Netease") },
                     )
                 }
             }

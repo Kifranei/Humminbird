@@ -268,7 +268,7 @@ fun saveLyricCardToPictures(
         put(MediaStore.Images.Media.DISPLAY_NAME, "humminbird_lyric_${System.currentTimeMillis()}.png")
         put(MediaStore.Images.Media.MIME_TYPE, "image/png")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Humminbird")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Halcyon")
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
     }
