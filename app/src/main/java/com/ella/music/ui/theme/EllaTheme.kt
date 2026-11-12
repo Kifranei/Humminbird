@@ -1,5 +1,6 @@
 package com.ella.music.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -112,12 +113,18 @@ fun EllaTheme(
         ).encode()
     }
     val effectiveFontWeight = appFontWeight ?: storedFontWeight
+    val appFontFamily = remember(context) {
+        bundledMiSansBoldFontFamily(context)
+    }
     val customAppFontFamily = remember(effectiveFontPath, effectiveFontWeight) {
         effectiveFontPath.toCustomAppFontFamily(effectiveFontWeight)
     }
-    val textStyles = remember(customAppFontFamily) {
+    val preferMiSansByDefault = remember {
+        !isXiaomiFamilyDevice()
+    }
+    val textStyles = remember(appFontFamily, customAppFontFamily, preferMiSansByDefault) {
         val defaults = defaultTextStyles()
-        val effectiveFontFamily = customAppFontFamily
+        val effectiveFontFamily = customAppFontFamily ?: appFontFamily.takeIf { preferMiSansByDefault }
         if (effectiveFontFamily == null) {
             return@remember defaults
         } else {
@@ -147,6 +154,16 @@ fun EllaTheme(
         CompositionLocalProvider(LocalDensity provides adjustedDensity) {
             content()
         }
+    }
+}
+
+private fun isXiaomiFamilyDevice(): Boolean {
+    val brand = Build.BRAND.orEmpty()
+    val manufacturer = Build.MANUFACTURER.orEmpty()
+    return listOf(brand, manufacturer).any { value ->
+        value.contains("xiaomi", ignoreCase = true) ||
+            value.contains("redmi", ignoreCase = true) ||
+            value.contains("poco", ignoreCase = true)
     }
 }
 

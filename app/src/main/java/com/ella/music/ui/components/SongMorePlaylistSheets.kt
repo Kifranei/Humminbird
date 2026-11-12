@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -42,7 +43,6 @@ import com.ella.music.data.model.playlistIdentityKey
 import com.ella.music.data.repository.mediaStoreAlbumArtUri
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.ui.focus.focusRequester
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -151,8 +151,7 @@ fun AddToPlaylistSheet(
                         ),
                         selectedMode = sortMode,
                         onSelect = { sortMode = it }
-                    ),
-                    alignment = PopupPositionProvider.Align.Start
+                    )
                 ) {
                     Box(
                         modifier = Modifier
@@ -400,11 +399,11 @@ fun CreatePlaylistAndAddSheet(
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) {
-        delay(220L)
-        focusRequester.requestFocus()
+        delay(180L)
+        runCatching { focusRequester.requestFocus() }
         keyboardController?.show()
     }
-    EllaMiuixBottomSheet(
+    EllaMiuixDialog(
         show = true,
         title = stringResource(R.string.playlist_create_title),
         onDismissRequest = onDismiss
@@ -424,7 +423,7 @@ fun CreatePlaylistAndAddSheet(
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
             )
-            EllaMiuixSheetActions(
+            EllaMiuixDialogActions(
                 cancelText = stringResource(R.string.common_cancel),
                 confirmText = stringResource(R.string.common_create),
                 onCancel = onDismiss,

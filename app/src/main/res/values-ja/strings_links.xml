@@ -5,6 +5,7 @@
     <string name="netease_link_target_honor">NetEase Cloud Music（Honor 版）</string>
     <string name="netease_link_target_custom">カスタム</string>
     <string name="netease_link_open_failed">リンクを開けません</string>
+    <string name="netease_link_song_comments">曲のコメント</string>
     <string name="netease_link_artist_wiki">アーティスト百科</string>
     <string name="netease_link_mv_open_mode">NetEase MV の開き方</string>
     <string name="netease_link_mv_open_mode_summary">曲に NetEase MV 情報がある場合、内蔵プレーヤーで再生するか外部で開くかを選びます</string>

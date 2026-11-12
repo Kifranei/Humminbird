@@ -18,7 +18,7 @@ class LyricShareExportTest {
   val custom=original.copy(brandText="Aurora Music")
   val originalLayout=calculateLyricShareLayout(original)
   val customLayout=calculateLyricShareLayout(custom)
-  assertEquals("♫ Humminbird",originalLayout.footerText)
+  assertEquals("♫ Halcyon",originalLayout.footerText)
   assertEquals("♫ Aurora Music",customLayout.footerText)
   val a=renderLyricShareCardBitmap(original,originalLayout,null)
   val b=renderLyricShareCardBitmap(custom,customLayout,null)
@@ -60,7 +60,7 @@ class LyricShareExportTest {
   for(source in listOf("","netease")) {
    val song=com.ella.music.data.model.Song(1,"Title","Artist","Album",1,1000,"/test.flac","test.flac",onlineSource=source)
    val content=buildLyricShareCardContent(context,song,listOf(line),emptyList(),"","",style=LyricShareCardStyle.NetEase)
-   assertEquals("Humminbird",content.brandText)
+   assertEquals("Halcyon",content.brandText)
    val custom=buildLyricShareCardContent(context,song,listOf(line),emptyList(),""," @My player ",style=LyricShareCardStyle.NetEase)
    assertEquals("My player",custom.brandText)
   }

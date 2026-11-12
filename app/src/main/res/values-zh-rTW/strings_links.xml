@@ -5,6 +5,7 @@
     <string name="netease_link_target_honor">網易雲音樂榮耀定製版</string>
     <string name="netease_link_target_custom">自訂</string>
     <string name="netease_link_open_failed">無法開啟連結</string>
+    <string name="netease_link_song_comments">歌曲評論</string>
     <string name="netease_link_artist_wiki">藝人百科</string>
     <string name="netease_link_mv_open_mode">網易雲 MV 開啟方式</string>
     <string name="netease_link_mv_open_mode_summary">歌曲帶有網易雲 MV 資訊時，選擇以內建播放器線上播放或外部開啟</string>

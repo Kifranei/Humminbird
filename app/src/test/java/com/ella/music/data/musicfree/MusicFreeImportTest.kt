@@ -19,6 +19,13 @@ import java.io.File
 import java.io.ByteArrayOutputStream
 import java.net.InetSocketAddress
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import com.sun.net.httpserver.HttpServer
 import android.net.Uri
 import android.os.Bundle
@@ -30,7 +37,18 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.common.Timeline
+import androidx.media3.exoplayer.analytics.PlayerId
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import android.os.Looper
+import org.robolectric.Shadows
+import com.ella.music.data.netease.NeteasePlaybackMediaSourceFactory
+import com.ella.music.data.netease.NeteasePlaybackResolver
+import com.ella.music.data.netease.NeteasePlaybackProvider
 import com.ella.music.player.toMediaItemExtras
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import java.io.IOException
 import okhttp3.OkHttpClient
 
@@ -318,7 +336,62 @@ class MusicFreeImportTest {
         } finally { server.stop(0) }
     }
 
-    @Test fun removedOnlineSourcesAreRejectedAndPrivateLibrariesKeepTheFallbackTransport() {
+    @Test fun neteaseDeferredHlsKeepsTheAccountItemAndRestoresItsScopedTransport() {
+        val seen = CopyOnWriteArrayList<String?>()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/master.m3u8") { exchange ->
+            seen += exchange.requestHeaders.getFirst("X-Source-Key")
+            val bytes = "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:1,\nsegment.ts\n#EXT-X-ENDLIST\n".toByteArray()
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        val context = RuntimeEnvironment.getApplication()
+        val holder = MusicFreeStreamHeaders()
+        val song = trackWithPreview().song.copy(id = -42L, onlineSource = "netease", onlineId = "42",
+            path = "halcyon-netease://song/42", onlineLyrics = "account lyrics")
+        val logicalItem = MediaItem.Builder().setUri(song.path).setMediaId("queue-occurrence:42")
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(song.title).setArtist(song.artist)
+                .setExtras(song.toMediaItemExtras()).build()).build()
+        var resolutions = 0
+        val resolver = NeteasePlaybackResolver(
+            provider = { NeteasePlaybackProvider.MusicFree }, lxSource = { null },
+            musicFreeSource = { source() }, resolveLx = { _, _ -> error("Unexpected LX resolver") },
+            resolveMusicFree = { original, _ ->
+                resolutions++
+                original.copy(path = holder.register("http://127.0.0.1:${server.address.port}/master.m3u8",
+                    JSONObject().put("headers", JSONObject().put("X-Source-Key", "fixture"))), mimeType = MimeTypes.APPLICATION_M3U8)
+            }, message = { "fixture failure" }
+        )
+        val fallback = MusicFreeMediaSourceFactory(context,
+            DefaultMediaSourceFactory(DefaultDataSource.Factory(context)), OkHttpClient(), holder)
+        val factory = NeteasePlaybackMediaSourceFactory(context, fallback, resolver)
+        try {
+            val first = factory.createMediaSource(logicalItem)
+            assertEquals(0, resolutions)
+            for (source in listOf(first, factory.createMediaSource(first.mediaItem))) {
+                var timeline: Timeline? = null
+                val caller = MediaSource.MediaSourceCaller { _, updated -> timeline = updated }
+                source.prepareSource(caller, PlayerId.UNSET, DefaultBandwidthMeter.Builder(context).build())
+                try {
+                    pumpMainUntil { source.maybeThrowSourceInfoRefreshError(); timeline != null }
+                    assertEquals(logicalItem, source.mediaItem)
+                    assertEquals(logicalItem, requireNotNull(timeline).getWindow(0, Timeline.Window()).mediaItem)
+                    val metadataOnly = logicalItem.buildUpon().setMediaMetadata(logicalItem.mediaMetadata.buildUpon().setTitle("Updated account title").build()).build()
+                    assertTrue(source.canUpdateMediaItem(metadataOnly))
+                    assertFalse(source.canUpdateMediaItem(logicalItem.buildUpon().setTag("resolver-refresh").build()))
+                    assertFalse(source.canUpdateMediaItem(logicalItem.buildUpon().setClippingConfiguration(
+                        MediaItem.ClippingConfiguration.Builder().setStartPositionMs(1000).build()).build()))
+                    source.updateMediaItem(metadataOnly)
+                    assertEquals("Updated account title", requireNotNull(timeline).getWindow(0, Timeline.Window()).mediaItem.mediaMetadata.title)
+                } finally { source.releaseSource(caller) }
+            }
+            assertEquals(2, resolutions)
+            assertEquals(listOf("fixture", "fixture"), seen.toList())
+        } finally { server.stop(0) }
+    }
+
+    @Test fun publicPluginStreamsUseTheirOwnRedirectTransportAndKeepPrivateLibrariesOnTheFallback() {
         val context = RuntimeEnvironment.getApplication()
         val seenAuth = CopyOnWriteArrayList<String?>()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -337,19 +410,20 @@ class MusicFreeImportTest {
         server.start()
         try {
             val url = "http://127.0.0.1:${server.address.port}/redirect"
-            val fallback = DefaultDataSource.Factory(context)
-            val factory = MusicFreeMediaSourceFactory(context, DefaultMediaSourceFactory(fallback), OkHttpClient(), MusicFreeStreamHeaders())
-            for (source in listOf("qs", "sd", "wy", "musicfree:Test", "netease")) {
+            val factory = MusicFreeMediaSourceFactory(context,
+                DefaultMediaSourceFactory(DefaultDataSource.Factory(context)), OkHttpClient(), MusicFreeStreamHeaders())
+            for (source in listOf("qs", "sd", "wy", "musicfree:Test", "netease", "webdav")) {
                 val extras = trackWithPreview().song.copy(path = url, onlineSource = source).toMediaItemExtras()
-                val item = MediaItem.Builder().setUri(url).setMediaMetadata(MediaMetadata.Builder().setExtras(extras).build()).build()
-                assertTrue(runCatching { factory.scopedSource(item) }.exceptionOrNull() is IOException)
-            }
-            assertTrue(seenAuth.isEmpty())
-            for (source in listOf("webdav", "navidrome", "opensubsonic", "emby")) {
-                val item = MediaItem.Builder().setUri(url).setMediaMetadata(MediaMetadata.Builder()
-                    .setExtras(trackWithPreview().song.copy(path = url, onlineSource = source).toMediaItemExtras()).build()).build()
-                assertNull(factory.scopedSource(item))
-                val dataSource = fallback.createDataSource()
+                if (source == "netease") extras.putBoolean(EXTRA_PLUGIN_TRANSPORT, true)
+                val item = MediaItem.Builder().setUri(url)
+                    .setMediaMetadata(MediaMetadata.Builder().setExtras(extras).build()).build()
+                val scoped = factory.scopedSource(item)
+                if (source == "webdav") {
+                    assertNull(scoped)
+                    continue
+                }
+                assertEquals(item, requireNotNull(scoped).item)
+                val dataSource = scoped.dataSourceFactory.createDataSource()
                 try {
                     dataSource.open(DataSpec(Uri.parse(url)))
                     val result = ByteArrayOutputStream()
@@ -360,16 +434,275 @@ class MusicFreeImportTest {
                         result.write(buffer, 0, count)
                     }
                     assertEquals("audio fixture", result.toString("UTF-8"))
+                    assertEquals("/audio", dataSource.uri?.path)
                 } finally { dataSource.close() }
+                val local = item.buildUpon().setUri("file:///fixture/song.m4a").build()
+                assertNull(factory.scopedSource(local))
+                val credentialed = item.buildUpon().setUri("https://user:pass@audio.example.test/song.m4a").build()
+                assertTrue(runCatching { factory.scopedSource(credentialed) }.exceptionOrNull() is IOException)
             }
-            assertEquals(List(8) { null }, seenAuth.toList())
+            assertEquals(List(10) { null }, seenAuth.toList())
+            val official = MediaItem.Builder().setUri(url).setMediaMetadata(MediaMetadata.Builder()
+                .setExtras(trackWithPreview().song.copy(onlineSource = "netease").toMediaItemExtras()).build()).build()
+            assertNull(factory.scopedSource(official))
         } finally { server.stop(0) }
+    }
+
+    @Test fun releasingANeteaseDeferredSourceCancelsItsPendingPluginResolution() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        val context = RuntimeEnvironment.getApplication()
+        val resolver = NeteasePlaybackResolver(
+            provider = { NeteasePlaybackProvider.MusicFree }, lxSource = { null }, musicFreeSource = { source() },
+            resolveLx = { _, _ -> error("Unexpected LX resolver") }, resolveMusicFree = { _, _ ->
+                started.complete(Unit)
+                try { awaitCancellation() } finally { cancelled.complete(Unit) }
+            }, message = { "fixture failure" }
+        )
+        val factory = NeteasePlaybackMediaSourceFactory(context,
+            DefaultMediaSourceFactory(DefaultDataSource.Factory(context)), resolver)
+        val source = factory.createMediaSource(MediaItem.fromUri("halcyon-netease://song/42"))
+        val caller = MediaSource.MediaSourceCaller { _, _ -> fail("Cancelled resolution must not publish a timeline") }
+        source.prepareSource(caller, PlayerId.UNSET, DefaultBandwidthMeter.Builder(context).build())
+        pumpMainUntil { started.isCompleted }
+        source.releaseSource(caller)
+        withTimeout(5000) { cancelled.await() }
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("halcyon-netease://song/42", source.mediaItem.localConfiguration?.uri.toString())
+    }
+
+    @Test fun neteaseDeferredPluginErrorIsReportedWithoutCreatingAnOfficialChildSource() {
+        val context = RuntimeEnvironment.getApplication()
+        val failure = IOException("Fixture plugin failure")
+        var childCreations = 0
+        val default = DefaultMediaSourceFactory(DefaultDataSource.Factory(context))
+        val fallback = object : MediaSource.Factory by default {
+            override fun createMediaSource(mediaItem: MediaItem): MediaSource { childCreations++; return default.createMediaSource(mediaItem) }
+        }
+        val resolver = NeteasePlaybackResolver(
+            provider = { NeteasePlaybackProvider.Lx }, lxSource = { com.ella.music.data.LxSourceConfig("lx", "", "LX", "script") },
+            musicFreeSource = { null }, resolveLx = { _, _ -> throw failure },
+            resolveMusicFree = { _, _ -> error("Unexpected MusicFree resolver") }, message = { "fixture failure" }
+        )
+        val source = NeteasePlaybackMediaSourceFactory(context, fallback, resolver)
+            .createMediaSource(MediaItem.fromUri("halcyon-netease://song/42"))
+        val caller = MediaSource.MediaSourceCaller { _, _ -> fail("Failed plugin must not publish an official timeline") }
+        source.prepareSource(caller, PlayerId.UNSET, DefaultBandwidthMeter.Builder(context).build())
+        try {
+            var reported: Throwable? = null
+            pumpMainUntil {
+                reported = runCatching { source.maybeThrowSourceInfoRefreshError() }.exceptionOrNull()
+                reported != null
+            }
+            // withContext's stack-trace recovery may copy an IOException across dispatchers.
+            // Verify the actual player-facing error and its origin, not reference identity.
+            assertTrue(reported is IOException)
+            assertEquals(failure.message, reported?.message)
+            assertTrue(generateSequence(reported) { it.cause }.any { it === failure })
+            assertEquals(0, childCreations)
+        } finally { source.releaseSource(caller) }
+    }
+
+    @Test fun scopedDownloadUsesTheRealNetworkChainAndStripsHeadersOnCrossOriginRedirects() = runBlocking {
+        val seen = CopyOnWriteArrayList<String?>()
+        val audio = byteArrayOf(1, 2, 3, 4, 5)
+        val second = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        second.createContext("/audio.mp3") { exchange ->
+            seen += exchange.requestHeaders.getFirst("Authorization")
+            exchange.responseHeaders.set("Content-Type", "audio/mpeg")
+            exchange.sendResponseHeaders(200, audio.size.toLong())
+            exchange.responseBody.use { it.write(audio) }
+        }
+        val first = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        first.createContext("/audio.mp3") { exchange ->
+            seen += exchange.requestHeaders.getFirst("Authorization")
+            exchange.responseHeaders.set("Location", "http://127.0.0.1:${second.address.port}/audio.mp3")
+            exchange.sendResponseHeaders(302, -1)
+            exchange.close()
+        }
+        first.start()
+        second.start()
+        val file = File.createTempFile("musicfree-download-", ".mp3")
+        try {
+            val holder = MusicFreeStreamHeaders()
+            val marked = holder.register("http://127.0.0.1:${first.address.port}/audio.mp3", JSONObject()
+                .put("headers", JSONObject().put("Authorization", "Bearer fixture")))
+            MusicFreeStreamDownload.transfer(marked, file, holder, OkHttpClient())
+            assertArrayEquals(audio, file.readBytes())
+            assertEquals(listOf("Bearer fixture", null), seen.toList())
+        } finally {
+            file.delete()
+            first.stop(0)
+            second.stop(0)
+        }
+    }
+
+    @Test fun neteaseMusicFreeResolutionUsesTheAccountIdAndSkipsPluginLyrics() = runBlocking {
+        val context = RuntimeEnvironment.getApplication()
+        var lyricCalls = 0
+        var raw: JSONObject? = null
+        val plugin = MusicFreePluginConfig("wy", "", "网易云", "module.exports={platform:'网易云',getMediaSource:async()=>({url:'https://audio.test/play'})}")
+        val original = trackWithPreview().song.copy(id = -42, onlineSource = "netease", onlineId = "42",
+            path = "halcyon-netease://song/42", onlineLyrics = "account lyrics", onlineLyricTranslation = "account translation")
+        val service = MusicFreePluginService(context, mediaSourceResolver = { _, item, _ ->
+            raw = JSONObject(item)
+            JSONObject().put("url", "https://audio.test/full.flac").put("headers", JSONObject().put("X-Source-Key", "fixture"))
+        }, lyricResolver = { _, _ -> lyricCalls++; JSONObject().put("lyric", "plugin lyrics") })
+        val resolved = service.resolveNeteaseSong(original, plugin)
+        assertEquals("42", requireNotNull(raw).getString("id"))
+        assertFalse(requireNotNull(raw).has("url"))
+        assertFalse(requireNotNull(raw).has("cookie"))
+        assertEquals(0, lyricCalls)
+        assertEquals("", resolved.onlineLyrics)
+        assertEquals("netease", resolved.onlineSource)
+        assertEquals("audio/flac", resolved.mimeType)
+        assertTrue(MusicFreeStreamHeaders.getInstance(context).isMarked(resolved.path))
+    }
+
+    @Test fun scopedAndUnscopedDownloadsUseRealContainerBytesInsteadOfMisleadingMp3Hints() = runBlocking {
+        val flac = "fLaC".toByteArray() + ByteArray(60)
+        val mp4 = byteArrayOf(0, 0, 0, 24) + "ftypM4A ".toByteArray() + ByteArray(52)
+        val payloads = mapOf("flac" to flac, "m4a" to mp4)
+        val ranges = CopyOnWriteArrayList<String?>()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            val bytes = requireNotNull(payloads[exchange.requestURI.rawQuery])
+            ranges += exchange.requestHeaders.getFirst("Range")
+            exchange.responseHeaders.set("Content-Type", "audio/mpeg")
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            for ((extension, bytes) in payloads) {
+                val url = "http://127.0.0.1:${server.address.port}/preview.mp3?$extension"
+                val file = File.createTempFile("musicfree-format-", ".part")
+                try {
+                    val holder = MusicFreeStreamHeaders()
+                    val marked = holder.register(url, JSONObject().put("headers", JSONObject().put("X-Source-Key", "fixture")))
+                    val format = MusicFreeStreamDownload.transfer(marked, file, holder, OkHttpClient(), "Misleading.mp3", "audio/mpeg")
+                    assertArrayEquals(bytes, file.readBytes())
+                    assertEquals(extension, format.extension)
+                    assertEquals(if (extension == "flac") "audio/flac" else "audio/mp4", format.mimeType)
+                    assertEquals("Misleading.$extension", MusicFreeStreamDownload.fileNameForFormat("Misleading.mp3", format))
+                    assertEquals(format, MusicFreeStreamDownload.probeFormat(url, "Misleading.mp3", "audio/mpeg"))
+                } finally { file.delete() }
+            }
+            assertEquals(listOf(null, "bytes=0-511", null, "bytes=0-511"), ranges.toList())
+        } finally { server.stop(0) }
+    }
+
+    @Test fun downloadsAccept206OnlyWhenTheRangeAndBodyAreTheCompleteRepresentation() = runBlocking {
+        val audio = byteArrayOf(1, 2, 3)
+        val ranges = linkedMapOf(
+            "partial" to "bytes 0-2/100", "offset" to "bytes 1-3/4",
+            "unknown" to "bytes 0-2/*", "missing" to null,
+            "short" to "bytes 0-3/4", "overflow" to "bytes 0-2/999999999999999999999",
+            "full" to "bytes 0-2/3"
+        )
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            ranges[exchange.requestURI.path.removePrefix("/")]?.let {
+                exchange.responseHeaders.set("Content-Range", it)
+            }
+            exchange.responseHeaders.set("Content-Type", "audio/mpeg")
+            exchange.sendResponseHeaders(206, audio.size.toLong())
+            exchange.responseBody.use { it.write(audio) }
+        }
+        server.start()
+        try {
+            for (name in ranges.keys) {
+                val file = File.createTempFile("musicfree-range-", ".part")
+                try {
+                    val holder = MusicFreeStreamHeaders()
+                    val marked = holder.register("http://127.0.0.1:${server.address.port}/$name", JSONObject()
+                        .put("headers", JSONObject().put("X-Source-Key", "fixture")))
+                    val failure = runCatching {
+                        MusicFreeStreamDownload.transfer(marked, file, holder, OkHttpClient())
+                    }.exceptionOrNull()
+                    if (name == "full") {
+                        assertNull(failure)
+                        assertArrayEquals(audio, file.readBytes())
+                    } else {
+                        assertTrue("$name must reject incomplete or unspecified ranges", failure is java.io.IOException)
+                        assertFalse("$name must remove the partial file", file.exists())
+                    }
+                } finally { file.delete() }
+            }
+        } finally { server.stop(0) }
+    }
+
+    @Test fun downloadsSniffPlaylistsEvenWhenTheUrlAndContentTypeLookLikeGenericAudio() = runBlocking {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/play") { exchange ->
+            val bytes = "\uFEFF \r\n#EXTM3U\n#EXTINF:1,\nsegment.ts\n".toByteArray(Charsets.UTF_8)
+            val type = if (exchange.requestURI.rawQuery.contains("plain")) "text/plain" else "application/octet-stream"
+            exchange.responseHeaders.set("Content-Type", type)
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            for (type in listOf("plain", "binary")) {
+                val file = File.createTempFile("musicfree-playlist-", ".mp3")
+                try {
+                    val holder = MusicFreeStreamHeaders()
+                    val marked = holder.register("http://127.0.0.1:${server.address.port}/play?id=$type", JSONObject()
+                        .put("headers", JSONObject().put("X-Source-Key", "fixture")))
+                    val failure = runCatching {
+                        MusicFreeStreamDownload.transfer(marked, file, holder, OkHttpClient())
+                    }.exceptionOrNull()
+                    assertTrue(failure is java.io.IOException)
+                    assertFalse(file.exists())
+                } finally { file.delete() }
+            }
+        } finally { server.stop(0) }
+    }
+
+    @Test fun cancellingABlockedDownloadClosesTheActiveCallAndRemovesItsPartialFile() = runBlocking {
+        val bodyStarted = CountDownLatch(1)
+        val releaseServer = CountDownLatch(1)
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/audio.mp3") { exchange ->
+            exchange.sendResponseHeaders(200, 1_024L)
+            try {
+                exchange.responseBody.write(byteArrayOf(1))
+                exchange.responseBody.flush()
+                bodyStarted.countDown()
+                releaseServer.await(10, TimeUnit.SECONDS)
+            } finally { exchange.close() }
+        }
+        server.start()
+        val file = File.createTempFile("musicfree-cancel-", ".part")
+        val holder = MusicFreeStreamHeaders()
+        val marked = holder.register("http://127.0.0.1:${server.address.port}/audio.mp3", JSONObject()
+            .put("headers", JSONObject().put("X-Source-Key", "fixture")))
+        val download = launch { MusicFreeStreamDownload.transfer(marked, file, holder, OkHttpClient()) }
+        try {
+            assertTrue(withContext(Dispatchers.IO) { bodyStarted.await(5, TimeUnit.SECONDS) })
+            withTimeout(5_000L) { download.cancelAndJoin() }
+            assertFalse(file.exists())
+        } finally {
+            download.cancel()
+            releaseServer.countDown()
+            server.stop(0)
+            file.delete()
+        }
     }
 
     private fun source() = MusicFreePluginConfig(
         id = "test-source", url = "", name = "Test Source",
         script = "module.exports={platform:'Test Source',getMediaSource:async()=>({url:'https://audio.example.test/resolved.mp3'})}"
     )
+
+    private fun pumpMainUntil(condition: () -> Boolean) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (!condition()) {
+            assertTrue("Timed out waiting for deferred source preparation", System.nanoTime() < deadline)
+            Shadows.shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
+    }
 
     private fun trackWithPreview(): MusicFreeOnlineSong {
         val preview = "https://audio.example.test/preview.mp3"

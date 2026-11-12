@@ -1,13 +1,16 @@
 package com.ella.music.ui.player
 
 import android.app.Activity
+import android.app.DownloadManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Typeface
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.SystemClock
 import android.view.View
 import androidx.compose.runtime.Composable
@@ -26,6 +29,7 @@ import com.ella.music.data.SettingsManager
 import com.ella.music.data.audioQualitySummary
 import com.ella.music.data.normalizedAudioFormat
 import com.ella.music.data.model.AudioInfo
+import com.ella.music.data.model.Song
 import com.ella.music.ui.components.loadAndroidTypeface
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
@@ -182,7 +186,20 @@ internal fun String.toPlayerLyricTypeface(weight: Int): Typeface? {
     }.getOrNull()
 }
 
-internal fun ensureBundledMiSansBoldPath(context: Context): String = ""
+internal fun ensureBundledMiSansBoldPath(context: Context): String {
+    val bundledDir = File(context.filesDir, "lyric_builtin_fonts").apply { mkdirs() }
+    val target = File(bundledDir, "MiSans-Bold.ttf")
+    if (!target.exists() || target.length() <= 0L) {
+        runCatching {
+            context.assets.open("fonts/MiSans-Bold.ttf").use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+        }.onFailure {
+            if (target.exists() && target.length() <= 0L) target.delete()
+        }
+    }
+    return target.takeIf { it.exists() && it.canRead() && it.length() > 0L }?.absolutePath.orEmpty()
+}
 
 internal tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
@@ -307,7 +324,20 @@ internal fun rememberBluetoothOutputName(): String? {
     return outputName
 }
 
-internal fun ensureBundledInterPath(context: Context): String = ""
+internal fun ensureBundledInterPath(context: Context): String {
+    val bundledDir = File(context.filesDir, "lyric_builtin_fonts").apply { mkdirs() }
+    val target = File(bundledDir, "Inter-Bold.ttf")
+    if (!target.exists() || target.length() <= 0L) {
+        runCatching {
+            context.assets.open("fonts/Inter-Bold.ttf").use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+        }.onFailure {
+            if (target.exists() && target.length() <= 0L) target.delete()
+        }
+    }
+    return target.takeIf { it.exists() && it.canRead() && it.length() > 0L }?.absolutePath.orEmpty()
+}
 
 private fun Context.currentOutputDisplayName(): String? {
     val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
@@ -518,3 +548,20 @@ internal fun AudioInfo.isHiResLogoTrack(): Boolean {
     return fmt in setOf("FLAC", "ALAC", "WAV", "APE", "DSD") && sampleRate >= 48_000
 }
 
+internal fun enqueuePlayerDownload(context: Context, song: Song) {
+    val fileName = song.fileName.ifBlank { "${song.title}-${song.artist}.mp3" }
+        .replace(Regex("""[\\/:*?"<>|]"""), "_")
+        .replace(Regex("""\s+"""), " ")
+        .trim()
+        .ifBlank { "Halcyon.mp3" }
+    val request = DownloadManager.Request(Uri.parse(song.path))
+        .setTitle(fileName)
+        .setDescription("${song.title} - ${song.artist}")
+        .setMimeType(song.mimeType.ifBlank { "audio/*" })
+        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "Halcyon/$fileName")
+        .setAllowedOverMetered(true)
+        .setAllowedOverRoaming(true)
+    val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+    manager.enqueue(request)
+}

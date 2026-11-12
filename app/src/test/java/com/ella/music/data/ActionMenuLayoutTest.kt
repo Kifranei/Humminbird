@@ -11,6 +11,33 @@ import org.junit.Test
 
 class ActionMenuLayoutTest {
     private val defaults = listOf("a", "b", "c")
+    @Test fun songWikiMigratesBesideSongInfoAndCanBeReorderedAndHidden() {
+        for (defaults in listOf(ActionMenuIds.listDefaults, ActionMenuIds.playerActionMenuDefaults)) {
+            val previous = defaults.filterNot { it == ActionMenuIds.SONG_WIKI }.reversed()
+            val layout = ActionMenuLayout.parse(previous.joinToString(",") + ";", defaults)
+            assertEquals(previous, layout.order.filterNot { it == ActionMenuIds.SONG_WIKI })
+            assertEquals(layout.order.indexOf(ActionMenuIds.INFO) + 1, layout.order.indexOf(ActionMenuIds.SONG_WIKI))
+            val custom = ActionMenuLayout(listOf(ActionMenuIds.SONG_WIKI) + previous, setOf(ActionMenuIds.SONG_WIKI))
+            val restored = ActionMenuLayout.parse(custom.serialize(), defaults)
+            assertEquals(ActionMenuIds.SONG_WIKI, restored.order.first())
+            assertFalse(ActionMenuIds.SONG_WIKI in restored.visibleIds(defaults))
+        }
+    }
+
+    @Test
+    fun `comment rows stay configurable for both player and song list menus`() {
+        listOf(ActionMenuIds.playerActionMenuDefaults, ActionMenuIds.listDefaults).forEach { defaults ->
+            val comments = setOf(ActionMenuIds.SONG_COMMENTS, ActionMenuIds.MV_COMMENTS)
+            assertTrue(defaults.containsAll(comments))
+            assertTrue(ActionMenuIds.VIEW_MV in defaults)
+            val saved = defaults.filterNot { it in comments }.reversed()
+            val layout = ActionMenuLayout.parse(saved.joinToString(",") + ";" + comments.joinToString(","), defaults)
+            assertEquals(saved, layout.order.filterNot { it in comments })
+            assertTrue(layout.visibleIds(defaults).none { it in comments })
+            assertEquals(layout, ActionMenuLayout.parse(layout.serialize(), defaults))
+        }
+    }
+
     @Test
     fun `lyric sharing is configurable and stays hidden after editing player menu`() {
         val defaults = ActionMenuIds.playerActionMenuDefaults
@@ -74,6 +101,24 @@ class ActionMenuLayoutTest {
     }
 
     @Test
+    fun songInfoCreditsLandAfterLyricistOnAnOlderLayout() {
+        val added = setOf(
+            ActionMenuIds.SONG_INFO_PRODUCER,
+            ActionMenuIds.SONG_INFO_COPYRIGHT,
+            ActionMenuIds.SONG_INFO_LANGUAGE,
+            ActionMenuIds.SONG_INFO_CUSTOM
+        )
+        val saved = ActionMenuIds.songInfoDefaults.filterNot { it in added }
+        val layout = ActionMenuLayout.parse(saved.joinToString(",") + ";", ActionMenuIds.songInfoDefaults)
+        val order = layout.order
+        assertEquals(order.indexOf(ActionMenuIds.SONG_INFO_LYRICIST) + 1, order.indexOf(ActionMenuIds.SONG_INFO_PRODUCER))
+        assertEquals(order.indexOf(ActionMenuIds.SONG_INFO_PRODUCER) + 1, order.indexOf(ActionMenuIds.SONG_INFO_COPYRIGHT))
+        assertEquals(order.indexOf(ActionMenuIds.SONG_INFO_COPYRIGHT) + 1, order.indexOf(ActionMenuIds.SONG_INFO_LANGUAGE))
+        assertEquals(order.indexOf(ActionMenuIds.SONG_INFO_LANGUAGE) + 1, order.indexOf(ActionMenuIds.SONG_INFO_CUSTOM))
+        assertTrue(added.all { it in layout.visibleIds(ActionMenuIds.songInfoDefaults) })
+    }
+
+    @Test
     fun songModifiedTimeParsesTheDisplayedFormat() {
         val parsed = parseSongDateTime("2026-08-26 06:30:15")
         assertTrue(parsed != null && parsed > 0L)
@@ -113,9 +158,9 @@ class ActionMenuLayoutTest {
             playerDefaults
         )
 
-        // Existing items keep the user's order; the new id is visible and sits after KEEP_SCREEN_ON.
+        // Existing items keep the user's order; the new id is visible and sits after DOWNLOAD_MV.
         assertEquals(saved, layout.order.filterNot { it == ActionMenuIds.VIEW_MV })
-        assertEquals(layout.order.indexOf(ActionMenuIds.KEEP_SCREEN_ON) + 1, layout.order.indexOf(ActionMenuIds.VIEW_MV))
+        assertEquals(layout.order.indexOf(ActionMenuIds.DOWNLOAD_MV) + 1, layout.order.indexOf(ActionMenuIds.VIEW_MV))
         assertTrue(ActionMenuIds.VIEW_MV in layout.visibleIds(playerDefaults))
         assertTrue(ActionMenuIds.SHARE in layout.hidden)
         assertTrue(ActionMenuIds.VIEW_MV in ActionMenuIds.playerShortcutCatalog)

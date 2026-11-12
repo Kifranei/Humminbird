@@ -38,6 +38,10 @@ internal fun ClassicSplitLandscapePlayer(
     val settings = remember(context) { com.ella.music.data.SettingsManager.getInstance(context) }
     val dynamicFlow by settings.playerDynamicFlowEnabled.collectAsState(
         initial = com.ella.music.data.SettingsManager.DEFAULT_PLAYER_DYNAMIC_FLOW_ENABLED)
+    // #781 当前行歌词位置: the classic split landscape lyric pane follows the shared anchor.
+    val lyricFocusPosition by settings.playerLyricFocusPosition.collectAsState(
+        initial = LocalAppleMusicLyricsViewPreferences.current?.focusPosition
+            ?: com.ella.music.data.SettingsManager.DEFAULT_PLAYER_LYRIC_FOCUS_POSITION)
     val backgroundCover by produceState<Bitmap?>(embeddedCover ?: paletteBitmap,
         song?.playlistIdentityKey(), song?.coverUrl, song?.dateModified, embeddedCover, paletteBitmap) {
         value = embeddedCover?.takeUnless { it.isRecycled } ?: paletteBitmap?.takeUnless { it.isRecycled }
@@ -85,6 +89,7 @@ internal fun ClassicSplitLandscapePlayer(
                         color = foreground.copy(alpha = 0.65f), maxLines = 1, softWrap = false,
                         modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE))
                 }
+                PlayerCommentHeaderAction(song)
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                     PlayerTransportIconButton(onClick = onPrevious, buttonSize = 42.dp) {
                         top.yukonga.miuix.kmp.basic.Icon(
@@ -113,7 +118,7 @@ internal fun ClassicSplitLandscapePlayer(
                     lyricTextAlign = 0, contentColor = foreground, onLineClick = onLyricLineClick,
                     onLineDoubleClick = onPlayPause, onLineLongClick = onLyricLineLongClick,
                     topContentPadding = 10.dp, bottomContentPadding = 18.dp,
-                    focusOffsetRatio = 0.18f, modifier = Modifier.fillMaxSize())
+                    focusOffsetRatio = lyricFocusPosition / 10_000f, modifier = Modifier.fillMaxSize())
             }
         }
     }

@@ -21,6 +21,7 @@ import com.ella.music.data.model.AudioInfo
 import com.ella.music.data.model.Song
 import com.ella.music.data.model.SongTagInfo
 import com.ella.music.ui.components.SongInfoSheet
+import com.ella.music.ui.components.SongMenuItem
 import com.ella.music.ui.components.openSongWithMediaInfo
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -32,6 +33,7 @@ internal fun SongInfoMenu(
     tagInfoLoader: (Song) -> SongTagInfo,
     mainViewModel: com.ella.music.viewmodel.MainViewModel,
     onPickerTitleChange: (String?) -> Unit = {},
+    onAiInterpret: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -45,7 +47,10 @@ internal fun SongInfoMenu(
             onDismiss()
             openSongWithMediaInfo(context, song)
         },
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        leadingContent = {
+            SongMenuItem(stringResource(R.string.song_more_ai_title), onAiInterpret)
+        }
     )
 }
 

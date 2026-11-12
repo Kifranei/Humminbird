@@ -88,6 +88,7 @@ fun SongMoreActionHost(
     val addToPlaylistTitle = stringResource(R.string.song_more_add_to_playlist_title)
     val editTagTitle = stringResource(R.string.song_more_edit_tags_title)
     val lyricTimingTitle = stringResource(R.string.song_more_lyric_timing)
+    val aiInterpretTitle = stringResource(R.string.song_more_ai_title)
     val playlists by mainViewModel.playlists.collectAsState(initial = emptyList())
     val metadataEditorId by mainViewModel.settingsManager.metadataEditorId.collectAsState(initial = TagEditorOptionIds.ASK_EACH_TIME)
     val lyricTimingEditorId by mainViewModel.settingsManager.lyricTimingEditorId.collectAsState(initial = TagEditorOptionIds.ASK_EACH_TIME)
@@ -99,8 +100,10 @@ fun SongMoreActionHost(
     var tagEditorKind by remember { mutableStateOf(TagEditorOptionKind.Metadata) }
     var metadataEditorSong by remember { mutableStateOf<Song?>(null) }
     var lyricTimingEditorSong by remember { mutableStateOf<Song?>(null) }
+    var audioToolsSong by remember { mutableStateOf<Song?>(null) }
     var ratingSong by remember { mutableStateOf<Song?>(null) }
     var infoSong by remember { mutableStateOf<Song?>(null) }
+    var aiSong by remember { mutableStateOf<Song?>(null) }
     var coverPreviewSong by remember { mutableStateOf<Song?>(null) }
     var artistChoices by remember { mutableStateOf<List<String>>(emptyList()) }
     var dangerConfirmTitle by remember { mutableStateOf("") }
@@ -257,6 +260,10 @@ fun SongMoreActionHost(
                     ratingSong = song
                     closeAction()
                 },
+                onAiInterpret = {
+                    aiSong = song
+                    closeAction()
+                },
                 onArtist = {
                     val artists = artistNamesForSong(song)
                         .distinctBy { it.tagIdentityKey() }
@@ -287,6 +294,12 @@ fun SongMoreActionHost(
                     {
                         tagEditorKind = TagEditorOptionKind.LyricTiming
                         tagEditorSong = song
+                        closeAction()
+                    }
+                } else null,
+                onAudioTools = if (showLocalFileActions) {
+                    {
+                        audioToolsSong = song
                         closeAction()
                     }
                 } else null,
@@ -438,6 +451,15 @@ fun SongMoreActionHost(
         }
     )
 
+    audioToolsSong?.let { song ->
+        SongAudioToolsSheet(
+            song = song,
+            onDismiss = { audioToolsSong = null },
+            onBack = { audioToolsSong = null },
+            onExported = { mainViewModel.scanMusic() }
+        )
+    }
+
     SongMoreInfoActionSheets(
         context = context,
         scope = scope,
@@ -446,6 +468,9 @@ fun SongMoreActionHost(
         onRatingSongChange = { ratingSong = it },
         infoSong = infoSong,
         onInfoSongChange = { infoSong = it },
+        aiSong = aiSong,
+        onAiSongChange = { aiSong = it },
+        aiInterpretTitle = aiInterpretTitle,
         onWritePermissionRequired = { error, retry ->
             pendingWriteRetry = retry
             writePermissionLauncher.launch(

@@ -39,10 +39,10 @@ class AppLocaleTest {
     @Test
     fun explicitInAppChoiceOverridesDeviceLanguages() {
         val locale = resolveHalcyonLocale(
-            SettingsManager.APP_LANGUAGE_JA,
+            SettingsManager.APP_LANGUAGE_DE,
             listOf(Locale.SIMPLIFIED_CHINESE, Locale.ENGLISH)
         )
 
-        assertEquals(Locale.JAPANESE, locale)
+        assertEquals(Locale.GERMAN, locale)
     }
 }

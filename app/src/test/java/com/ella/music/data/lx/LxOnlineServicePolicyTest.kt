@@ -298,6 +298,53 @@ class LxOnlineServicePolicyTest {
         assertEquals("flac", com.ella.music.data.detectAudioContainerFormat(byteArrayOf(1), "audio/x-flac; charset=binary", "Track.mp3").extension)
     }
 
+    @Test fun audioDownloadsKeepEveryByteUseActualContainerAndPreserveExistingFiles() = runBlocking {
+        val folder = java.nio.file.Files.createTempDirectory("lx-audio-format-").toFile()
+        try {
+            for ((bytes, extension, mime) in listOf(
+                Triple("fLaC".toByteArray() + ByteArray(80) { it.toByte() }, "flac", "audio/flac"),
+                Triple(byteArrayOf(0, 0, 0, 24) + "ftypM4A ".toByteArray() + ByteArray(80), "m4a", "audio/mp4")
+            )) {
+                val service = LxOnlineService(RuntimeEnvironment.getApplication(), pageClient { request ->
+                    response(request).newBuilder().body(bytes.toResponseBody("audio/mpeg".toMediaType())).build()
+                }) { _, _ -> null }
+                val original = item().song.copy(path = "https://example.test/download", fileName = "Track.mp3", mimeType = "audio/mpeg")
+                val requested = java.io.File(folder, "$extension.mp3")
+                val first = service.downloadAudioToFile(original, requested)
+                assertEquals("$extension.$extension", first.fileName)
+                assertEquals(mime, first.mimeType)
+                assertFalse(requested.exists())
+                assertArrayEquals(bytes, java.io.File(first.path).readBytes())
+                val second = service.downloadAudioToFile(original, requested)
+                assertTrue(first.path != second.path)
+                assertArrayEquals(bytes, java.io.File(first.path).readBytes())
+                assertArrayEquals(bytes, java.io.File(second.path).readBytes())
+            }
+        } finally {
+            folder.listFiles().orEmpty().forEach { it.delete() }
+            folder.delete()
+        }
+    }
+
+    @Test fun partialRangesAndPlaylistResponsesDoNotPublishFakeAudioFiles() = runBlocking {
+        val folder = java.nio.file.Files.createTempDirectory("lx-audio-incomplete-").toFile()
+        try {
+            for ((code, payload, range) in listOf(
+                Triple(206, "ID3fixture", "bytes 0-9/100"),
+                Triple(200, "#EXTM3U\nsegment.ts", null),
+                Triple(200, "<html>Forbidden</html>", null),
+                Triple(200, "", null)
+            )) {
+                val service = LxOnlineService(RuntimeEnvironment.getApplication(), pageClient { request ->
+                    response(request, code, payload).newBuilder().apply { range?.let { header("Content-Range", it) } }.build()
+                }) { _, _ -> null }
+                val failure = runCatching { service.downloadAudioToFile(item().song.copy(path = "https://example.test/audio"),
+                    java.io.File(folder, "Track.mp3")) }.exceptionOrNull()
+                assertTrue(failure is IOException)
+                assertTrue(folder.listFiles().orEmpty().isEmpty())
+            }
+        } finally { folder.delete() }
+    }
 
     private fun item() = LxOnlineSong(
         Song(1, "Test track", "Artist", "Album", 0, 180000, "", "Test track.mp3"),
