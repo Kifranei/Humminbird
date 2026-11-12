@@ -26,10 +26,12 @@ internal fun SongMoreActionSheet(
     onSpectrum: () -> Unit,
     onInfo: () -> Unit,
     onRating: () -> Unit,
+    onAiInterpret: () -> Unit,
     onArtist: () -> Unit,
     onAlbum: () -> Unit,
     onEditTag: (() -> Unit)?,
     onLyricTiming: (() -> Unit)?,
+    onAudioTools: (() -> Unit)?,
     onRemoveFromPlaylist: (() -> Unit)?,
     onDelete: (() -> Unit)?,
     onDeleteSingleRecentPlayback: (() -> Unit)? = null,
@@ -57,10 +59,28 @@ internal fun SongMoreActionSheet(
         EllaMiuixActionMenuGroup {
             visibleActions.forEach { actionId ->
                 when (actionId) {
+                ActionMenuIds.SONG_WIKI -> if (neteaseLinks.songId.isNotBlank()) {
+                    SongMenuItem(stringResource(R.string.netease_link_song_wiki), {
+                        onDismiss()
+                        com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.SongWiki, neteaseLinks.songId)
+                    }, icon = actionMenuIcon(actionId))
+                }
+                ActionMenuIds.SONG_COMMENTS -> if (neteaseLinks.songId.isNotBlank()) {
+                    SongMenuItem(stringResource(R.string.player_view_song_comments), {
+                        onDismiss()
+                        com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.Comment, neteaseLinks.songId)
+                    }, icon = actionMenuIcon(actionId))
+                }
                 ActionMenuIds.VIEW_MV -> if (neteaseMvId.isNotBlank()) {
                     SongMenuItem(stringResource(R.string.player_view_music_video), {
                         onDismiss()
                         com.ella.music.MusicVideoLauncher.openNetease(context, song, neteaseMvId)
+                    }, icon = actionMenuIcon(actionId))
+                }
+                ActionMenuIds.MV_COMMENTS -> if (neteaseMvId.isNotBlank()) {
+                    SongMenuItem(stringResource(R.string.player_view_mv_comments), {
+                        onDismiss()
+                        com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.MusicVideoComment, neteaseMvId)
                     }, icon = actionMenuIcon(actionId))
                 }
                 ActionMenuIds.REMOVE_FROM_RECENT_PLAYBACK,
@@ -97,6 +117,18 @@ internal fun SongMoreActionSheet(
                     onPlayNext,
                     icon = actionMenuIcon(actionId)
                 )
+                ActionMenuIds.DOWNLOAD -> if (song.onlineSource == "netease") {
+                    SongMenuItem(stringResource(R.string.netease_download_song), {
+                        com.ella.music.data.netease.NeteaseDownloadService.enqueue(context, song)
+                        onDismiss()
+                    }, icon = actionMenuIcon(actionId))
+                }
+                ActionMenuIds.DOWNLOAD_MV -> if (neteaseMvId.isNotBlank()) {
+                    SongMenuItem(stringResource(R.string.netease_download_mv), {
+                        com.ella.music.data.netease.NeteaseDownloadService.enqueue(context, song, neteaseMvId)
+                        onDismiss()
+                    }, icon = actionMenuIcon(actionId))
+                }
                 ActionMenuIds.SHARE -> SongMenuItem(
                     stringResource(R.string.common_share),
                     onShare,
@@ -109,6 +141,11 @@ internal fun SongMoreActionSheet(
                         icon = actionMenuIcon(actionId)
                     )
                 }
+                ActionMenuIds.AI -> SongMenuItem(
+                    stringResource(R.string.song_more_ai_title),
+                    onAiInterpret,
+                    icon = actionMenuIcon(actionId)
+                )
                 ActionMenuIds.INFO -> SongMenuItem(
                     stringResource(R.string.song_more_view_song_info),
                     onInfo,
@@ -129,6 +166,13 @@ internal fun SongMoreActionSheet(
                 ActionMenuIds.LYRIC_TIMING -> onLyricTiming?.let {
                     SongMenuItem(
                         stringResource(R.string.song_more_lyric_timing),
+                        it,
+                        icon = actionMenuIcon(actionId)
+                    )
+                }
+                ActionMenuIds.AUDIO_TOOLS -> onAudioTools?.let {
+                    SongMenuItem(
+                        stringResource(R.string.song_more_audio_tools),
                         it,
                         icon = actionMenuIcon(actionId)
                     )

@@ -1,6 +1,8 @@
 package com.ella.music.viewmodel
 
 import com.ella.music.data.NameSplitConfigStore
+import com.ella.music.data.PlaybackHistoryEntry
+import com.ella.music.data.SongPlaybackStats
 import com.ella.music.data.artistNamesForSong
 import com.ella.music.data.matchesArtistName
 import com.ella.music.data.model.Album
@@ -73,7 +75,7 @@ internal fun buildMetadataCategoryItems(
         }
     }
     val albumArtistSongsByKey = linkedMapOf<String, MutableList<Song>>()
-    if (type in setOf("composer", "arranger", "lyricist")) {
+    if (type in setOf("composer", "arranger", "lyricist", "producer")) {
         songs.forEach { song ->
             splitArtistNames(song.albumArtist).forEach { name ->
                 albumArtistSongsByKey.getOrPut(name.tagIdentityKey()) { mutableListOf() } += song
@@ -228,6 +230,64 @@ internal fun String.toFolderFilterList(): List<String> {
     return split('\n', ';', '；')
         .map { it.trim() }
         .filter { it.isNotBlank() }
+}
+
+internal fun buildOpenAiRecommendationCandidates(
+    library: List<Song>,
+    stats: List<SongPlaybackStats>,
+    history: List<PlaybackHistoryEntry>,
+    maxCandidates: Int = 160
+): List<Song> {
+    if (library.size <= maxCandidates) return library.distinctBy { it.playlistIdentityKey() }
+
+    val songsById = library.associateBy { it.id }
+    val selected = linkedMapOf<String, Song>()
+
+    fun add(song: Song) {
+        if (selected.size >= maxCandidates) return
+        selected.putIfAbsent(song.playlistIdentityKey(), song)
+    }
+
+    history
+        .mapNotNull { entry -> songsById[entry.songId] }
+        .take(60)
+        .forEach(::add)
+
+    stats
+        .sortedWith(
+            compareByDescending<SongPlaybackStats> { it.playCount }
+                .thenByDescending { it.listenedMs }
+                .thenByDescending { it.lastPlayedAt }
+        )
+        .mapNotNull { stat -> songsById[stat.songId] }
+        .take(60)
+        .forEach(::add)
+
+    stats
+        .sortedByDescending { it.lastPlayedAt }
+        .mapNotNull { stat -> songsById[stat.songId] }
+        .take(40)
+        .forEach(::add)
+
+    library
+        .sortedByDescending { it.dateModified }
+        .take(40)
+        .forEach(::add)
+
+    val remaining = maxCandidates - selected.size
+    if (remaining > 0) {
+        val sortedLibrary = library.sortedWith(
+            compareBy<Song, String>(String.CASE_INSENSITIVE_ORDER) { it.artist.ifBlank { it.albumArtist } }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.album }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.title }
+        )
+        val step = (sortedLibrary.size / remaining.coerceAtLeast(1)).coerceAtLeast(1)
+        sortedLibrary.forEachIndexed { index, song ->
+            if (selected.size < maxCandidates && index % step == 0) add(song)
+        }
+    }
+
+    return selected.values.toList().ifEmpty { library.take(maxCandidates) }
 }
 
 internal fun buildPlaylistCustomOrder(

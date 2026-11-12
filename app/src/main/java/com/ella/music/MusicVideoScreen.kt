@@ -478,6 +478,9 @@ internal fun DetailMusicVideoScreen(
                     }
                 },
                 onShare = { MusicVideoLauncher.share(context, source, song.title) },
+                onDownload = if (source.scheme == "halcyon-netease-mv") ({
+                    com.ella.music.data.netease.NeteaseDownloadService.enqueue(context, song, source.lastPathSegment.orEmpty())
+                }) else null,
                 qualityLabel = neteaseMvResolution?.takeIf { source.scheme == "halcyon-netease-mv" }?.let { "${it}P" },
                 onQuality = { showMvQualitySheet = true },
                 onControlsVisibleChange = { controlsVisible = it }
@@ -517,6 +520,9 @@ internal fun DetailMusicVideoScreen(
                     landscape = true
                 },
                 onShare = { MusicVideoLauncher.share(context, source, song.title) },
+                onDownload = if (source.scheme == "halcyon-netease-mv") ({
+                    com.ella.music.data.netease.NeteaseDownloadService.enqueue(context, song, source.lastPathSegment.orEmpty())
+                }) else null,
                 qualityLabel = neteaseMvResolution?.takeIf { source.scheme == "halcyon-netease-mv" }?.let { "${it}P" },
                 onQuality = { showMvQualitySheet = true },
                 onControlsVisibleChange = { controlsVisible = it }
@@ -666,6 +672,7 @@ private fun PortraitMusicVideoLayout(
     onSeek: (Long) -> Unit,
     onLandscape: () -> Unit,
     onShare: () -> Unit,
+    onDownload: (() -> Unit)?,
     qualityLabel: String? = null,
     onQuality: () -> Unit = {},
     onControlsVisibleChange: (Boolean) -> Unit
@@ -731,6 +738,7 @@ private fun PortraitMusicVideoLayout(
                     VideoIconButton(MiuixIcons.Regular.Back, stringResource(R.string.common_back), onBack)
                     Row {
                     qualityLabel?.let { label -> VideoQualityButton(label, onQuality) }
+                    onDownload?.let { download -> VideoIconButton(MiuixIcons.Regular.Download, stringResource(R.string.netease_download_mv), download) }
                     IconButton(onClick = onShare) {
                         com.ella.music.ui.player.QuickActionIcon(
                             kind = com.ella.music.ui.player.PlayerQuickActionKind.Share,
@@ -799,6 +807,7 @@ private fun LandscapeMusicVideoLayout(
     onCapture: () -> Unit,
     onPictureInPicture: () -> Unit,
     onShare: () -> Unit,
+    onDownload: (() -> Unit)?,
     qualityLabel: String? = null,
     onQuality: () -> Unit = {},
     onControlsVisibleChange: (Boolean) -> Unit
@@ -890,6 +899,7 @@ private fun LandscapeMusicVideoLayout(
                     }
                     Row {
                     qualityLabel?.let { label -> VideoQualityButton(label, onQuality) }
+                    onDownload?.let { download -> VideoIconButton(MiuixIcons.Regular.Download, stringResource(R.string.netease_download_mv), download) }
                     IconButton(onClick = onShare) {
                         com.ella.music.ui.player.QuickActionIcon(
                             kind = com.ella.music.ui.player.PlayerQuickActionKind.Share,

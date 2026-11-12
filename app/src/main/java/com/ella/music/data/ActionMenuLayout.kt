@@ -48,10 +48,12 @@ object ActionMenuIds {
     const val SHARE = "share"
     const val LYRIC_SHARE = "lyric_share"
     const val SPECTRUM = "spectrum"
+    const val AI = "ai"
     const val INFO = "info"
     const val RATING = "rating"
     const val EDIT_TAGS = "edit_tags"
     const val LYRIC_TIMING = "lyric_timing"
+    const val AUDIO_TOOLS = "audio_tools"
     const val REMOVE_FROM_PLAYLIST = "remove_from_playlist"
     const val REMOVE_FROM_RECENT_PLAYBACK = "remove_from_recent_playback"
     const val DELETE_SINGLE_RECENT_PLAYBACK = "delete_single_recent_playback" // legacy
@@ -72,14 +74,24 @@ object ActionMenuIds {
     const val DOWNLOAD = "download"
     const val DOWNLOAD_MV = "download_mv"
     const val VIEW_MV = "view_mv"
+    const val SONG_COMMENTS = "song_comments"
+    const val SONG_WIKI = "song_wiki"
+    const val MV_COMMENTS = "mv_comments"
     const val POSTER_WALL = "poster_wall"
 
     /** New id -> existing id it is inserted after when migrating an older saved layout. */
     internal val insertAfterAnchors = linkedMapOf(
         CASTING to AUDIO_OUTPUT,
-        VIEW_MV to KEEP_SCREEN_ON,
+        VIEW_MV to DOWNLOAD_MV,
+        SONG_WIKI to INFO,
+        SONG_COMMENTS to SONG_WIKI,
+        MV_COMMENTS to VIEW_MV,
         POSTER_WALL to LANDSCAPE,
-        MINI_LYRICS_STYLE to LYRICS_DISPLAY
+        MINI_LYRICS_STYLE to LYRICS_DISPLAY,
+        SONG_INFO_PRODUCER to SONG_INFO_LYRICIST,
+        SONG_INFO_COPYRIGHT to SONG_INFO_PRODUCER,
+        SONG_INFO_LANGUAGE to SONG_INFO_COPYRIGHT,
+        SONG_INFO_CUSTOM to SONG_INFO_LANGUAGE
     )
 
     /** Actions that need a local audio file; hidden for NetEase streams ([Song.isNeteaseStream]). */
@@ -97,23 +109,23 @@ object ActionMenuIds {
 
     val playerShortcutCatalog = listOf(
         SPEED, EQUALIZER, TIMER, ADD_TO_PLAYLIST, PLAY_NEXT,
-        ADD_TO_QUEUE, SHARE, INFO, AUDIO_OUTPUT, CASTING,
+        ADD_TO_QUEUE, SHARE, AI, INFO, AUDIO_OUTPUT, CASTING,
         AB_REPEAT, LANDSCAPE, LYRICS_DISPLAY, MINI_LYRICS_STYLE, SPECTRUM, RATING,
         DYNAMIC_COVER, VISUALIZER, EDIT_TAGS, LYRIC_TIMING,
-        ONLINE_LYRICS, LYRIC_OFFSET, KEEP_SCREEN_ON, VIEW_MV, DELETE, LYRIC_SHARE, POSTER_WALL
+        ONLINE_LYRICS, LYRIC_OFFSET, KEEP_SCREEN_ON, DOWNLOAD, VIEW_MV, DELETE, LYRIC_SHARE, POSTER_WALL
     )
 
     val listDefaults = listOf(
-        ADD_TO_PLAYLIST, ADD_TO_QUEUE, PLAY_NEXT, SHARE, SPECTRUM, INFO, RATING,
-        EDIT_TAGS, LYRIC_TIMING, REMOVE_FROM_PLAYLIST,
-        REMOVE_FROM_RECENT_PLAYBACK, DELETE, VIEW_MV
+        ADD_TO_PLAYLIST, ADD_TO_QUEUE, PLAY_NEXT, SHARE, SPECTRUM, AI, INFO, SONG_WIKI, RATING,
+        EDIT_TAGS, LYRIC_TIMING, AUDIO_TOOLS, REMOVE_FROM_PLAYLIST,
+        REMOVE_FROM_RECENT_PLAYBACK, DOWNLOAD, DOWNLOAD_MV, DELETE, SONG_COMMENTS, VIEW_MV, MV_COMMENTS
     )
 
     val playerDefaults = listOf(
-        ADD_TO_QUEUE, SHARE, INFO, AUDIO_OUTPUT, CASTING, AB_REPEAT, REMOTE_QUALITY, LANDSCAPE,
+        ADD_TO_QUEUE, SHARE, AI, INFO, SONG_WIKI, AUDIO_OUTPUT, CASTING, AB_REPEAT, REMOTE_QUALITY, LANDSCAPE,
         LYRICS_DISPLAY, MINI_LYRICS_STYLE, SPECTRUM, RATING, DYNAMIC_COVER, VISUALIZER, EDIT_TAGS,
-        LYRIC_TIMING, ONLINE_LYRICS, LYRIC_OFFSET, KEEP_SCREEN_ON, VIEW_MV, DELETE,
-        LYRIC_SHARE, POSTER_WALL
+        LYRIC_TIMING, ONLINE_LYRICS, LYRIC_OFFSET, KEEP_SCREEN_ON, DOWNLOAD, DOWNLOAD_MV, VIEW_MV, DELETE,
+        LYRIC_SHARE, SONG_COMMENTS, MV_COMMENTS, POSTER_WALL
     )
 
     /** The settings editor and the rendered menu must normalize against the same actions. */
@@ -128,6 +140,10 @@ object ActionMenuIds {
     const val SONG_INFO_COMPOSER = "song_info_composer"
     const val SONG_INFO_ARRANGER = "song_info_arranger"
     const val SONG_INFO_LYRICIST = "song_info_lyricist"
+    const val SONG_INFO_PRODUCER = "song_info_producer"
+    const val SONG_INFO_COPYRIGHT = "song_info_copyright"
+    const val SONG_INFO_LANGUAGE = "song_info_language"
+    const val SONG_INFO_CUSTOM = "song_info_custom"
     const val SONG_INFO_COMMENT = "song_info_comment"
     const val SONG_INFO_NETEASE = "song_info_netease"
     const val SONG_INFO_FORMAT = "song_info_format"
@@ -146,7 +162,9 @@ object ActionMenuIds {
 
     val songInfoDefaults = listOf(
         SONG_INFO_TITLE, SONG_INFO_ARTIST, SONG_INFO_ALBUM, SONG_INFO_ALBUM_ARTIST, SONG_INFO_GENRE,
-        SONG_INFO_YEAR, SONG_INFO_COMPOSER, SONG_INFO_ARRANGER, SONG_INFO_LYRICIST, SONG_INFO_COMMENT,
+        SONG_INFO_YEAR, SONG_INFO_COMPOSER, SONG_INFO_ARRANGER, SONG_INFO_LYRICIST,
+        SONG_INFO_PRODUCER, SONG_INFO_COPYRIGHT, SONG_INFO_LANGUAGE, SONG_INFO_CUSTOM,
+        SONG_INFO_COMMENT,
         SONG_INFO_NETEASE, SONG_INFO_FORMAT, SONG_INFO_BITRATE, SONG_INFO_DURATION, SONG_INFO_PLAY_COUNT,
         SONG_INFO_LISTENED, SONG_INFO_LAST_PLAYED, SONG_INFO_SIZE, SONG_INFO_MODIFIED, SONG_INFO_ADDED,
         SONG_INFO_FILE_NAME, SONG_INFO_PATH, SONG_INFO_DIRECTORY, SONG_INFO_MEDIA_INFO

@@ -139,7 +139,7 @@ internal fun renderArtisticShareCard(content: LyricShareCardContent, layout: Lyr
         }
         LyricShareCardStyle.Magazine -> { text("LYRICS",pad,100*s,92,art.foreground);line(pad,art.photo.top-18*s,w-pad,art.photo.top-18*s,art.foreground,3*s) }
         LyricShareCardStyle.Swiss -> {
-            p.color=art.accent;c.drawRect(0f,0f,24*s,h,p);text("01 / ${content.brandText.uppercase()}",pad,100*s,28,art.accent)
+            p.color=art.accent;c.drawRect(0f,0f,24*s,h,p);text("01 / HALCYON",pad,100*s,28,art.accent)
             line(pad,art.bodyTop-28*s,w-pad,art.bodyTop-28*s,art.foreground,5*s)
         }
         LyricShareCardStyle.Calligraphy -> {
@@ -157,7 +157,7 @@ internal fun renderArtisticShareCard(content: LyricShareCardContent, layout: Lyr
             p.color=Color.argb(90,221,198,144);c.drawRect(w*.36f,30*s,w*.64f,100*s,p)
         }
         LyricShareCardStyle.Receipt -> {
-            text("${content.brandText.uppercase()} / LYRICS",pad,78*s,28);line(pad,art.bodyTop-30*s,w-pad,art.bodyTop-30*s)
+            text("HALCYON / LYRICS",pad,78*s,28);line(pad,art.bodyTop-30*s,w-pad,art.bodyTop-30*s)
             for(i in 0..35) { p.color=art.background;c.drawCircle(i*w/35f,0f,12*s,p);c.drawCircle(i*w/35f,h,12*s,p) }
             for(i in 0..85) { val x=pad+i*8*s; if(x<w-pad) line(x,h-135*s,x,h-100*s,art.foreground,(if(i%3==0)4f else 2f)*s) }
         }

@@ -394,6 +394,7 @@ internal fun playerShortcutLabel(id: String): String = when (id) {
     ActionMenuIds.PLAY_NEXT -> stringResource(R.string.song_more_play_next)
     ActionMenuIds.ADD_TO_QUEUE -> stringResource(R.string.common_add_to_queue)
     ActionMenuIds.SHARE -> stringResource(R.string.common_share)
+    ActionMenuIds.AI -> stringResource(R.string.song_more_ai_title)
     ActionMenuIds.INFO -> stringResource(R.string.player_song_info)
     ActionMenuIds.AUDIO_OUTPUT -> stringResource(R.string.player_audio_output_info)
     ActionMenuIds.CASTING -> stringResource(R.string.casting_devices_title)

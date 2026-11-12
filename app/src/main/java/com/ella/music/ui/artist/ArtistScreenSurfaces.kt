@@ -39,7 +39,9 @@ internal fun ArtistScreenSurfaces(
     tagEditorSong: Song?,
     onTagEditorSongChange: (Song?) -> Unit,
     songInfoSheetSong: Song?,
-    onSongInfoSheetSongChange: (Song?) -> Unit
+    onSongInfoSheetSongChange: (Song?) -> Unit,
+    aiInterpretationSong: Song?,
+    onAiInterpretationSongChange: (Song?) -> Unit
 ) {
     com.ella.music.ui.components.SongMoreActionHost(
         actionSong = actionSong,
@@ -183,7 +185,26 @@ internal fun ArtistScreenSurfaces(
                 onPickerTitleChange = { pickerTitle.value = it },
                 song = song,
                 mainViewModel = mainViewModel,
+                onAiInterpret = {
+                    onSongInfoSheetSongChange(null)
+                    onAiInterpretationSongChange(song)
+                },
                 onDismiss = { onSongInfoSheetSongChange(null) }
+            )
+        }
+    }
+
+    aiInterpretationSong?.let { song ->
+        EllaMiuixBottomSheet(
+            show = true,
+            enableNestedScroll = false,
+            title = stringResource(R.string.song_more_ai_title),
+            onDismissRequest = { onAiInterpretationSongChange(null) }
+        ) {
+            ArtistAiInterpretationMenu(
+                song = song,
+                mainViewModel = mainViewModel,
+                onDismiss = { onAiInterpretationSongChange(null) }
             )
         }
     }

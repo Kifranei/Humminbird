@@ -16,7 +16,7 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 }
 
-val appVersionName = "1.0.1"
+val appVersionName = "1.3.1"
 val supportedAbis = listOf("arm64-v8a", "armeabi-v7a")
 val configuredAbis = providers.gradleProperty("ellaAbi")
     .orNull
@@ -126,7 +126,7 @@ android {
         applicationId = "com.kifranei.humminbird.player"
         minSdk = 29
         targetSdk = 37
-        versionCode = 2
+        versionCode = 41
         versionName = appVersionName
         // Universal APKs must contain only complete, supported native architectures.
         ndk { abiFilters += configuredAbis }
@@ -220,8 +220,13 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
-            // Native playback libraries share the C++ runtime.
+            // FFmpegKit and the app's native audio path both use the shared C++ runtime.
             pickFirsts += setOf("**/libc++_shared.so")
+            // ffmpeg-kit-full ships a second NEON-tuned library set for armeabi-v7a. Its
+            // NativeLoader already catches a failed NEON load and falls back to the generic
+            // libraries, so omitting this optional set saves roughly 12 MiB from the v7a and
+            // universal APKs while keeping ARMv7 devices supported (without NEON acceleration).
+            excludes += setOf("**/armeabi-v7a/*_neon.so")
         }
     }
 }
@@ -292,6 +297,8 @@ dependencies {
     implementation(libs.lyricon.provider)
     implementation(libs.lyric.getter.api)
     implementation(libs.superlyric.api)
+    // Full LGPL build supplies muxers and encoders for the local conversion tool.
+    implementation(libs.ffmpeg.kit.full)
     implementation(libs.reorderable)
     implementation(libs.compose.material.icons.extended)
     implementation(project(":lyrico-audiotag"))
@@ -305,6 +312,8 @@ dependencies {
     implementation(libs.miuix.preference)
     implementation(libs.androidx.webkit)
 
+    // MCP Server
+    implementation(libs.mcp.server)
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)

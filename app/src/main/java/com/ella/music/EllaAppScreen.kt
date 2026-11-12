@@ -65,6 +65,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
@@ -104,6 +105,9 @@ import com.ella.music.ui.components.updateEllaDynamicShortcuts
 import com.ella.music.ui.navigation.AppNavigation
 import com.ella.music.ui.navigation.EXTRA_SHORTCUT_ROUTE
 import com.ella.music.ui.navigation.LocalAppNavigator
+import com.ella.music.ui.navigation.LocalNavigationPageBackground
+import com.ella.music.ui.navigation.rememberNavigationPageBackground
+import com.ella.music.ui.navigation.recordNavigationPageBackground
 import com.ella.music.ui.navigation.Screen
 import com.ella.music.ui.navigation.EXTRA_SHORTCUT_ACTION
 import com.ella.music.ui.navigation.SHORTCUT_ACTION_PLAY
@@ -134,6 +138,11 @@ fun EllaApp(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val initialIslandHome = remember {
+        activity?.intent?.action == MainActivity.ACTION_OPEN_HOME_FROM_ISLAND
+    }
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val navigationRoute = resolvedCurrentRoute(
@@ -181,7 +190,8 @@ fun EllaApp(
     }
     val mainPageCatalog = bottomDockTabCatalog()
     val mainPageState = rememberMainPageState(
-        mainPageCatalog[initialUiSettings.bottomDockStartupItem.takeIf { it in initialUiSettings.bottomDockItems }]?.route ?: Screen.Home.route
+        if (initialIslandHome) Screen.Home.route else
+            mainPageCatalog[initialUiSettings.bottomDockStartupItem.takeIf { it in initialUiSettings.bottomDockItems }]?.route ?: Screen.Home.route
     )
     DisposableEffect(navController, mainPageState) {
         MainPageNavigation.register(navController, mainPageState)
@@ -194,7 +204,8 @@ fun EllaApp(
     val webDavRestoreDefaults by settingsManager.webDavRestoreDefaultTypes.collectAsState(initial = "")
     var webDavRestoreBusy by remember { mutableStateOf(false) }
     val mainActivity = context as? MainActivity
-    val currentProcessingIntent = remember { mutableStateOf(activity?.intent) }
+    val launchIntent = remember { activity?.intent }
+    val currentProcessingIntent = remember { mutableStateOf(launchIntent) }
     var pendingShuffleAllConfirmation by remember { mutableStateOf(false) }
     DisposableEffect(mainActivity) {
         mainActivity?.onNewIntentCallback = { intent -> currentProcessingIntent.value = intent }
@@ -209,7 +220,7 @@ fun EllaApp(
     // 打开应用自动进入播放界面 (设置 → 底部导航 → 启动页): the now-playing surface is part of the very
     // first frame, exactly like a media-notification tap, so a cold start lands on the player
     // instead of Home. The preference is read before composition, so no open animation runs at boot.
-    val startupPlayerOpen = initialUiSettings.startupOpenPlayer
+    val startupPlayerOpen = initialUiSettings.startupOpenPlayer && !initialIslandHome
     var showPlayerOverlay by remember { mutableStateOf(initialNotificationPlayer || startupPlayerOpen) }
     var playerDismissProgress by remember { mutableFloatStateOf(0f) }
     var playerOverlayOpenToken by remember { mutableIntStateOf(0) }
@@ -250,8 +261,16 @@ fun EllaApp(
             },
             metadataCategoryType = entry?.arguments?.getString("type")
         )
+        // Inside the main pager a tab switch keeps the `main_pages` entry — the pager's
+        // selected route is the effective destination. Waiting on the back-stack entry
+        // alone would stall the locate request for the whole timeout (#756).
+        val effectiveDestinationRoute = {
+            val current = navController.currentBackStackEntry
+            if (current?.destination?.route == MAIN_PAGES_ROUTE) mainPageState.selectedRoute
+            else current?.destination?.route
+        }
         val alreadyThere = isAtPlaybackSourceRoute(
-            destinationRoute = entry?.destination?.route,
+            destinationRoute = effectiveDestinationRoute(),
             argument = { name -> entry?.arguments.navArgument(name) },
             target = route
         )
@@ -262,13 +281,14 @@ fun EllaApp(
             )
         }
         withTimeoutOrNull(1_200L) {
-            snapshotFlow { navController.currentBackStackEntry }.first { current ->
-                isAtPlaybackSourceRoute(
-                    destinationRoute = current?.destination?.route,
-                    argument = { name -> current?.arguments.navArgument(name) },
-                    target = route
-                )
-            }
+            snapshotFlow { effectiveDestinationRoute() to navController.currentBackStackEntry }
+                .first { (destination, current) ->
+                    isAtPlaybackSourceRoute(
+                        destinationRoute = destination,
+                        argument = { name -> current?.arguments.navArgument(name) },
+                        target = route
+                    )
+                }
         }
         snapPlayerOverlay = true
         showPlayerOverlay = false
@@ -288,6 +308,7 @@ fun EllaApp(
         argument = { name -> navBackStackEntry?.arguments.navArgument(name) }
     )
     var returnToPlayerRoute by remember { mutableStateOf<String?>(null) }
+    var returnToPlayerEntryId by remember { mutableStateOf<String?>(null) }
     val previousRouteIdentity = remember(navBackStackEntry, mainPageState.selectedRoute) {
         val previous = navController.previousBackStackEntry
         if (previous?.destination?.route == MAIN_PAGES_ROUTE) mainPageIdentity(mainPageState.selectedRoute) else navRouteIdentity(
@@ -304,10 +325,11 @@ fun EllaApp(
         playerDismissProgress = 0f
         navController.popBackStack()
     }
-    LaunchedEffect(currentRouteIdentity) {
+    LaunchedEffect(currentRouteIdentity, navBackStackEntry?.id) {
         val saved = returnToPlayerRoute ?: return@LaunchedEffect
-        if (currentRouteIdentity == saved) {
+        if (currentRouteIdentity == saved && navBackStackEntry?.id == returnToPlayerEntryId) {
             returnToPlayerRoute = null
+            returnToPlayerEntryId = null
             playerDismissProgress = 0f
             // Snap the resident overlay back instead of playing the open animation.
             // Animating made returning from artist/album/lyrics feel like a close + reopen (#469).
@@ -315,7 +337,8 @@ fun EllaApp(
             showPlayerOverlay = true
         } else if (showPlayerOverlay) {
             // Wait until the destination has painted. Hiding on the same frame as the
-            // route change flashes Home under the overlay (#495, #564).
+            // route change flashes Home under the overlay (#495, #564). This also covers
+            // pushing an identical destination: same identity, different entry id (#761).
             androidx.compose.runtime.withFrameNanos { }
             androidx.compose.runtime.withFrameNanos { }
             snapPlayerOverlay = true
@@ -459,6 +482,16 @@ fun EllaApp(
 
     LaunchedEffect(currentProcessingIntent.value) {
         val activity = context as? Activity
+        if (currentProcessingIntent.value?.action == MainActivity.ACTION_OPEN_HOME_FROM_ISLAND) {
+            // A card-header tap always returns Home, including a warm app left on settings
+            // or the player and a cold start configured to open the now-playing surface.
+            snapPlayerOverlay = true
+            showPlayerOverlay = false
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            navController.navigateBottomDockRoute(Screen.Home.route, currentRoute)
+            currentProcessingIntent.value?.action = null
+        }
         val shortcutAction = currentProcessingIntent.value?.resolveShortcutAction().orEmpty()
         when (shortcutAction) {
             SHORTCUT_ACTION_PLAY -> {
@@ -503,12 +536,11 @@ fun EllaApp(
         val shortcutRoute = currentProcessingIntent.value?.resolveShortcutRoute().orEmpty()
         if (shortcutRoute.isNotBlank()) {
             runCatching {
-                navController.navigate(shortcutRoute) {
-                    popUpTo(navController.graph.findStartDestination().id) {
-                        saveState = false
-                    }
-                    launchSingleTop = true
-                }
+                navController.navigateShortcutRoute(
+                    route = shortcutRoute,
+                    selectedMainRoute = mainPageState.selectedRoute,
+                    coldStart = currentProcessingIntent.value === launchIntent
+                )
             }
         }
         currentProcessingIntent.value?.removeExtra(EXTRA_SHORTCUT_ACTION)
@@ -738,6 +770,7 @@ fun EllaApp(
     val showMiniPlayer = currentSong != null &&
         currentRoute != Screen.PosterWall.route &&
         currentRoute != Screen.Player.route &&
+        currentRoute != Screen.AiChat.route &&
         currentRoute != Screen.Update.route &&
         currentRoute != Screen.About.route &&
         currentRoute != Screen.SettingsWizard.route
@@ -760,7 +793,7 @@ fun EllaApp(
     }
 
     val miuixBackdrop = rememberMiuixLayerBackdrop()
-    val useGlass = effectiveBottomBarStyle != BottomBarStyle.Normal
+    val useGlass = true
     val bottomDockSpecs = bottomDockTabCatalog()
     val tabs = SettingsManager.visibleBottomDockItems(bottomDockItemIds, bottomDockMergeSearch)
         .mapNotNull { bottomDockSpecs[it] }
@@ -774,7 +807,15 @@ fun EllaApp(
         }
     val railState = rememberNavigationRailState(NavigationRailValue.Collapsed)
     val currentTabRoute = currentRoute.toCurrentTabRoute()
-    val renderedBottomBarGlassEffect = BottomBarGlassEffect.Blur
+    // A shortcut/deeplink search stacked over another page returns there instead of a tab (#745).
+    val searchStacked = navigationRoute != MAIN_PAGES_ROUTE && currentRoute.isSearchRoute()
+    val searchPreviousRoute = if (searchStacked) navController.previousBackStackEntry?.destination?.route else null
+    val renderedBottomBarGlassEffect = when (effectiveBottomBarStyle) {
+        BottomBarStyle.Floating -> BottomBarGlassEffect.Blur
+        BottomBarStyle.LiquidGlass -> BottomBarGlassEffect.LiquidGlass
+        BottomBarStyle.FloatingPill -> BottomBarGlassEffect.Blur
+        BottomBarStyle.Normal -> bottomBarGlassEffect
+    }
 
     val homeSearchPreference by settingsManager.homeSearchTarget.collectAsState(initial = "local")
     val searchLibrarySource by settingsManager.librarySource.collectAsState(initial = SettingsManager.LIBRARY_SOURCE_LOCAL)
@@ -798,7 +839,7 @@ fun EllaApp(
                 light = !isDarkTheme
             )
     }
-    val startupRoute = bottomDockSpecs[initialUiSettings.bottomDockStartupItem]
+    val startupRoute = if (initialIslandHome) Screen.Home.route else bottomDockSpecs[initialUiSettings.bottomDockStartupItem]
         ?.takeIf { initialUiSettings.bottomDockStartupItem in initialUiSettings.bottomDockItems }
         ?.route
         ?: Screen.Home.route
@@ -870,6 +911,7 @@ fun EllaApp(
             val librarySearchDockState = rememberLibrarySearchDockState()
             val sharedBackgroundBackdrop = rememberMiuixLayerBackdrop()
             val hasSharedBackground = wallpaperVisible || nowPlayingFlowVisible
+            val navigationPageBackground = rememberNavigationPageBackground()
             // The dock still samples both page content and the now full-window background.
             val contentWithBackgroundBackdrop = com.ella.music.ui.components.liquid.rememberCombinedBackdrop(
                 sharedBackgroundBackdrop, miuixBackdrop
@@ -885,6 +927,7 @@ fun EllaApp(
                 LocalAppNavigator provides { route ->
                     if (showPlayerOverlay) {
                         returnToPlayerRoute = currentRouteIdentity
+                        returnToPlayerEntryId = navBackStackEntry?.id
                         snapPlayerOverlay = true
                         showPlayerOverlay = false
                         playerDismissProgress = 0f
@@ -893,6 +936,7 @@ fun EllaApp(
                 },
                 LocalLibrarySearchDockState provides librarySearchDockState,
                 LocalSharedAppBackgroundVisible provides sharedAppBackgroundVisible,
+                LocalNavigationPageBackground provides (if (hasSharedBackground) navigationPageBackground else null),
                 LocalTopBarBlurStyle provides topBarBlurStyle,
                 LocalBackdrop provides (if (hasSharedBackground) sharedBackgroundBackdrop else null),
                 LocalSettingsCardFrosting provides (if (hasSharedBackground) settingsFrosting else null)
@@ -900,6 +944,8 @@ fun EllaApp(
             Box(Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxSize().then(
                     if (hasSharedBackground) Modifier.layerMiuixBackdrop(sharedBackgroundBackdrop) else Modifier
+                ).then(
+                    if (hasSharedBackground) Modifier.recordNavigationPageBackground(navigationPageBackground) else Modifier
                 )) {
                     if (wallpaperVisible) {
                         val wallpaperDimAlpha = appWallpaperDim.coerceIn(0, 80) / 100f
@@ -1048,7 +1094,10 @@ fun EllaApp(
                     currentTabRoute = currentTabRoute,
                     currentRoute = currentRoute,
                     bottomDockMode = bottomDockMode,
-                    searchReturnRoute = mainPageState.searchReturnRoute,
+                    searchReturnRoute = if (searchStacked && searchPreviousRoute == MAIN_PAGES_ROUTE) {
+                        mainPageState.selectedRoute
+                    } else mainPageState.searchReturnRoute,
+                    searchReturnsBack = searchStacked && searchPreviousRoute != null && searchPreviousRoute != MAIN_PAGES_ROUTE,
                     canCompact = canCompactBottomDock,
                     backdrop = if (hasSharedBackground) contentWithBackgroundBackdrop else miuixBackdrop,
                     bottomBarStyle = effectiveBottomBarStyle,
@@ -1140,18 +1189,22 @@ fun EllaApp(
                             },
                             onNavigateToAlbum = { albumId ->
                                 returnToPlayerRoute = currentRouteIdentity
+                                returnToPlayerEntryId = navBackStackEntry?.id
                                 navController.navigate(Screen.AlbumDetail.createRoute(albumId))
                             },
                             onNavigateToArtist = { artistName ->
                                 returnToPlayerRoute = currentRouteIdentity
+                                returnToPlayerEntryId = navBackStackEntry?.id
                                 navController.navigate(Screen.ArtistDetail.createRoute(artistName))
                             },
                             onNavigateToMetadataCategory = { type, name ->
                                 returnToPlayerRoute = currentRouteIdentity
+                                returnToPlayerEntryId = navBackStackEntry?.id
                                 navController.navigate(Screen.MetadataCategoryDetail.createRoute(type, name))
                             },
                             onNavigateToEqualizer = {
                                 returnToPlayerRoute = currentRouteIdentity
+                                returnToPlayerEntryId = navBackStackEntry?.id
                                 navController.navigate(Screen.Equalizer.createRoute())
                             },
                             onDismissProgressChange = { progress ->

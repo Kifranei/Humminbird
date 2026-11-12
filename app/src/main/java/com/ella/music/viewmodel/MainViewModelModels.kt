@@ -5,6 +5,18 @@ import com.ella.music.data.customCategoryValues
 import com.ella.music.data.splitArtistNames
 import com.ella.music.data.splitGenreNames
 
+data class AiPlaylistRecommendationResult(
+    val title: String,
+    val reason: String,
+    val songs: List<Song>
+)
+
+data class AiLibraryChatResult(
+    val answer: String,
+    val songs: List<Song>,
+    val playlistName: String
+)
+
 data class MetadataCategoryItem(
     val name: String,
     val songCount: Int,
@@ -27,6 +39,7 @@ internal fun Song.metadataCategoryNames(type: String): List<String> {
         "composer" -> splitArtistNames(composer)
         "arranger" -> splitArtistNames(arranger)
         "lyricist" -> splitArtistNames(lyricist)
+        "producer" -> splitArtistNames(producer)
         "folder" -> listOfNotNull(parentFolderPath())
         else -> customCategoryValues(type)
     }

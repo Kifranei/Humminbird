@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import com.ella.music.R
 import com.ella.music.data.SettingsManager
 import com.ella.music.player.BluetoothAutoPlayReceiver
+import com.ella.music.player.UsbExclusiveSession
+import com.ella.music.player.UsbExclusiveState
 import com.ella.music.ui.components.EllaSmallTopAppBar
 import com.ella.music.viewmodel.PlayerViewModel
 import kotlinx.coroutines.launch
@@ -46,7 +48,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.preference.WindowSpinnerPreference
+import com.ella.music.ui.components.EllaSpinnerPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun AudioSettingsScreen(
@@ -76,18 +78,12 @@ fun AudioSettingsScreen(
 
     val gaplessPlayback by settingsManager.gaplessPlayback.collectAsState(initial = true)
     val karaokeAccompanimentEnabled by settingsManager.karaokeAccompanimentEnabled.collectAsState(initial = false)
-    val crossfadeEnabled by settingsManager.crossfadeEnabled.collectAsState(initial = false)
-    val crossfadeDurationMs by settingsManager.crossfadeDurationMs.collectAsState(initial = 0)
-    val crossfadeCurve by settingsManager.crossfadeCurve.collectAsState(
-        initial = SettingsManager.CROSSFADE_CURVE_EQUAL_POWER
-    )
     val playCountThresholdPercent by settingsManager.playCountThresholdPercent.collectAsState(
         initial = SettingsManager.DEFAULT_PLAY_COUNT_THRESHOLD_PERCENT
     )
     val playCountThresholdDurationMs by settingsManager.playCountThresholdDurationMs.collectAsState(
         initial = SettingsManager.DEFAULT_PLAY_COUNT_THRESHOLD_DURATION_MS
     )
-    var showCrossfadeDurationDialog by remember { mutableStateOf(false) }
     val replayGainMode by settingsManager.replayGainMode.collectAsState(initial = SettingsManager.REPLAY_GAIN_OFF)
     val replayGainPreamp by settingsManager.replayGainPreampDb.collectAsState(initial = 0f)
     val resumePlaybackPosition by settingsManager.resumePlaybackPosition.collectAsState(initial = false)
@@ -95,6 +91,7 @@ fun AudioSettingsScreen(
     val shuffleMode by settingsManager.shuffleMode.collectAsState(initial = SettingsManager.SHUFFLE_MODE_PSEUDO)
     val shuffleReshuffleOnStartup by settingsManager.shuffleReshuffleOnStartup.collectAsState(initial = false)
     val disableSequentialPlayback by settingsManager.disableSequentialPlayback.collectAsState(initial = false)
+    val playbackModeStopAfterCurrent by settingsManager.playbackModeStopAfterCurrent.collectAsState(initial = false)
     val playNextMode by settingsManager.playNextMode.collectAsState(initial = SettingsManager.PLAY_NEXT_MODE_REVERSE_STACK)
     val previousButtonAction by settingsManager.previousButtonAction.collectAsState(initial = SettingsManager.PREVIOUS_BUTTON_PREVIOUS)
     val pausedSwitchMode by settingsManager.pausedSwitchMode.collectAsState(initial = SettingsManager.PAUSED_SWITCH_MODE_KEEP_PAUSED)
@@ -102,6 +99,10 @@ fun AudioSettingsScreen(
     val audioOutputBackend by settingsManager.audioOutputBackend.collectAsState(initial = SettingsManager.AUDIO_OUTPUT_BACKEND_AUTO)
     val audioOutputBitDepth by settingsManager.audioOutputBitDepth.collectAsState(initial = SettingsManager.AUDIO_OUTPUT_BIT_DEPTH_AUTO)
     val audioOutputSampleRate by settingsManager.audioOutputSampleRate.collectAsState(initial = SettingsManager.AUDIO_OUTPUT_SAMPLE_RATE_AUTO)
+    val usbDacMode by settingsManager.usbDacMode.collectAsState(initial = false)
+    val usbAudioController = remember(context) { com.ella.music.player.UsbAudioController.getInstance(context) }
+    val connectedUsbDevice by usbAudioController.preferredUsbDevice.collectAsState(initial = null)
+    val usbExclusiveStatus by UsbExclusiveSession.status.collectAsState()
     val startupPlayMode by settingsManager.startupPlayMode.collectAsState(initial = SettingsManager.STARTUP_PLAY_OFF)
     val bluetoothAutoPlay by settingsManager.bluetoothAutoPlay.collectAsState(initial = false)
     val decoderLabels = listOf(
@@ -180,25 +181,6 @@ fun AudioSettingsScreen(
         stringResource(R.string.settings_replay_gain_auto)
     )
     val selectedReplayGainMode = replayGainMode.coerceIn(replayGainLabels.indices)
-    val crossfadeCurveLabels = listOf(
-        stringResource(R.string.settings_crossfade_curve_equal_power),
-        stringResource(R.string.settings_crossfade_curve_linear),
-        stringResource(R.string.settings_crossfade_curve_smooth),
-        stringResource(R.string.settings_crossfade_curve_flat)
-    )
-    val selectedCrossfadeCurve = crossfadeCurve.coerceIn(crossfadeCurveLabels.indices)
-    val crossfadeCurveEntries = listOf(
-        DropdownItem(
-            title = crossfadeCurveLabels[SettingsManager.CROSSFADE_CURVE_EQUAL_POWER],
-            summary = stringResource(R.string.settings_crossfade_curve_equal_power_summary)
-        ),
-        DropdownItem(title = crossfadeCurveLabels[SettingsManager.CROSSFADE_CURVE_LINEAR]),
-        DropdownItem(title = crossfadeCurveLabels[SettingsManager.CROSSFADE_CURVE_SMOOTH]),
-        DropdownItem(
-            title = crossfadeCurveLabels[SettingsManager.CROSSFADE_CURVE_FLAT],
-            summary = stringResource(R.string.settings_crossfade_curve_flat_summary)
-        )
-    )
     val playCountDurationSeconds = playCountThresholdDurationMs / 1_000
     val playCountDurationLabel = "%d:%02d".format(
         java.util.Locale.ROOT,
@@ -376,7 +358,7 @@ fun AudioSettingsScreen(
                     SettingsFocusAnchor(active = highlightKey == "audio_output") {
                         // search-anchor:start
                         SettingsSearchAnchor(R.string.settings_audio_output_backend) {
-                        WindowSpinnerPreference(
+                        EllaSpinnerPreference(
                             title = stringResource(R.string.settings_audio_output_backend),
                             summary = stringResource(R.string.settings_audio_output_backend_summary),
                             items = audioOutputBackendEntries,
@@ -392,7 +374,7 @@ fun AudioSettingsScreen(
                     }
                     // search-anchor:start
                     SettingsSearchAnchor(R.string.settings_audio_output_bit_depth) {
-                    WindowSpinnerPreference(
+                    EllaSpinnerPreference(
                         title = stringResource(R.string.settings_audio_output_bit_depth),
                         summary = stringResource(R.string.settings_audio_output_bit_depth_summary),
                         items = audioOutputBitDepthEntries,
@@ -407,7 +389,7 @@ fun AudioSettingsScreen(
 
                     // search-anchor:start
                     SettingsSearchAnchor(R.string.settings_audio_output_sample_rate) {
-                    WindowSpinnerPreference(
+                    EllaSpinnerPreference(
                         title = stringResource(R.string.settings_audio_output_sample_rate),
                         summary = stringResource(R.string.settings_audio_output_sample_rate_summary),
                         items = audioOutputSampleRateEntries,
@@ -416,6 +398,38 @@ fun AudioSettingsScreen(
                             scope.launch {
                                 settingsManager.setAudioOutputSampleRate(audioOutputSampleRateValues[index])
                             }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_usb_dac_mode) {
+                    SwitchPreference(
+                        title = stringResource(R.string.settings_usb_dac_mode),
+                        summary = when {
+                            !usbDacMode -> stringResource(R.string.settings_usb_dac_mode_summary)
+                            connectedUsbDevice == null -> stringResource(R.string.settings_usb_dac_no_device)
+                            usbExclusiveStatus.state == UsbExclusiveState.ExclusiveActive -> stringResource(
+                                R.string.settings_usb_dac_exclusive_active,
+                                usbExclusiveStatus.deviceName.ifBlank {
+                                    connectedUsbDevice?.productName?.toString() ?: "USB DAC"
+                                },
+                                usbExclusiveStatus.sampleRate,
+                                usbExclusiveStatus.channelCount
+                            )
+                            usbExclusiveStatus.state == UsbExclusiveState.ExclusiveFailed -> stringResource(
+                                R.string.settings_usb_dac_exclusive_failed,
+                                connectedUsbDevice?.productName?.toString() ?: "USB DAC"
+                            )
+                            else -> stringResource(
+                                R.string.settings_usb_dac_routing_only,
+                                connectedUsbDevice?.productName?.toString() ?: "USB DAC"
+                            )
+                        },
+                        checked = usbDacMode,
+                        onCheckedChange = { enabled ->
+                            scope.launch { settingsManager.setUsbDacMode(enabled) }
+                            if (enabled) usbAudioController.requestUsbAudioPermission()
                         }
                     )
                     } // search-anchor:end
@@ -453,62 +467,6 @@ fun AudioSettingsScreen(
                     )
                     } // search-anchor:end
 
-                    // search-anchor:start
-                    SettingsSearchAnchor(R.string.settings_crossfade) {
-                    SwitchPreference(
-                        title = stringResource(R.string.settings_crossfade),
-                        summary = stringResource(R.string.settings_crossfade_summary),
-                        checked = crossfadeEnabled,
-                        onCheckedChange = { enabled ->
-                            scope.launch {
-                                settingsManager.setCrossfadeEnabled(enabled)
-                            }
-                        }
-                    )
-                    } // search-anchor:end
-
-                    if (crossfadeEnabled /* search-reveal */ || SettingsSearchFocus.reveals(R.string.settings_crossfade_duration, R.string.settings_crossfade_curve)) {
-                        Column {
-                            // search-anchor:start
-                            SettingsSearchAnchor(R.string.settings_crossfade_duration) {
-                            SettingsIntSliderPreference(
-                                title = stringResource(R.string.settings_crossfade_duration),
-                                summary = "",
-                                value = (crossfadeDurationMs / 10).coerceIn(1, 1_200),
-                                valueRange = 1..1_200,
-                                valueText = stringResource(
-                                    R.string.settings_crossfade_value,
-                                    crossfadeDurationMs / 1_000f
-                                ),
-                                steps = 0,
-                                showKeyPoints = false,
-                                onClick = { showCrossfadeDurationDialog = true },
-                                holdDownState = showCrossfadeDurationDialog,
-                                onValueChange = { centiseconds ->
-                                    scope.launch {
-                                        settingsManager.setCrossfadeDurationMs(
-                                            (centiseconds * 10).coerceIn(10, 12_000)
-                                        )
-                                    }
-                                }
-                            )
-                            } // search-anchor:end
-
-                            // search-anchor:start
-                            SettingsSearchAnchor(R.string.settings_crossfade_curve) {
-                            WindowSpinnerPreference(
-                                title = stringResource(R.string.settings_crossfade_curve),
-                                summary = stringResource(R.string.settings_crossfade_curve_summary),
-                                items = crossfadeCurveEntries,
-                                selectedIndex = selectedCrossfadeCurve,
-                                onSelectedIndexChange = { curve ->
-                                    scope.launch { settingsManager.setCrossfadeCurve(curve) }
-                                }
-                            )
-                            } // search-anchor:end
-
-                        }
-                    }
                     // search-anchor:start
                     SettingsSearchAnchor(R.string.settings_play_count_percent) {
                     SettingsIntSliderPreference(
@@ -548,7 +506,7 @@ fun AudioSettingsScreen(
 
                     // search-anchor:start
                     SettingsSearchAnchor(R.string.settings_replay_gain) {
-                    WindowSpinnerPreference(
+                    EllaSpinnerPreference(
                         title = stringResource(R.string.settings_replay_gain),
                         summary = stringResource(R.string.settings_replay_gain_summary),
                         items = replayGainEntries,
@@ -588,7 +546,7 @@ fun AudioSettingsScreen(
 
                     // search-anchor:start
                     SettingsSearchAnchor(R.string.settings_startup_play) {
-                    WindowSpinnerPreference(
+                    EllaSpinnerPreference(
                         title = stringResource(R.string.settings_startup_play),
                         summary = stringResource(R.string.settings_startup_play_summary),
                         items = startupPlayEntries,
@@ -622,7 +580,7 @@ fun AudioSettingsScreen(
 
                     // search-anchor:start
                     SettingsSearchAnchor(R.string.settings_shuffle_mode) {
-                    WindowSpinnerPreference(
+                    EllaSpinnerPreference(
                         title = stringResource(R.string.settings_shuffle_mode),
                         summary = stringResource(R.string.settings_shuffle_mode_summary),
                         items = shuffleModeEntries,
@@ -660,8 +618,20 @@ fun AudioSettingsScreen(
                     } // search-anchor:end
 
                     // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_playback_mode_stop_after_current) {
+                    SwitchPreference(
+                        title = stringResource(R.string.settings_playback_mode_stop_after_current),
+                        summary = stringResource(R.string.settings_playback_mode_stop_after_current_summary),
+                        checked = playbackModeStopAfterCurrent,
+                        onCheckedChange = { enabled ->
+                            scope.launch { settingsManager.setPlaybackModeStopAfterCurrent(enabled) }
+                        }
+                    )
+                    } // search-anchor:end
+
+                    // search-anchor:start
                     SettingsSearchAnchor(R.string.settings_play_next_mode) {
-                    WindowSpinnerPreference(
+                    EllaSpinnerPreference(
                         title = stringResource(R.string.settings_play_next_mode),
                         summary = stringResource(R.string.settings_play_next_mode_summary),
                         items = playNextModeEntries,
@@ -675,7 +645,7 @@ fun AudioSettingsScreen(
 
                     // search-anchor:start
                     SettingsSearchAnchor(R.string.settings_previous_button) {
-                    WindowSpinnerPreference(
+                    EllaSpinnerPreference(
                         title = stringResource(R.string.settings_previous_button),
                         summary = stringResource(R.string.settings_previous_button_summary),
                         items = previousButtonEntries,
@@ -689,7 +659,7 @@ fun AudioSettingsScreen(
 
                     // search-anchor:start
                     SettingsSearchAnchor(R.string.settings_paused_switch_mode) {
-                    WindowSpinnerPreference(
+                    EllaSpinnerPreference(
                         title = stringResource(R.string.settings_paused_switch_mode),
                         summary = stringResource(R.string.settings_paused_switch_mode_summary),
                         items = pausedSwitchModeEntries,
@@ -724,7 +694,7 @@ fun AudioSettingsScreen(
                     }
                     // search-anchor:start
                     SettingsSearchAnchor(R.string.settings_decoder) {
-                    WindowSpinnerPreference(
+                    EllaSpinnerPreference(
                         title = stringResource(R.string.settings_decoder),
                         summary = stringResource(R.string.settings_decoder_summary),
                         items = decoderEntries,
@@ -743,16 +713,4 @@ fun AudioSettingsScreen(
         }
     }
 
-    SettingsSecondsInputDialog(
-        show = showCrossfadeDurationDialog,
-        title = stringResource(R.string.settings_crossfade_duration),
-        summary = stringResource(R.string.settings_duration_input_range, 0.01f, 12f),
-        valueMs = crossfadeDurationMs.coerceIn(10, 12_000),
-        minMs = 10,
-        maxMs = 12_000,
-        onDismissRequest = { showCrossfadeDurationDialog = false },
-        onSave = { durationMs ->
-            scope.launch { settingsManager.setCrossfadeDurationMs(durationMs) }
-        }
-    )
 }

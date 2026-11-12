@@ -53,7 +53,7 @@ import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.preference.WindowSpinnerPreference
+import com.ella.music.ui.components.EllaSpinnerPreference
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -100,8 +100,10 @@ fun SettingsWizardScreen(
         "wizardAppNowPlayingFlow",
         false
     )
+    var showNeteaseAccount by remember { mutableStateOf(false) }
     val librarySourceOptions = listOf(
         SettingsManager.LIBRARY_SOURCE_LOCAL to stringResource(R.string.settings_library_source_local),
+        SettingsManager.LIBRARY_SOURCE_NETEASE to stringResource(R.string.netease_title),
         SettingsManager.LIBRARY_SOURCE_NAVIDROME to stringResource(R.string.remote_source_navidrome),
         SettingsManager.LIBRARY_SOURCE_OPENSUBSONIC to stringResource(R.string.remote_source_opensubsonic),
         SettingsManager.LIBRARY_SOURCE_EMBY to stringResource(R.string.remote_source_emby),
@@ -112,7 +114,9 @@ fun SettingsWizardScreen(
     )
     val bottomBarStyleOptions = listOf(
         com.ella.music.data.BottomBarStyle.Normal to stringResource(R.string.bottom_bar_style_normal),
-        com.ella.music.data.BottomBarStyle.Floating to stringResource(R.string.bottom_bar_style_floating)
+        com.ella.music.data.BottomBarStyle.Floating to stringResource(R.string.bottom_bar_style_floating),
+        com.ella.music.data.BottomBarStyle.LiquidGlass to stringResource(R.string.bottom_bar_style_liquid),
+        com.ella.music.data.BottomBarStyle.FloatingPill to stringResource(R.string.bottom_bar_style_floating_pill)
     )
     val playerPageStyleOptions = listOf(
         SettingsManager.PLAYER_PAGE_STYLE_HALCYON to stringResource(R.string.settings_player_page_style_halcyon),
@@ -124,11 +128,16 @@ fun SettingsWizardScreen(
     val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
     val heroColor = MiuixTheme.colorScheme.onBackground
     val backdrop = rememberLayerBackdrop()
+    val blurEnable by remember { mutableStateOf(isRenderEffectSupported()) }
     val isOs1 = bgEffectVersion == SettingsManager.BG_EFFECT_OS1
+    val effectiveBlurEnable = blurEnable && !isOs1
     val cardBlendColors = remember(isDark) { aboutCardBlendColors(isDark) }
-    val blurEnable = isRenderEffectSupported()
-    val frosting = remember(backdrop, cardBlendColors, isOs1, blurEnable) {
-        if (isOs1) null else SettingsCardFrosting(backdrop, blurEnable, cardBlendColors)
+    val frosting = remember(backdrop, effectiveBlurEnable, cardBlendColors, isOs1) {
+        if (isOs1) null else SettingsCardFrosting(backdrop, effectiveBlurEnable, cardBlendColors)
+    }
+
+    if (showNeteaseAccount) {
+        com.ella.music.ui.online.NeteaseAccountScreen(onDismiss = { showNeteaseAccount = false }, mainViewModel = mainViewModel)
     }
 
     fun completeWizard() {
@@ -206,13 +215,17 @@ fun SettingsWizardScreen(
                     SmallTitle(text = stringResource(R.string.settings_library_scan))
                     SettingsCardGroup {
                         Column {
-                            WindowSpinnerPreference(
+                            EllaSpinnerPreference(
                                 title = stringResource(R.string.settings_library_source),
                                 summary = stringResource(R.string.settings_library_source_summary),
                                 items = librarySourceOptions.map { DropdownItem(title = it.second) },
                                 selectedIndex = librarySourceOptions.indexOfFirst { it.first == librarySource }.coerceAtLeast(0),
                                 onSelectedIndexChange = { index ->
                                     librarySourceOptions.getOrNull(index)?.first?.let { source ->
+                                        if (source == SettingsManager.LIBRARY_SOURCE_NETEASE &&
+                                            !com.ella.music.data.netease.NeteaseAccountStore.getInstance(context).account.value.loggedIn) {
+                                            showNeteaseAccount = true
+                                        }
                                         if (mainViewModel != null) mainViewModel.setLibrarySource(source)
                                         else scope.launch { settingsManager.setLibrarySource(source) }
                                     }
@@ -242,7 +255,7 @@ fun SettingsWizardScreen(
                     SmallTitle(text = stringResource(R.string.settings_player_page_style))
                     SettingsCardGroup {
                         Column {
-                            WindowSpinnerPreference(
+                            EllaSpinnerPreference(
                                 title = stringResource(R.string.settings_player_page_style),
                                 summary = stringResource(R.string.settings_player_page_style_summary),
                                 items = playerPageStyleOptions.map { DropdownItem(title = it.second) },
@@ -253,7 +266,7 @@ fun SettingsWizardScreen(
                                     }
                                 }
                             )
-                            WindowSpinnerPreference(
+                            EllaSpinnerPreference(
                                 title = stringResource(R.string.settings_player_bg_theme),
                                 summary = stringResource(R.string.settings_player_bg_theme_summary),
                                 items = playerBackgroundThemeLabels.map { DropdownItem(title = it) },
@@ -279,12 +292,13 @@ fun SettingsWizardScreen(
                     SmallTitle(text = stringResource(R.string.settings_wizard_interface))
                     SettingsCardGroup {
                         Column {
-                            WindowSpinnerPreference(
+                            EllaSpinnerPreference(
                                 title = stringResource(R.string.settings_bottom_bar_style),
                                 summary = when (bottomBarStyle) {
                                     com.ella.music.data.BottomBarStyle.Normal -> stringResource(R.string.settings_bottom_bar_style_summary_normal)
                                     com.ella.music.data.BottomBarStyle.Floating -> stringResource(R.string.settings_bottom_bar_style_summary_floating)
                                     com.ella.music.data.BottomBarStyle.LiquidGlass -> stringResource(R.string.settings_bottom_bar_style_summary_liquid)
+                                    com.ella.music.data.BottomBarStyle.FloatingPill -> stringResource(R.string.settings_bottom_bar_style_summary_floating_pill)
                                 },
                                 items = bottomBarStyleOptions.map { DropdownItem(title = it.second) },
                                 selectedIndex = bottomBarStyleOptions.indexOfFirst { it.first == bottomBarStyle }.coerceAtLeast(0),

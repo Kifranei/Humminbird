@@ -37,6 +37,7 @@ import com.ella.music.data.MusicFreePluginConfig
 import com.ella.music.data.PlaylistStore
 import com.ella.music.data.decodeNeteaseKey
 import com.ella.music.data.model.Song
+import com.ella.music.data.model.primaryEndMs
 import com.ella.music.data.neteaseShareSongUrl
 import com.ella.music.data.netease.NETEASE_SCHEME
 import com.ella.music.data.netease.NeteasePlaybackProvider
@@ -156,6 +157,7 @@ class PlaybackService : MediaLibraryService() {
     private var crossfadePresentationSettlementJob: kotlinx.coroutines.Job? = null
     private var castMediaServer: LocalCastMediaServer? = null
     private lateinit var notificationProvider: NoArtworkMediaNotificationProvider
+    private var originOsMediaIslandController: OriginOsMediaIslandController? = null
     private lateinit var settingsManager: SettingsManager
     private lateinit var musicRepository: MusicRepository
     private lateinit var desktopLyricBridge: DesktopLyricBridge
@@ -364,7 +366,11 @@ class PlaybackService : MediaLibraryService() {
                 com.ella.music.data.smb.SmbDataSourceFactory(this, DefaultDataSource.Factory(this, httpDataSourceFactory)))
         ) { dataSpec ->
             if (dataSpec.uri.scheme == "halcyon-netease") {
-                throw java.io.IOException("Online account playback is not available")
+                val id = dataSpec.uri.lastPathSegment.orEmpty()
+                val url = runBlocking(Dispatchers.IO) {
+                    com.ella.music.data.netease.NeteaseLibraryStore.getInstance(this@PlaybackService).streamUrl(id)
+                }
+                dataSpec.withUri(android.net.Uri.parse(url))
             } else dataSpec
         }
         // NetEase streams go through an on-disk cache keyed by song + quality (replays cost no data).
@@ -560,6 +566,9 @@ class PlaybackService : MediaLibraryService() {
             scope = serviceScope,
             onPlayerCreated = { decoder, gain ->
                 bindPlayerReplayGain(decoder, gain, settingsManager, musicRepository, serviceScope)
+            },
+            transitionHintLoader = { source, target, sourceDurationMs, fadeMs ->
+                computeCrossfadeTransitionHints(source, target, sourceDurationMs, fadeMs)
             }
         )
         var currentCrossfadeDurationMs = 0
@@ -832,6 +841,12 @@ class PlaybackService : MediaLibraryService() {
         )
             .setSessionActivity(pendingIntent)
             .build()
+        if (OriginOsMediaIslandAccess.isSupportedDevice()) {
+            originOsMediaIslandController = OriginOsMediaIslandController(
+                this, presentationPlayer, settingsManager.vivoMediaIslandEnabled,
+                settingsManager.vivoMediaIslandOnly, serviceScope
+            )
+        }
         scheduleLegacyArtworkCompat(presentationPlayer.mediaMetadata)
 
         updateMediaButtonPreferences()
@@ -899,6 +914,51 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /**
+     * Smart-fade recipe (lyric-aware + album-side continuity), resolved on the service scope a
+     * beat before the prebuffer window. A null result keeps the configured fixed fade window;
+     * the coordinator's waveform-envelope fast-commit stays the low-level fallback underneath.
+     */
+    private suspend fun computeCrossfadeTransitionHints(
+        source: MediaItem,
+        target: MediaItem,
+        sourceDurationMs: Long,
+        fadeMs: Long
+    ): TransitionHints? {
+        val sourceSong = source.toSongFromMediaItemExtras()
+        val targetSong = target.toSongFromMediaItemExtras()
+        // Contiguous album sides (same disc, track N -> N+1) form one continuous mix; the
+        // natural gapless auto-transition preserves the intended seam better than any fade.
+        if (sourceSong != null && targetSong != null &&
+            sourceSong.album.isNotBlank() && sourceSong.album == targetSong.album &&
+            sourceSong.trackNumber > 0 && targetSong.trackNumber == sourceSong.trackNumber + 1 &&
+            sourceSong.discNumber == targetSong.discNumber &&
+            (sourceSong.albumArtist.isBlank() || targetSong.albumArtist.isBlank() ||
+                sourceSong.albumArtist == targetSong.albumArtist)
+        ) {
+            return TransitionHints(keepSeamless = true)
+        }
+        if (sourceSong == null || fadeMs <= 0L || sourceDurationMs <= 0L) return null
+        val lyrics = runCatching { musicRepository.getLyrics(sourceSong) }.getOrNull()
+            ?.filter { it.text.isNotBlank() && !it.isOpeningMetadata }
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
+        val plannedStart = (sourceDurationMs - fadeMs).coerceAtLeast(0L)
+        for (index in lyrics.indices) {
+            val line = lyrics[index]
+            if (line.timeMs > plannedStart) break
+            val lineEnd = line.primaryEndMs(nextLine = lyrics.getOrNull(index + 1))
+            if (plannedStart >= lineEnd) continue
+            // The fixed window would open mid-line. Sliding the start to the line boundary
+            // keeps the vocal intact while a usable tail window remains.
+            if (lineEnd <= sourceDurationMs - CrossfadeTransitionMath.MIN_SMART_FADE_MS) {
+                return TransitionHints(fadeStartMs = lineEnd)
+            }
+            return null
+        }
+        return null
+    }
+
     private fun buildSessionActivityPendingIntent(openPlayer: Boolean): PendingIntent {
         val intent = Intent(this, MainActivity::class.java)
             .setAction(MainActivity.ACTION_MEDIA_NOTIFICATION_CLICK)
@@ -914,6 +974,11 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
         return mediaSession
+    }
+
+    internal fun updateOriginOsMediaIslandArtwork(session: MediaSession, artwork: android.graphics.Bitmap?) {
+        if (session !== mediaSession) return
+        originOsMediaIslandController?.updateArtwork(session.player.currentMediaItem?.mediaId, artwork)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -965,6 +1030,8 @@ class PlaybackService : MediaLibraryService() {
         AudioEffectState.publish(null)
         crossfadePresentationSettlementJob?.cancel()
         crossfadePresentationSettlementJob = null
+        originOsMediaIslandController?.close()
+        originOsMediaIslandController = null
         crossfadePlaybackCoordinator?.release()
         crossfadePlaybackCoordinator = null
         mediaSession?.run {

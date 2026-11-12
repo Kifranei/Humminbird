@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import com.ella.music.R
+import com.ella.music.data.SettingsManager.Companion.DEFAULT_OPENAI_BASE_URL
+import com.ella.music.data.SettingsManager.Companion.DEFAULT_OPENAI_MODEL
 import com.ella.music.data.SettingsManager.Companion.LEGACY_EMBY_SERVER_ID
 import com.ella.music.data.SettingsManager.Companion.LEGACY_NAVIDROME_SERVER_ID
 import com.ella.music.data.SettingsManager.Companion.LIBRARY_SOURCE_LOCAL
@@ -22,6 +24,7 @@ import com.ella.music.data.SettingsManager.Companion.KEY_LX_SOURCE_NAME
 import com.ella.music.data.SettingsManager.Companion.KEY_LX_SOURCE_SCRIPT
 import com.ella.music.data.SettingsManager.Companion.KEY_LX_SOURCE_URL
 import com.ella.music.data.SettingsManager.Companion.KEY_LX_SOURCES_JSON
+import com.ella.music.data.SettingsManager.Companion.KEY_MCP_SERVER_ENABLED
 import com.ella.music.data.SettingsManager.Companion.KEY_WEB_MUSIC_SERVER_ENABLED
 import com.ella.music.data.SettingsManager.Companion.KEY_NAVIDROME_ACTIVE_ID
 import com.ella.music.data.SettingsManager.Companion.KEY_NAVIDROME_PASSWORD
@@ -29,6 +32,12 @@ import com.ella.music.data.SettingsManager.Companion.KEY_NAVIDROME_SERVERS
 import com.ella.music.data.SettingsManager.Companion.KEY_NAVIDROME_URL
 import com.ella.music.data.SettingsManager.Companion.KEY_NAVIDROME_USERNAME
 import com.ella.music.data.SettingsManager.Companion.KEY_ONLINE_SELECTED_PROVIDER
+import com.ella.music.data.SettingsManager.Companion.KEY_OPENAI_API_KEY
+import com.ella.music.data.SettingsManager.Companion.KEY_OPENAI_BASE_URL
+import com.ella.music.data.SettingsManager.Companion.KEY_OPENAI_MODEL
+import com.ella.music.data.SettingsManager.Companion.KEY_AI_API_PROTOCOL
+import com.ella.music.data.SettingsManager.Companion.AI_API_PROTOCOL_COMPATIBLE
+import com.ella.music.data.SettingsManager.Companion.AI_API_PROTOCOL_ANTHROPIC
 import com.ella.music.data.SettingsManager.Companion.KEY_OPENSUBSONIC_ACTIVE_ID
 import com.ella.music.data.SettingsManager.Companion.KEY_OPENSUBSONIC_SERVERS
 import com.ella.music.data.SettingsManager.Companion.KEY_WEBDAV_AUTO_BACKUP_ENABLED
@@ -58,7 +67,7 @@ import kotlinx.coroutines.flow.map
 
 /**
  * Online sources and integrations: library source selection, WebDAV (browse + backup),
- * LX scripts, Navidrome / OpenSubsonic / Emby multi-server configs, and OpenAI.
+ * LX scripts, Navidrome / OpenSubsonic / Emby multi-server configs, OpenAI and the MCP server.
  *
  * Extracted verbatim from [SettingsManager], which implements this interface via class
  * delegation so every call site keeps using settingsManager.<member> unchanged. All flow
@@ -79,6 +88,7 @@ interface RemoteSourceSettingsAccess {
     suspend fun setNeteaseQuality(quality: String)
     val neteasePlaybackProvider: Flow<String>
     suspend fun setNeteasePlaybackProvider(value: String)
+    val mcpServerEnabled: Flow<Boolean>
     val webMusicServerEnabled: Flow<Boolean>
     val webDavUrl: Flow<String>
     val webDavUsername: Flow<String>
@@ -112,6 +122,11 @@ interface RemoteSourceSettingsAccess {
     val openSubsonicConfig: Flow<RemoteMusicSourceConfig>
     val embyConfig: Flow<RemoteMusicSourceConfig>
     val librarySource: Flow<String>
+    val openAiApiKey: Flow<String>
+    val openAiBaseUrl: Flow<String>
+    val openAiModel: Flow<String>
+    val aiApiProtocol: Flow<Int>
+    suspend fun setMcpServerEnabled(enabled: Boolean)
     suspend fun setWebMusicServerEnabled(enabled: Boolean)
     suspend fun setLibrarySource(source: String)
     suspend fun setWebDavConfig(url: String, username: String, password: String, customHeaders: List<WebDavHeader> = emptyList())
@@ -141,6 +156,10 @@ interface RemoteSourceSettingsAccess {
     suspend fun upsertEmbyServer(server: SavedRemoteServer)
     suspend fun deleteEmbyServer(id: String)
     suspend fun setActiveEmbyServer(id: String)
+    suspend fun setOpenAiApiKey(apiKey: String)
+    suspend fun setOpenAiBaseUrl(baseUrl: String)
+    suspend fun setOpenAiModel(model: String)
+    suspend fun setAiApiProtocol(protocol: Int)
 }
 
 internal class RemoteSourceSettingsAccessImpl(private val context: Context) : RemoteSourceSettingsAccess {
@@ -172,6 +191,8 @@ internal class RemoteSourceSettingsAccessImpl(private val context: Context) : Re
     }
 
 
+    override val mcpServerEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_MCP_SERVER_ENABLED] ?: false }
     override val webMusicServerEnabled: Flow<Boolean> =
         context.dataStore.data.map { it[KEY_WEB_MUSIC_SERVER_ENABLED] ?: false }
 
@@ -287,7 +308,21 @@ internal class RemoteSourceSettingsAccessImpl(private val context: Context) : Re
             ?: RemoteMusicSourceConfig(provider = RemoteMusicProvider.Emby, baseUrl = "")
     }
     override val librarySource: Flow<String> = context.dataStore.data.map {
-        normalizeLibrarySource(it[KEY_LIBRARY_SOURCE] ?: LIBRARY_SOURCE_LOCAL)
+        it[KEY_LIBRARY_SOURCE] ?: LIBRARY_SOURCE_LOCAL
+    }
+    override val openAiApiKey: Flow<String> = context.dataStore.data.map { it[KEY_OPENAI_API_KEY] ?: "" }
+    override val openAiBaseUrl: Flow<String> =
+        context.dataStore.data.map { it[KEY_OPENAI_BASE_URL] ?: DEFAULT_OPENAI_BASE_URL }
+    override val openAiModel: Flow<String> =
+        context.dataStore.data.map { it[KEY_OPENAI_MODEL] ?: DEFAULT_OPENAI_MODEL }
+    override val aiApiProtocol: Flow<Int> =
+        context.dataStore.data.map {
+            (it[KEY_AI_API_PROTOCOL] ?: AI_API_PROTOCOL_COMPATIBLE)
+                .coerceIn(AI_API_PROTOCOL_COMPATIBLE, AI_API_PROTOCOL_ANTHROPIC)
+        }
+
+    override suspend fun setMcpServerEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MCP_SERVER_ENABLED] = enabled }
     }
 
     override suspend fun setWebMusicServerEnabled(enabled: Boolean) {
@@ -530,6 +565,34 @@ internal class RemoteSourceSettingsAccessImpl(private val context: Context) : Re
 
     override suspend fun setActiveEmbyServer(id: String) {
         context.dataStore.edit { it[KEY_EMBY_ACTIVE_ID] = id }
+    }
+
+    override suspend fun setOpenAiApiKey(apiKey: String) {
+        context.dataStore.edit {
+            val trimmed = apiKey.trim()
+            if (trimmed.isBlank()) it.remove(KEY_OPENAI_API_KEY) else it[KEY_OPENAI_API_KEY] = trimmed
+        }
+    }
+
+    override suspend fun setOpenAiBaseUrl(baseUrl: String) {
+        context.dataStore.edit {
+            it[KEY_OPENAI_BASE_URL] = baseUrl.trim().ifBlank { DEFAULT_OPENAI_BASE_URL }
+        }
+    }
+
+    override suspend fun setOpenAiModel(model: String) {
+        context.dataStore.edit {
+            it[KEY_OPENAI_MODEL] = model.trim().ifBlank { DEFAULT_OPENAI_MODEL }
+        }
+    }
+
+    override suspend fun setAiApiProtocol(protocol: Int) {
+        context.dataStore.edit {
+            it[KEY_AI_API_PROTOCOL] = protocol.coerceIn(
+                AI_API_PROTOCOL_COMPATIBLE,
+                AI_API_PROTOCOL_ANTHROPIC
+            )
+        }
     }
 
     private fun Preferences.lxSources(): List<LxSourceConfig> {

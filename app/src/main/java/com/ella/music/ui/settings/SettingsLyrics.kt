@@ -44,7 +44,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.preference.WindowSpinnerPreference
+import com.ella.music.ui.components.EllaSpinnerPreference
 
 @Composable
 internal fun SettingsLyricsSection(
@@ -400,7 +400,7 @@ internal fun SettingsLyricsSection(
     }
 
     SettingsCardGroup(
-        highlight = highlightKey == "live_update_lyric"
+        highlight = highlightKey == "live_update_lyric" || highlightKey == "vivo_atom_walkman_whitelist"
     ) {
         Column {
             SettingsLiveUpdateLyricControls(
@@ -651,7 +651,7 @@ internal fun SettingsPlayerMiniLyricControls() {
     )
     // search-anchor:start
     SettingsSearchAnchor(R.string.settings_player_lyric_text_align) {
-    WindowSpinnerPreference(
+    EllaSpinnerPreference(
         title = stringResource(R.string.settings_player_lyric_text_align),
         summary = stringResource(R.string.settings_player_lyric_text_align_summary),
         items = alignLabels.map { DropdownItem(title = it) },
@@ -728,7 +728,7 @@ private fun SettingsPlayerLyricAlignmentPreference() {
     }
     // search-anchor:start
     SettingsSearchAnchor(R.string.settings_player_lyric_text_align) {
-    WindowSpinnerPreference(
+    EllaSpinnerPreference(
         title = stringResource(R.string.settings_player_lyric_text_align),
         summary = stringResource(R.string.settings_player_lyric_text_align_summary),
         items = entries,

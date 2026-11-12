@@ -2,6 +2,7 @@ package com.ella.music.ui.home
 
 import com.ella.music.data.netease.toNeteaseHistorySong
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,16 +17,20 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,6 +44,8 @@ import com.ella.music.data.artistNamesForSong
 import com.ella.music.data.splitArtistNames
 import com.ella.music.data.tagIdentityKey
 import com.ella.music.ui.components.EllaSmallTopAppBar
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import com.ella.music.ui.components.LocalSettingsCardFrosting
 import com.ella.music.ui.components.ellaPageBackground
 import com.ella.music.ui.components.frostedCardColor
@@ -53,6 +60,7 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Album
+import top.yukonga.miuix.kmp.icon.extended.Community
 import top.yukonga.miuix.kmp.icon.extended.ContactsCircle
 import top.yukonga.miuix.kmp.icon.extended.Folder
 import top.yukonga.miuix.kmp.icon.extended.Music
@@ -66,7 +74,15 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
+
+/** Session memory for the dashboard scroll offset. When the home destination is re-entered
+ * while its data is still arriving, the restored offset can exceed the momentarily shorter
+ * content and get clamped; re-applying once the content is tall enough keeps the position. */
+private object HomeScrollMemory {
+    var offset: Int = 0
+}
 
 @Composable
 fun HomeScreen(
@@ -84,6 +100,7 @@ fun HomeScreen(
     onNavigateToAnalytics: () -> Unit,
     onNavigateToRecentPlayback: () -> Unit = {},
     onNavigateToPosterWall: () -> Unit = {},
+    onNavigateToAiChat: () -> Unit = {},
     onNavigateToMetadataCategory: (String) -> Unit,
     onNavigateToPlayer: () -> Unit,
     onNavigateToSettings: () -> Unit = {}
@@ -95,7 +112,22 @@ fun HomeScreen(
     com.ella.music.ui.components.RememberPlaybackSourceScreen(CategoryResumeKeys.DASHBOARD)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val hapticFeedback = LocalHapticFeedback.current
     val settingsManager = remember(context) { SettingsManager.getInstance(context) }
+    val librarySource by settingsManager.librarySource.collectAsState(initial = SettingsManager.LIBRARY_SOURCE_LOCAL)
+    var showLibrarySourceMenu by remember { mutableStateOf(false) }
+    var showNeteaseAccount by remember { mutableStateOf(false) }
+    val librarySourceOptions = listOf(
+        SettingsManager.LIBRARY_SOURCE_LOCAL to stringResource(R.string.settings_library_source_local),
+        SettingsManager.LIBRARY_SOURCE_NETEASE to stringResource(R.string.netease_title),
+        SettingsManager.LIBRARY_SOURCE_NAVIDROME to stringResource(R.string.remote_source_navidrome),
+        SettingsManager.LIBRARY_SOURCE_OPENSUBSONIC to stringResource(R.string.remote_source_opensubsonic),
+        SettingsManager.LIBRARY_SOURCE_EMBY to stringResource(R.string.remote_source_emby),
+        SettingsManager.LIBRARY_SOURCE_WEBDAV to stringResource(R.string.webdav_library_title),
+        SettingsManager.LIBRARY_SOURCE_SMB to stringResource(R.string.smb_title),
+        SettingsManager.LIBRARY_SOURCE_FTP to stringResource(R.string.ftp_library_title),
+        SettingsManager.LIBRARY_SOURCE_SFTP to stringResource(R.string.sftp_library_title)
+    )
     val initialSettings = remember(settingsManager) {
         runBlocking(Dispatchers.IO) {
             HomeInitialSettings(
@@ -111,6 +143,8 @@ fun HomeScreen(
                 homeHiddenTopBarActions = settingsManager.homeHiddenTopBarActions.first(),
                 homeLibraryTileOrder = settingsManager.homeLibraryTileOrder.first(),
                 homeHiddenLibraryTiles = settingsManager.homeHiddenLibraryTiles.first(),
+                homeOnlineTileOrder = settingsManager.homeOnlineTileOrder.first(),
+                homeHiddenOnlineTiles = settingsManager.homeHiddenOnlineTiles.first(),
                 homeTilePinButtonsVisible = settingsManager.homeTilePinButtonsVisible.first(),
             )
         }
@@ -134,6 +168,8 @@ fun HomeScreen(
     )
     val homeLibraryTileOrder by settingsManager.homeLibraryTileOrder.collectAsState(initial = initialSettings.homeLibraryTileOrder)
     val homeHiddenLibraryTiles by settingsManager.homeHiddenLibraryTiles.collectAsState(initial = initialSettings.homeHiddenLibraryTiles)
+    val homeOnlineTileOrder by settingsManager.homeOnlineTileOrder.collectAsState(initial = initialSettings.homeOnlineTileOrder)
+    val homeHiddenOnlineTiles by settingsManager.homeHiddenOnlineTiles.collectAsState(initial = initialSettings.homeHiddenOnlineTiles)
     val homeTilePinButtonsVisible by settingsManager.homeTilePinButtonsVisible.collectAsState(initial = initialSettings.homeTilePinButtonsVisible)
     val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
     val pageBackground = ellaPageBackground()
@@ -151,7 +187,7 @@ fun HomeScreen(
             .size
     }
     val metadataCategoryCounts = remember(songs, nameSplitRevision) {
-        mainViewModel.getMetadataCategoryCounts(listOf("folder", "genre", "year", "composer", "arranger", "lyricist"))
+        mainViewModel.getMetadataCategoryCounts(listOf("folder", "genre", "year", "composer", "arranger", "lyricist", "producer"))
     }
     val folderCount = metadataCategoryCounts["folder"] ?: 0
     val customCategories by settingsManager.customMetadataCategories.collectAsState(initial = emptyList())
@@ -163,6 +199,7 @@ fun HomeScreen(
     val composerCount = metadataCategoryCounts["composer"] ?: 0
     val arrangerCount = metadataCategoryCounts["arranger"] ?: 0
     val lyricistCount = metadataCategoryCounts["lyricist"] ?: 0
+    val producerCount = metadataCategoryCounts["producer"] ?: 0
     val recentlyAddedSongs = remember(songs) {
         songs
             .sortedWith(compareByDescending<Song> { it.dateAdded }.thenByDescending { it.dateModified })
@@ -199,13 +236,45 @@ fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(pageBackground)
-            .windowInsetsPadding(WindowInsets.statusBars)
     ) {
+        if (showNeteaseAccount) {
+            com.ella.music.ui.online.NeteaseAccountScreen(
+                onDismiss = { showNeteaseAccount = false },
+                mainViewModel = mainViewModel
+            )
+        }
+        val homeBackdrop = rememberLayerBackdrop()
         EllaSmallTopAppBar(
+            backdrop = homeBackdrop,
             title = stringResource(R.string.home_title),
             color = pageBackground,
+            // Opt in explicitly: the default (settings-close context) leaves the home bar
+            // unblurred and the action buttons without their glass circles.
+            enableProgressiveBlur = true,
             titleStartPadding = 20.dp,
             titleEndPadding = 128.dp,
+            onTitleLongClick = {
+                showLibrarySourceMenu = true
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.ContextClick)
+            },
+            titleOverlay = {
+                HomeLibrarySourceMenu(
+                    show = showLibrarySourceMenu,
+                    options = librarySourceOptions,
+                    selectedSource = librarySource.ifBlank { SettingsManager.LIBRARY_SOURCE_LOCAL },
+                    onDismiss = { showLibrarySourceMenu = false },
+                    onSelect = { source ->
+                        showLibrarySourceMenu = false
+                        if (source == librarySource) return@HomeLibrarySourceMenu
+                        if (source == SettingsManager.LIBRARY_SOURCE_NETEASE &&
+                            !com.ella.music.data.netease.NeteaseAccountStore.getInstance(context).account.value.loggedIn
+                        ) {
+                            showNeteaseAccount = true
+                        }
+                        mainViewModel.setLibrarySource(source)
+                    }
+                )
+            },
             actions = {
                 val hiddenActions = remember(homeHiddenTopBarActions) {
                     homeHiddenTopBarActions.csvIdSet()
@@ -247,6 +316,13 @@ fun HomeScreen(
                                 tint = MiuixTheme.colorScheme.onSurface
                             )
                         }
+                        "ai" -> IconButton(onClick = onNavigateToAiChat) {
+                            Icon(
+                                imageVector = MiuixIcons.Regular.Community,
+                                contentDescription = stringResource(R.string.ai_chat_title),
+                                tint = MiuixTheme.colorScheme.onSurface
+                            )
+                        }
                         "settings" -> IconButton(onClick = onNavigateToSettings) {
                             Icon(
                                 imageVector = MiuixIcons.Regular.Settings,
@@ -259,10 +335,49 @@ fun HomeScreen(
             }
         )
 
+        val dashboardScrollState = rememberScrollState()
+        // Capture before the offset writer below starts emitting 0 for the fresh state.
+        val restoreTarget = remember { HomeScrollMemory.offset }
+        LaunchedEffect(Unit) {
+            val target = restoreTarget
+            if (target > 0) {
+                // Late-arriving sections (e.g. custom categories) make the column taller a
+                // few frames in. Wait for the content to reach the saved offset before
+                // restoring, otherwise a premature write gets clamped by the short content.
+                val deadline = android.os.SystemClock.elapsedRealtime() + 4_000
+                var lastWrite = -1
+                while (dashboardScrollState.value < target) {
+                    if (dashboardScrollState.isScrollInProgress) break
+                    val movedExternally = lastWrite >= 0 &&
+                        dashboardScrollState.value != 0 &&
+                        dashboardScrollState.value != lastWrite
+                    if (movedExternally) break
+                    val remaining = deadline - android.os.SystemClock.elapsedRealtime()
+                    if (remaining <= 0) break
+                    dashboardScrollState.scrollTo(target)
+                    lastWrite = dashboardScrollState.value
+                    val reached = withTimeoutOrNull(remaining) {
+                        snapshotFlow { dashboardScrollState.maxValue }.first { it >= target }
+                    } != null
+                    if (!reached) break
+                }
+            }
+        }
+        LaunchedEffect(dashboardScrollState) {
+            snapshotFlow { dashboardScrollState.value }.collect { HomeScrollMemory.offset = it }
+        }
+        // Record on a fixed viewport like the settings pages: the scroll node's own layer
+        // placement moves the recorded frame instead of the sampled content, leaving the
+        // top-of-column image stuck inside the blur band.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(homeBackdrop)
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(dashboardScrollState)
                 .padding(horizontal = 16.dp)
         ) {
             if (homeFeatureWallpaperUri.isNotBlank()) {
@@ -300,6 +415,10 @@ fun HomeScreen(
                     add((indexOf("recent_playback") + 1).coerceIn(0, size), "poster_wall")
                 }
             }
+            val hiddenOnlineTiles = remember(homeHiddenOnlineTiles) { homeHiddenOnlineTiles.csvIdSet() }
+            val onlineTileOrder = remember(homeOnlineTileOrder) {
+                homeOnlineTileOrder.csvIds(SettingsManager.DEFAULT_HOME_ONLINE_TILE_ORDER)
+            }
             val libraryTiles = remember(
                 context,
                 tileOrder,
@@ -314,6 +433,7 @@ fun HomeScreen(
                 composerCount,
                 arrangerCount,
                 lyricistCount,
+                producerCount,
                 playbackHistory.size,
                 customCategories,
                 customCategoryCounts
@@ -398,6 +518,12 @@ fun HomeScreen(
                         context.getString(R.string.home_count_artists, lyricistCount),
                         Screen.MetadataCategory.createRoute("lyricist"),
                         { onNavigateToMetadataCategory("lyricist") }
+                    ),
+                    "producer" to HomeTileSpec(
+                        "producer", context.getString(R.string.category_producer),
+                        context.getString(R.string.home_count_artists, producerCount),
+                        Screen.MetadataCategory.createRoute("producer"),
+                        { onNavigateToMetadataCategory("producer") }
                     )
                 )
                 val customTiles = customCategories.associate { category ->
@@ -407,6 +533,13 @@ fun HomeScreen(
                         { onNavigateToMetadataCategory(category.type) }, icon = MiuixIcons.Regular.Music)
                 }
                 tileOrder.mapNotNull { all[it] ?: customTiles[it] }
+            }
+            val onlineTiles = remember(context, onlineTileOrder, hiddenOnlineTiles) {
+                val all = mapOf(
+                    "musicfree" to HomeTileSpec("musicfree", "MusicFree", context.getString(R.string.home_import_api_source), Screen.MusicFreeOnline.route, onNavigateToMusicFreeOnline),
+                    "lx" to HomeTileSpec("lx", "LX Music", context.getString(R.string.home_import_api_source), Screen.LxOnline.route, onNavigateToLxOnline)
+                )
+                onlineTileOrder.mapNotNull { all[it] }.filterNot { it.id in hiddenOnlineTiles }
             }
 
             sectionOrder.filterNot { it in hiddenSections }.forEach { section ->
@@ -418,7 +551,17 @@ fun HomeScreen(
                         homeTilePinButtonsVisible,
                         cardColor = homeTileCardColor
                     )
-                    "online" -> Unit
+                    "online" -> {
+                        if (onlineTiles.isNotEmpty()) {
+                            SectionTitle(stringResource(R.string.home_online_music))
+                            HomeTileGrid(
+                                tiles = onlineTiles,
+                                context = context,
+                                showPinButtons = homeTilePinButtonsVisible,
+                                cardColor = homeTileCardColor
+                            )
+                        }
+                    }
                     "recent_playback" -> {
                         if ("recent_playback" !in tileOrder) {
                             RecentPlaybackFeatureCard(
@@ -454,6 +597,7 @@ fun HomeScreen(
             }
 
             Spacer(modifier = Modifier.height(160.dp))
+        }
         }
     }
 }
@@ -517,5 +661,7 @@ private data class HomeInitialSettings(
     val homeHiddenTopBarActions: String,
     val homeLibraryTileOrder: String,
     val homeHiddenLibraryTiles: String,
+    val homeOnlineTileOrder: String,
+    val homeHiddenOnlineTiles: String,
     val homeTilePinButtonsVisible: Boolean,
 )

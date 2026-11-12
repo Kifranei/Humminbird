@@ -54,6 +54,10 @@ enum class BackupType(val titleRes: Int, val summaryRes: Int) {
         titleRes = R.string.settings_backup_type_library_scan,
         summaryRes = R.string.settings_backup_type_library_scan_summary
     ),
+    AiConfigAndChat(
+        titleRes = R.string.settings_backup_type_ai_config_chat,
+        summaryRes = R.string.settings_backup_type_ai_config_chat_summary
+    ),
     PlaybackStats(
         titleRes = R.string.settings_backup_type_playback_stats,
         summaryRes = R.string.settings_backup_type_playback_stats_summary

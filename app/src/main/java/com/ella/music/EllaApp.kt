@@ -8,6 +8,7 @@ import com.ella.music.data.AppIconManager
 import com.ella.music.data.SettingsManager
 import com.ella.music.data.webdav.WebDavClient
 import com.ella.music.data.repository.RemoteAudioCache
+import com.ella.music.mcp.McpServerService
 import com.ella.music.web.WebMusicService
 import com.ella.music.oem.AppMemoryTrimAdapter
 import com.ella.music.player.PlaybackWidgetUpdater
@@ -58,6 +59,12 @@ class EllaApp : Application() {
             runCatching { LibrarySortUiState.warmUp(settingsManager) }
         }
 
+        // Auto-start MCP server if previously enabled
+        appScope.launch {
+            if (settingsManager.mcpServerEnabled.first()) {
+                McpServerService.start(this@EllaApp)
+            }
+        }
         appScope.launch {
             if (settingsManager.webMusicServerEnabled.first()) {
                 if (!WebMusicService.start(this@EllaApp)) {

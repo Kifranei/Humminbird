@@ -58,8 +58,24 @@ internal class NeteasePlaybackResolver(
     )
 
     /** null means the existing official stable-URI/cache path; plugin errors are never caught. */
-    suspend fun resolve(@Suppress("UNUSED_PARAMETER") song: Song): Song? {
-        throw IOException(message(R.string.netease_playback_resolve_failed))
+    suspend fun resolve(song: Song): Song? {
+        val resolved = when (provider()) {
+            NeteasePlaybackProvider.Official -> return null
+            NeteasePlaybackProvider.Lx -> {
+                val source = lxSource()?.takeIf { it.script.isNotBlank() }
+                    ?: throw IOException(message(R.string.netease_playback_lx_missing))
+                resolveLx(song, source)
+            }
+            NeteasePlaybackProvider.MusicFree -> {
+                val source = musicFreeSource()?.takeIf { it.script.isNotBlank() }
+                    ?: throw IOException(message(R.string.netease_playback_musicfree_missing))
+                resolveMusicFree(song, source)
+            }
+        }
+        if (!isNeteasePluginStreamUrl(resolved.path)) {
+            throw IOException(message(R.string.netease_playback_invalid_url))
+        }
+        return song.copy(path = resolved.path, fileName = resolved.fileName, mimeType = resolved.mimeType).also(onResolved)
     }
 }
 

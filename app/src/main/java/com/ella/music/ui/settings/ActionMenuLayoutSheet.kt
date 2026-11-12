@@ -18,10 +18,12 @@ internal fun actionMenuStringRes(id: String): Int = when (id) {
     ActionMenuIds.PLAY_NEXT -> R.string.song_more_play_next
     ActionMenuIds.SHARE -> R.string.common_share
     ActionMenuIds.SPECTRUM -> R.string.song_more_view_spectrum
+    ActionMenuIds.AI -> R.string.song_more_ai_title
     ActionMenuIds.INFO -> R.string.song_more_view_song_info
     ActionMenuIds.RATING -> R.string.song_more_set_rating
     ActionMenuIds.EDIT_TAGS -> R.string.song_more_edit_tags_title
     ActionMenuIds.LYRIC_TIMING -> R.string.song_more_lyric_timing
+    ActionMenuIds.AUDIO_TOOLS -> R.string.song_more_audio_tools
     ActionMenuIds.REMOVE_FROM_PLAYLIST -> R.string.playlist_remove_song_title
     ActionMenuIds.DELETE -> R.string.song_more_delete_permanently
     ActionMenuIds.AUDIO_OUTPUT -> R.string.player_audio_output_info
@@ -43,6 +45,9 @@ internal fun actionMenuStringRes(id: String): Int = when (id) {
     ActionMenuIds.DOWNLOAD -> R.string.netease_download_song
     ActionMenuIds.DOWNLOAD_MV -> R.string.netease_download_mv
     ActionMenuIds.VIEW_MV -> R.string.player_view_music_video
+    ActionMenuIds.SONG_COMMENTS -> R.string.player_view_song_comments
+    ActionMenuIds.SONG_WIKI -> R.string.netease_link_song_wiki
+    ActionMenuIds.MV_COMMENTS -> R.string.player_view_mv_comments
     com.ella.music.ui.player.PlayerExtraActionIds.LYRIC_SHARE -> R.string.player_lyric_share
     ActionMenuIds.REMOVE_FROM_RECENT_PLAYBACK -> R.string.recent_playback_remove_from_recent
     ActionMenuIds.DELETE_SINGLE_RECENT_PLAYBACK -> R.string.recent_playback_remove_from_recent
@@ -56,6 +61,10 @@ internal fun actionMenuStringRes(id: String): Int = when (id) {
     ActionMenuIds.SONG_INFO_COMPOSER -> R.string.player_detail_composer
     ActionMenuIds.SONG_INFO_ARRANGER -> R.string.player_detail_arranger
     ActionMenuIds.SONG_INFO_LYRICIST -> R.string.player_detail_lyricist
+    ActionMenuIds.SONG_INFO_PRODUCER -> R.string.player_detail_producer
+    ActionMenuIds.SONG_INFO_COPYRIGHT -> R.string.song_more_metadata_copyright
+    ActionMenuIds.SONG_INFO_LANGUAGE -> R.string.player_detail_language
+    ActionMenuIds.SONG_INFO_CUSTOM -> R.string.song_info_custom_fields
     ActionMenuIds.SONG_INFO_COMMENT -> R.string.player_detail_comment
     ActionMenuIds.SONG_INFO_NETEASE -> R.string.song_more_netease_key
     ActionMenuIds.SONG_INFO_FORMAT -> R.string.song_more_detail_format

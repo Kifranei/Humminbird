@@ -261,7 +261,7 @@
     <string name="settings_cover_media">Covers and MV</string>
     <string name="settings_cover_media_summary">Artist covers, dynamic covers, and music videos</string>
     <string name="settings_appearance_theme_page">Theme and display</string>
-    <string name="settings_appearance_theme_page_summary">Theme, language, text size, and icons</string>
+    <string name="settings_appearance_theme_page_summary">Theme, language, text size, icons, and liquid glass</string>
     <string name="settings_appearance_system_bars_page">System bars and startup</string>
     <string name="settings_appearance_system_bars_page_summary">Status bar, navigation bar, and startup poster</string>
     <string name="settings_appearance_wallpaper_page">Wallpaper and backgrounds</string>
@@ -285,13 +285,13 @@
     <string name="settings_restore_defaults_confirm">Restore all default settings? Current preferences will be cleared, while music and user data remain.</string>
     <string name="settings_restore_defaults_done">Default configuration restored</string>
     <string name="settings_appearance_home">Appearance and home</string>
-    <string name="settings_appearance_home_summary">Theme, language, custom images, and home layout</string>
+    <string name="settings_appearance_home_summary">Theme, language, liquid glass, custom images, and home layout</string>
     <string name="settings_library_scan">Library and scanning</string>
     <string name="settings_library_scan_summary">Scan sources, folders, separators, and tag scraping</string>
     <string name="settings_library_source_summary">Whether library content such as songs, artists, albums, genres, and years comes from local storage or Navidrome / Emby / WebDAV (cached locally, refresh with the refresh button)</string>
     <string name="settings_library_source_local">Local</string>
-    <string name="settings_integrations">Integrations</string>
-    <string name="settings_integrations_summary">Last.fm and LAN web player</string>
+    <string name="settings_integrations">AI and integrations</string>
+    <string name="settings_integrations_summary">Ella assistant, AI endpoints, and MCP server</string>
     <string name="settings_library_source">Music sources</string>
     <string name="settings_scan_folders">Scan folders</string>
     <string name="settings_scan_folders_summary">Manage local directories, USB directories, and hidden folders</string>
@@ -307,6 +307,8 @@
     <string name="settings_audio_summary">Playback, decoding, shuffle, and audio focus</string>
     <string name="settings_backup">App data</string>
     <string name="settings_backup_summary">Back up and restore settings, playlists, history, stats, and sources</string>
+    <string name="settings_experimental">Experimental</string>
+    <string name="settings_experimental_summary">New features that are not yet stable</string>
     <string name="settings_other">Other</string>
     <string name="settings_clear_online_cache">Clear artwork and lyric cache</string>
     <string name="settings_clear_online_cache_summary">Clear artwork, lyrics, and tag-data caches for local and remote sources</string>
@@ -326,10 +328,10 @@
     <string name="logs_search_label">Search logs, tags, or errors</string>
     <string name="logs_summary_title">Runtime logs</string>
     <string name="logs_detail_title">Log details</string>
-    <string name="logs_share_subject">Halcyon runtime logs</string>
-    <string name="logs_share_text">Halcyon runtime logs, generated at: %1$s</string>
+    <string name="logs_share_subject">Humminbird runtime logs</string>
+    <string name="logs_share_text">Humminbird runtime logs, generated at: %1$s</string>
     <string name="logs_share_chooser_title">Share runtime logs</string>
-    <string name="logs_clip_label">Halcyon log</string>
+    <string name="logs_clip_label">Humminbird log</string>
     <string name="logs_copied">Log copied</string>
     <string name="logs_cleared">Logs cleared</string>
     <string name="logs_retention_days">%1$d days</string>
@@ -364,8 +366,8 @@
     <string name="settings_bottom_bar_style_summary_floating">Gaussian-blur floating bottom bar</string>
     <string name="settings_bottom_bar_style_summary_liquid">Liquid-glass floating bottom bar</string>
     <string name="bottom_bar_style_normal">Standard bottom bar</string>
-    <string name="bottom_bar_style_floating">Gaussian-blur floating</string>
-    <string name="bottom_bar_style_liquid">Liquid-glass floating</string>
+    <string name="bottom_bar_style_floating">iOS Floating (Gaussian blur)</string>
+    <string name="bottom_bar_style_liquid">iOS Floating (Liquid glass)</string>
     <string name="settings_bottom_bar_appearance_section">Bottom bar appearance</string>
     <string name="settings_bottom_bar_corner_radius">Bottom bar corner radius</string>
     <string name="settings_bottom_bar_corner_radius_summary">Adjust the corner radius of the floating bar, mini-player, and action buttons</string>
@@ -495,6 +497,12 @@
     <string name="aspect_pro_open_failed">Could not open Aspect Pro. Make sure it is installed</string>
     <string name="kaspek_open_failed">Could not open Kaspek. Make sure it is installed</string>
     <string name="media_info_open_failed">Could not open MediaInfo. Make sure it is installed</string>
+    <string name="spectrum_open_external">Open in another app</string>
+    <string name="spectrum_open_aspect_pro">Open with Aspect Pro</string>
+    <string name="spectrum_open_kaspek">Open with Kaspek</string>
+    <string name="spectrum_scanning">Scanning audio and generating spectrogram…</string>
+    <string name="spectrum_rescan">Scan again</string>
+    <string name="spectrum_scan_failed">Could not generate a spectrogram. Check that the audio file is still available.</string>
 
     <string name="player_need_record_audio_permission">Audio recording permission is required to enable visualization</string>
     <string name="player_visualizer_immersive_only">Visualization is available in immersive cover mode or landscape playback on large-screen devices</string>
@@ -549,7 +557,7 @@
 
     <string name="about_project">Project</string>
     <string name="about_github_project">Humminbird on GitHub</string>
-    <string name="about_github_project_summary">Open the Humminbird GitHub repository</string>
+    <string name="about_github_project_summary">Open the official Humminbird GitHub repository</string>
     <string name="about_update">Software update</string>
     <string name="about_update_summary">Check the latest version on GitHub Releases</string>
     <string name="update_check_action">Check for software updates</string>
@@ -591,6 +599,34 @@
 
 
 
+    <string name="home_ai_section">AI</string>
+    <string name="home_ai_playlist">AI playback assistant</string>
+    <string name="home_ai_playlist_summary">Let Ella pick songs for you · %1$d songs in your library</string>
+    <string name="home_ai_playlist_loading">Reading AI settings and generating a playlist…</string>
+    <string name="home_ai_playlist_play">Generate and play AI playlist</string>
+    <string name="home_ai_chat_open">Open AI chat</string>
+    <string name="home_ai_playlist_started">Playing "%1$s": %2$d songs</string>
+    <string name="home_ai_playlist_failed">AI recommendation failed: %1$s</string>
+    <string name="ai_chat_title">Ella listening assistant</string>
+    <string name="ai_chat_disclaimer">AI can be wrong; it can only read the library and play local songs</string>
+    <string name="ai_chat_empty_title">What do you want to hear next?</string>
+    <string name="ai_chat_empty_summary">Ask AI to recommend from your library, recent playback, and listening stats, or to explain your music taste.</string>
+    <string name="ai_chat_prompt_today">Recommend a set of songs for tonight based on what I recently played</string>
+    <string name="ai_chat_prompt_recent">Summarize my recent favorite artists and genres</string>
+    <string name="ai_chat_prompt_genre">Pick songs I rarely play but may like from my library</string>
+    <string name="ai_chat_input_hint">Ask Ella</string>
+    <string name="ai_chat_send">Send</string>
+    <string name="ai_chat_thinking">Searching the library and thinking…</string>
+    <string name="ai_chat_failed">Generation failed: %1$s</string>
+    <string name="ai_chat_play_songs">Play %1$d recommended songs</string>
+    <string name="ai_chat_add_to_queue">Add to queue</string>
+    <string name="ai_chat_create_playlist">Create playlist</string>
+    <string name="ai_chat_added_to_queue">Added to queue: %1$d songs</string>
+    <string name="ai_chat_playlist_name">Ella recommended playlist</string>
+    <string name="ai_chat_playlist_created">Created "%1$s": %2$d songs</string>
+    <string name="ai_chat_new_session">New chat</string>
+    <string name="ai_chat_delete_session">Delete session</string>
+    <string name="ai_chat_delete_session_confirm">Delete this session?</string>
     <string name="category_artist">Artists</string>
     <string name="category_album">Albums</string>
     <string name="category_folder">Folders</string>
@@ -706,6 +742,8 @@
     <string name="folder_parent">Parent</string>
     <string name="folder_blocked_folders">Blocked folders</string>
     <string name="folder_blocked_folders_summary">%1$d folders are excluded. Tap to manage or unblock.</string>
+    <string name="folder_blocked_add">Add blocked folder</string>
+    <string name="folder_blocked_add_hint">Enter the folder path to exclude from scanning</string>
     <string name="folder_block_folder">Block folder</string>
     <string name="folder_block">Block</string>
     <string name="folder_detail_header_summary">%1$d subfolders · %2$d songs</string>
@@ -751,7 +789,7 @@
     <string name="library_cache_cancelled">Caching cancelled</string>
     <string name="library_cache_nothing">No remote songs to cache</string>
     <string name="settings_clear_remote_audio_cache">Clear remote audio cache</string>
-    <string name="settings_clear_remote_audio_cache_summary">Delete locally cached Navidrome / WebDAV audio files</string>
+    <string name="settings_clear_remote_audio_cache_summary">Delete locally cached Navidrome / WebDAV / NetEase audio files</string>
     <string name="settings_clear_remote_audio_cache_done">Remote audio cache cleared</string>
     <string name="webdav_please_enter_address">Please enter a WebDAV address first</string>
     <string name="webdav_connection_succeeded">WebDAV connection succeeded</string>
@@ -917,7 +955,9 @@
     <string name="settings_library_tile_composer">Composers</string>
     <string name="settings_library_tile_composer_summary">Browse by composer</string>
     <string name="settings_library_tile_lyricist">Lyricists</string>
+    <string name="settings_library_tile_producer">Producers</string>
     <string name="settings_library_tile_lyricist_summary">Browse by lyricist</string>
+    <string name="settings_library_tile_producer_summary">Browse by producer</string>
     <string name="settings_playback_section">Playback</string>
     <string name="settings_system_section">System</string>
     <string name="settings_gapless_playback">Gapless playback</string>
@@ -955,6 +995,8 @@
     <string name="settings_mini_player_right_queue">Playlist</string>
     <string name="settings_transport_button_outlines">Player button outlines</string>
     <string name="settings_transport_button_outlines_summary">Show semi-transparent circular outlines on playback control buttons in non-immersive mode</string>
+    <string name="settings_player_quality_chip_outline">Quality label outline</string>
+    <string name="settings_player_quality_chip_outline_summary">Give the quality label under the progress bar the same translucent outline as the play button. Off shows the text only</string>
     <string name="settings_home_tile_pin_buttons">Show shortcut buttons on home screen</string>
     <string name="settings_home_tile_pin_buttons_summary">Show a + button on the top-right of home section cards to add desktop shortcuts</string>
     <string name="settings_backup_export_title">Export app data</string>
@@ -1074,7 +1116,7 @@
     <string name="settings_color_soft_red">Soft red</string>
     <string name="settings_color_warm_yellow">Warm yellow</string>
     <string name="settings_color_orange">Orange</string>
-    <string name="settings_home_sections_order_summary">Use English commas: library,recent</string>
+    <string name="settings_home_sections_order_summary">Use English commas: library,online,recent</string>
     <string name="settings_home_library_grid_order_summary">artist,album,folder,folder_tree,folder_playlist,playlist,analytics,genre,year,composer,lyricist</string>
     <string name="common_select_all">Select all</string>
     <string name="common_invert_selection">Invert selection</string>
@@ -1135,6 +1177,7 @@
     <string name="category_year">Years</string>
     <string name="category_composer">Composers</string>
     <string name="category_lyricist">Lyricists</string>
+    <string name="category_producer">Producers</string>
     <string name="home_count_artists">%1$d artists</string>
     <string name="home_count_albums">%1$d albums</string>
     <string name="home_count_folders">%1$d folders</string>
@@ -1150,6 +1193,7 @@
     <string name="library_search_page_placeholder">Search songs, albums, artists, tags, or lyrics</string>
     <string name="library_search_dock_placeholder">Search music</string>
     <string name="library_search_duplicates">Duplicate songs</string>
+    <string name="library_dedupe_action">Remove duplicates</string>
     <string name="library_search_clear_history">Clear history</string>
     <string name="library_search_history">Search history</string>
     <string name="library_search_all">All</string>
@@ -1160,6 +1204,7 @@
     <string name="library_search_folders">Folders</string>
     <string name="library_search_composers">Composers</string>
     <string name="library_search_lyricists">Lyricists</string>
+    <string name="library_search_producers">Producers</string>
     <string name="library_search_lyrics">Lyrics</string>
     <string name="library_search_genres">Genres</string>
     <string name="library_search_years">Years</string>
@@ -1169,6 +1214,7 @@
     <string name="library_search_category_summary">%1$d songs · %2$d albums</string>
     <string name="library_search_empty_hint">Search the music library, or quickly find duplicate songs</string>
     <string name="library_search_no_results">No matching results</string>
+    <string name="library_search_all_loaded">All results loaded</string>
     <string name="library_search_no_duplicates">No duplicate songs with the same title and album were found</string>
     <string name="library_search_song_unit">songs</string>
     <string name="library_search_song_count_unit">songs</string>
@@ -1182,6 +1228,7 @@
     <string name="library_search_match_year">Year</string>
     <string name="library_search_match_composer">Composer</string>
     <string name="library_search_match_lyricist">Lyricist</string>
+    <string name="library_search_match_producer">Producer</string>
     <string name="library_search_match_file_name">File name</string>
     <string name="library_search_match_comment">Comment</string>
     <string name="library_search_match_alias">Alias</string>
@@ -1255,9 +1302,15 @@
     <string name="settings_player_title_position_above_cover">Above cover</string>
     <string name="settings_player_page_style">Playback page</string>
     <string name="settings_player_page_style_summary">Choose the playback page layout</string>
-    <string name="settings_player_page_style_halcyon">Halcyon</string>
+    <string name="settings_player_page_style_halcyon">Humminbird</string>
     <string name="settings_player_page_style_apple_music">Apple Music</string>
     <string name="settings_player_page_style_immersive_lyrics">Immersive lyrics</string>
+    <string name="settings_player_page_style_vinyl_turntable">Vinyl turntable</string>
+    <string name="settings_player_page_style_fan_cards">Fanned cards</string>
+    <string name="settings_player_page_style_cinemascope">Cinemascope</string>
+    <string name="settings_player_page_style_signal">Signal</string>
+    <string name="settings_player_page_style_editorial">Editorial</string>
+    <string name="player_page_film_now_showing">NOW SHOWING</string>
     <string name="settings_player_lyrics_corner_actions">Lyric translation / accompaniment buttons</string>
     <string name="settings_player_lyrics_corner_actions_summary">Show translation and accompaniment shortcuts on non-Apple Music lyric pages</string>
     <string name="settings_player_landscape_style">Default landscape player style</string>
@@ -1278,7 +1331,7 @@
     <string name="settings_lyric_font">Lyric font</string>
     <string name="settings_lyric_font_western">Western font</string>
     <string name="settings_lyric_font_cjk">CJK font</string>
-    <string name="settings_lyric_font_western_default">Default Western font</string>
+    <string name="settings_lyric_font_western_default">Default Western font (Inter)</string>
     <string name="settings_lyric_font_cjk_default">Default CJK font</string>
     <string name="settings_lyric_font_target_summary">Current: %1$s; tap, then choose separately below</string>
     <string name="settings_lyric_font_import">Import font</string>
@@ -1315,6 +1368,22 @@
     <string name="settings_home_feature_wallpaper_remove">Remove Home featured image</string>
     <string name="settings_home_feature_wallpaper_remove_summary">The image card will disappear from Home</string>
     <string name="home_feature_wallpaper">Custom Home featured image</string>
+    <string name="settings_ai_mix">AI recommended playlist</string>
+    <string name="settings_ai_mix_summary">Control the AI recommendation card on the home page</string>
+    <string name="settings_ai_interpretation">AI provider</string>
+    <string name="settings_ai_api_key">API key</string>
+    <string name="settings_ai_base_url">API base URL</string>
+    <string name="settings_ai_protocol">API protocol</string>
+    <string name="settings_ai_protocol_compatible">Compatible</string>
+    <string name="settings_ai_protocol_anthropic">Anthropic</string>
+    <string name="settings_ai_fetch_models">Fetch models</string>
+    <string name="settings_ai_select_model">Choose model</string>
+    <string name="settings_ai_models_empty">No models returned</string>
+    <string name="settings_ai_models_fetch_failed">Failed to fetch models</string>
+    <string name="settings_openai_api_key_summary">Used for song AI interpretation and stored only on this device</string>
+    <string name="settings_openai_base_url_summary">Provider API address; the path is completed from the selected protocol</string>
+    <string name="settings_openai_model">Model</string>
+    <string name="settings_openai_model_summary">For example %1$s; change it to any model available to your account</string>
     <string name="settings_lyric_share_card">Lyric share card</string>
     <string name="settings_lyric_share_use_lyric_font">Apply font to lyric card</string>
     <string name="settings_lyric_share_use_lyric_font_summary">Preview and shared cards follow the lyric page custom font and weight</string>
@@ -1679,6 +1748,7 @@
     <string name="song_more_delete_permanently">Delete permanently</string>
     <string name="song_more_edit_tags_title">Edit song tag info</string>
     <string name="song_more_lyric_timing">Lyric timing</string>
+    <string name="song_more_ai_title">AI song interpretation</string>
     <string name="song_more_add_to_playlist">Add to playlist</string>
     <string name="song_more_add_position_start">Add to start</string>
     <string name="song_more_add_position_end">Add to end</string>
@@ -1710,6 +1780,8 @@
     <string name="song_more_detail_file_name">File name</string>
     <string name="song_more_detail_path">Path</string>
     <string name="song_more_detail_directory">Directory</string>
+    <string name="song_more_loading_ai">Loading song info and lyrics...</string>
+    <string name="song_more_ai_failed">AI interpretation failed</string>
     <string name="library_deleted_songs">Deleted %1$d songs</string>
     <string name="library_delete_cancelled">Deletion cancelled</string>
     <string name="library_deleting_songs">Deleting %1$d songs</string>
@@ -1721,7 +1793,11 @@
     <string name="library_range_select">Range select</string>
     <string name="library_song_count_sorted">%1$d songs · %2$s</string>
     <string name="library_delete_selected_message">Delete the selected %1$d songs permanently? This may remove the local audio files.</string>
+    <string name="library_ai_missing_api_key">Please set the API key</string>
     <string name="library_status_label">Status</string>
+    <string name="library_ai_loading">Loading song info and lyrics, then requesting AI interpretation...</string>
+    <string name="library_retry">Retry</string>
+    <string name="library_reinterpret">Interpret again</string>
     <string name="library_netease_info_unavailable">No navigable NetEase information could be parsed</string>
     <string name="library_decoded_json">Decoded JSON</string>
     <string name="library_back_to_song_info">Back to song info</string>
@@ -1766,6 +1842,7 @@
     <string name="artist_no_albums">No albums yet</string>
     <string name="artist_composer_page">Composer page</string>
     <string name="artist_lyricist_page">Lyricist page</string>
+    <string name="artist_producer_page">Producer page</string>
     <string name="artist_netease_artist_page">NetEase artist page</string>
     <string name="artist_sort_title">Song title</string>
     <string name="artist_music_video_sort_title">Name</string>
@@ -1810,12 +1887,14 @@
     <string name="category_artist_page">Artist page</string>
     <string name="category_composer_page">Composer page</string>
     <string name="category_lyricist_page">Lyricist page</string>
+    <string name="category_producer_page">Producer page</string>
     <string name="category_selected_songs">Selected %1$d songs</string>
     <string name="category_song_count_card">%1$d songs</string>
     <string name="category_general">Categories</string>
     <string name="category_count_genres">%1$d genres</string>
     <string name="category_count_composers">%1$d composers</string>
     <string name="category_count_lyricists">%1$d lyricists</string>
+    <string name="category_count_producers">%1$d producers</string>
     <string name="category_count_folders">%1$d folders</string>
     <string name="category_count_years">%1$d years</string>
     <string name="category_count_general">%1$d categories</string>
@@ -1831,6 +1910,9 @@
     <string name="category_album_count_detail">%1$d albums</string>
     <string name="category_person_sort">%1$d songs · %2$d participating albums</string>
     <string name="category_person_sort_duration">%1$s · %2$d participating albums</string>
+    <string name="category_person_sort_compact">%1$d songs · %2$d albums</string>
+    <string name="category_person_sort_duration_compact">%1$s · %2$d albums</string>
+    <string name="custom_category_album_count">%1$d albums</string>
 
     <!-- i18n: LX online source settings -->
     <string name="online_provider_switch">Online music source</string>
@@ -1885,6 +1967,14 @@
 
     <!-- i18n: AI data-layer errors -->
     <string name="error_library_empty">Library is empty. Please scan local songs first.</string>
+    <string name="error_ai_no_playable_songs">AI did not return any playable songs</string>
+    <string name="ai_default_playlist_title">AI recommended playlist</string>
+    <string name="error_openai_missing_api_key">Please enter the API key in settings first.</string>
+    <string name="error_ai_chat_empty_message">Please enter a question.</string>
+    <string name="error_openai_request_failed">AI request failed (HTTP %1$d) %2$s</string>
+    <string name="error_openai_api_error_separator">: </string>
+    <string name="error_openai_empty_response">AI returned an empty response</string>
+    <string name="error_ai_disallowed_action">AI returned a disallowed action: %1$s</string>
 
     <!-- i18n: Settings defaults (non-const, resolved via Context) -->
     <string name="settings_default_lx_source_name">LX source</string>
@@ -1900,6 +1990,7 @@
     <string name="about_summary_miuix">MIUI/HyperOS-style Compose UI component library (Apache-2.0)</string>
     <string name="about_summary_media3">Playback, media session, and ExoPlayer extensions (Apache-2.0)</string>
     <string name="about_summary_ffmpeg">Software decoding for ALAC and other audio formats (LGPL-2.1)</string>
+    <string name="about_summary_ffmpegkit">Local format conversion and multi-track export (LGPL-3.0)</string>
     <string name="about_summary_lyricon">Subtitle Provider API and status bar lyrics (Apache-2.0)</string>
     <string name="about_summary_superlyricapi">SuperLyric lyric publishing API (LGPL-2.1)</string>
     <string name="about_summary_lyricgetter">Lyric Getter original lyric delivery API (LGPL-2.1)</string>
@@ -1911,6 +2002,37 @@
     <string name="about_summary_raws_music">10-band equalizer, BiQuad parametric EQ, and DSP core reference (Apache-2.0)</string>
 
     <!-- i18n: Local audio tools -->
+    <string name="song_more_audio_tools">Audio tools</string>
+    <string name="audio_tools_convert">Format conversion</string>
+    <string name="audio_tools_track_separation">Export audio streams</string>
+    <string name="audio_tools_track_separation_summary">Exports independent audio streams from multi-track media; it does not perform AI vocal/instrumental separation.</string>
+    <string name="audio_tools_stream_export">Export audio streams</string>
+    <string name="audio_tools_stream_export_summary">Exports audio streams inside a media file. This is not CUE album splitting or AI vocal/instrumental separation.</string>
+    <string name="audio_tools_cue_split">Split CUE album</string>
+    <string name="audio_tools_cue_split_summary">Select a CUE file to split a whole-album audio file by INDEX 01, export FLAC, and write track tags.</string>
+    <string name="audio_tools_cue_reading">Reading CUE and matching whole-album audio…</string>
+    <string name="audio_tools_cue_choose_audio">Choose the correct whole-album file.</string>
+    <string name="audio_tools_cue_choose_other_audio">Choose whole-album file</string>
+    <string name="audio_tools_cue_start">Start splitting</string>
+    <string name="audio_tools_cue_splitting">Splitting CUE album…</string>
+    <string name="audio_tools_exporting_streams">Exporting audio streams…</string>
+    <string name="audio_tools_choose_format">Choose output format</string>
+    <string name="audio_tools_format_mp3">MP3</string>
+    <string name="audio_tools_format_m4a">M4A (AAC)</string>
+    <string name="audio_tools_format_ogg">OGG (Vorbis)</string>
+    <string name="audio_tools_format_opus">Opus</string>
+    <string name="audio_tools_format_flac">FLAC</string>
+    <string name="audio_tools_format_wav">WAV</string>
+    <string name="audio_tools_detecting_tracks">Detecting audio tracks…</string>
+    <string name="audio_tools_no_multiple_tracks">No multiple audio tracks available to export</string>
+    <string name="audio_tools_track">Track %1$d</string>
+    <string name="audio_tools_export_all_tracks">Export all tracks</string>
+    <string name="audio_tools_converting">Converting…</string>
+    <string name="audio_tools_separating">Exporting audio tracks…</string>
+    <string name="audio_tools_processing_summary">Keep the app open. Files are saved in Music/Humminbird when complete.</string>
+    <string name="audio_tools_saved">Saved %1$d file(s)</string>
+    <string name="audio_tools_failed">Processing failed: %1$s</string>
+    <string name="audio_tools_local_only">Audio tools support local songs only</string>
     <string name="lyric_timing_editor_generate_words">Split words</string>
     <string name="player_randomize_queue">Randomize order</string>
 
@@ -2156,14 +2278,14 @@
     <string name="settings_artist_cover_folder_saved">Artist cover folder saved</string>
     <string name="settings_artist_cover_folder_cleared">Artist cover folder cleared</string>
     <string name="settings_artist_cover_download_folder">Artist image cache location</string>
-    <string name="settings_artist_cover_download_folder_summary">Choose directory where automatically downloaded artist covers will be saved; leave blank to fall back to artist cover folder or app internal storage</string>
+    <string name="settings_artist_cover_download_folder_summary">Choose directory where automatically cached artist covers will be saved; leave blank to fall back to artist cover folder or app internal storage</string>
     <string name="settings_artist_cover_download_folder_selected">Artist cover download path selected</string>
     <string name="settings_artist_cover_download_folder_remove">Clear artist cover download path</string>
     <string name="settings_artist_cover_download_folder_remove_summary">Clear custom download path; downloads will fall back to existing cover folder or app internal storage</string>
     <string name="settings_artist_cover_download_folder_saved">Artist cover download path saved</string>
     <string name="settings_artist_cover_download_folder_cleared">Artist cover download path cleared</string>
-    <string name="settings_auto_show_search_keyboard">Show keyboard automatically when tapping search</string>
-    <string name="settings_auto_show_search_keyboard_summary">When off, tapping search only expands the search bar without focusing or showing the keyboard</string>
+    <string name="settings_auto_show_search_keyboard">Show keyboard automatically on the search page</string>
+    <string name="settings_auto_show_search_keyboard_summary">Only autofocus on the search page. When off, tap the input field to show the keyboard.</string>
     <string name="settings_search_reopen_behavior">Reopening search</string>
     <string name="settings_search_reopen_behavior_summary">What to do with the last query when opening search again</string>
     <string name="settings_search_reopen_select">Select the last search query</string>
@@ -2177,6 +2299,8 @@
     <string name="settings_backup_type_wallpapers_and_images_summary">Includes app wallpaper, player background, startup poster, and custom images</string>
     <string name="settings_backup_type_library_scan">Library and scan settings</string>
     <string name="settings_backup_type_library_scan_summary">Scan folders, tag parsing, sorting, and library display settings</string>
+    <string name="settings_backup_type_ai_config_chat">AI config and chats</string>
+    <string name="settings_backup_type_ai_config_chat_summary">AI provider configuration and chat history</string>
     <string name="settings_backup_type_playback_stats">Listening stats</string>
     <string name="settings_backup_type_playback_stats_summary">Play history, rankings, and play counts</string>
     <string name="settings_backup_type_folder_playlists">Folder playlists</string>
@@ -2237,6 +2361,9 @@
     <string name="library_search_arrangers">Arrangers</string>
     <string name="library_search_match_arranger">Arranger</string>
     <string name="player_detail_arranger">Arranger</string>
+    <string name="player_detail_producer">Producer</string>
+    <string name="player_detail_language">Language</string>
+    <string name="song_info_custom_fields">Custom fields</string>
     <string name="artist_arranger_page">Arranger page</string>
     <string name="category_arranger_page">Arranger page</string>
     <string name="category_count_arrangers">%1$d arrangers</string>
@@ -2276,7 +2403,7 @@
     <string name="lastfm_source_badge">Last.fm</string>
 
     <string name="miui_uninstall_title">Leaving so soon?</string>
-    <string name="miui_uninstall_content">Thanks for walking this stretch with Halcyon.</string>
+    <string name="miui_uninstall_content">Thanks for walking this stretch with Humminbird.</string>
     <string name="settings_font_global_western">Primary font</string>
     <string name="settings_font_global_cjk">CJK fallback</string>
     <string name="settings_font_original_western">Primary font</string>
@@ -2436,6 +2563,7 @@
     <string name="player_replay_gain_badge">Gain %1$s</string>
     <string name="settings_spectrum_viewer">Spectrum viewer</string>
     <string name="settings_spectrum_viewer_summary">Choose the app used to view the spectrum</string>
+    <string name="settings_spectrum_builtin">Built-in spectrum</string>
     <string name="settings_spectrum_aspect_pro">Aspect Pro</string>
     <string name="settings_spectrum_kaspek">Kaspek</string>
     <string name="settings_music_video_offsets">LunaBeat MV offsets</string>
@@ -2474,10 +2602,20 @@
     <string name="artist_introduction_save_failed">Couldn’t save the artist introduction</string>
     <string name="player_local_music_video">Local MV</string>
     <string name="player_netease_music_video">NetEase Cloud Music MV</string>
+    <string name="spectrum_frequency_unknown">Adaptive</string>
     <string name="settings_enable_live_update_lyric">Show lyrics in Live Activity notifications</string>
     <string name="settings_enable_live_update_lyric_summary">Show the current lyric in an Android 16 Live Activity notification; choose a word window or the full lyric line and set its subtitle</string>
     <string name="settings_enable_xiaomi_super_island_lyric">Xiaomi Super Island lyrics</string>
     <string name="settings_enable_xiaomi_super_island_lyric_summary">Show lyrics in the HyperOS Super Island; Shizuku permission is required to temporarily block XMSF networking</string>
+    <string name="settings_enable_vivo_atom_walkman_whitelist">Add to Atom Walkman allowlist</string>
+    <string name="settings_enable_vivo_atom_walkman_whitelist_summary">Use Shizuku to add Humminbird to vivo Atom Walkman playback sources</string>
+    <string name="settings_vivo_atom_walkman_whitelist_failed">Could not update the Atom Walkman allowlist; make sure Shizuku is authorized</string>
+    <string name="settings_enable_vivo_media_island">OriginOS media island</string>
+    <string name="originos_media_island_notification_channel">Media island playback</string>
+    <string name="settings_enable_vivo_media_island_summary">Requires Shizuku authorization to show album artwork, playback waves and media controls on the island</string>
+    <string name="settings_vivo_media_island_only">Show only on the island</string>
+    <string name="settings_vivo_media_island_only_summary">Hide the extra live notification card in the notification shade while keeping the music notification and island</string>
+    <string name="settings_vivo_media_island_failed">Could not update the setting. Make sure Shizuku is running and authorized, and system live notifications are enabled</string>
     <string name="settings_live_update_lyric_content">Live Activity main lyric</string>
     <string name="settings_live_update_lyric_content_summary">Choose the main lyric shown in live-update notifications</string>
     <string name="settings_xiaomi_super_island_lyric_content">Super Island notification main lyric</string>
@@ -2676,8 +2814,8 @@
     <string name="library_layout_list">List layout</string>
     <string name="library_layout_multi_row">Multi-row list</string>
     <string name="library_layout_details">Detailed information</string>
-    <string name="settings_artist_image_download">Automatically download artist images</string>
-    <string name="settings_artist_image_download_summary">Fetch images from enabled artist sources according to the network policy; the artist cover folder always wins</string>
+    <string name="settings_artist_image_download">Automatically cache artist images</string>
+    <string name="settings_artist_image_download_summary">Cache images from enabled artist sources according to the network policy; the artist cover folder always wins</string>
     <string name="settings_artist_image_download_always">Always</string>
     <string name="settings_artist_image_download_wifi">Wi-Fi only</string>
     <string name="settings_artist_image_download_never">Never</string>
@@ -2709,7 +2847,7 @@
     <string name="settings_music_video_immersive_lyrics_hide_system_bars_summary">Automatically hide status and navigation bars when entering MV immersive lyrics mode</string>
     <string name="settings_player_album_cover_corner_radius">Album cover corner radius</string>
     <string name="settings_player_music_video_corner_radius">MV corner radius</string>
-    <string name="settings_player_cover_corner_radius_summary">Only affects the non-immersive Halcyon player cover layout</string>
+    <string name="settings_player_cover_corner_radius_summary">Only affects the non-immersive Humminbird player cover layout</string>
     <string name="player_music_video_info">Video information</string>
     <string name="player_music_video_info_source">Source: %1$s</string>
     <string name="player_music_video_info_aspect">Aspect ratio: %1$s</string>
@@ -2782,7 +2920,10 @@
     <string name="recent_playback_tab_mv">MV</string>
     <string name="settings_shuffle_reshuffle_on_startup">Reshuffle after reopening the app</string>
     <string name="settings_shuffle_reshuffle_on_startup_summary">Generate a new random queue each time the app opens; when off, continue playback keeps the previous queue</string>
-    <string name="settings_disable_sequential_playback">Disable sequential playback</string>
+        <string name="settings_playback_mode_stop_after_current">Add "Stop after current" to playback modes</string>
+    <string name="settings_playback_mode_stop_after_current_summary">Adds "Stop after current" to the playback mode options: pauses when the current song finishes</string>
+    <string name="player_playback_mode_stop_after_current">Stop after current</string>
+<string name="settings_disable_sequential_playback">Disable sequential playback</string>
     <string name="settings_disable_sequential_playback_summary">Remove the sequential mode from the playback-mode cycle</string>
     <string name="player_lyric_share">Share lyrics</string>
     <string name="settings_lyric_share_folder">Lyric image save folder</string>
@@ -2799,6 +2940,7 @@
     <string name="settings_home_top_actions_custom_title">Home top-right action visibility and order</string>
     <string name="settings_home_top_actions_summary">Customize the order and visibility of the home top-right buttons</string>
     <string name="settings_home_top_action_analytics">Listening statistics</string>
+    <string name="settings_home_top_action_ai">Ella listening assistant</string>
     <string name="settings_home_top_action_settings">Settings</string>
     <string name="settings_custom_launcher_icon">Custom home screen icon</string>
     <string name="settings_custom_launcher_icon_summary">Choose an image for a home screen shortcut that opens Humminbird; images are center-cropped to a square</string>
@@ -2853,6 +2995,7 @@
     <string name="recent_playback_count_composer">%1$d composers</string>
     <string name="recent_playback_count_arranger">%1$d arrangers</string>
     <string name="recent_playback_count_lyricist">%1$d lyricists</string>
+    <string name="recent_playback_count_producer">%1$d producers</string>
     <string name="recent_playback_played_to">%1$d songs · Played to %2$s - %3$s</string>
     <string name="recent_playback_type_playlist">Playlist: %1$s</string>
     <string name="recent_playback_type_artist">Artist: %1$s</string>
@@ -2895,6 +3038,8 @@
     <string name="netease_session_expired">Your NetEase session has expired. Please sign in again.</string>
     <string name="netease_sync_failed">NetEase sync failed. The previous snapshot was kept. Check your connection or sign in again.</string>
     <string name="netease_connected">NetEase connected. Liked songs and online playlists are synced.</string>
+    <string name="netease_daily_recommend">Daily Mix</string>
+    <string name="netease_heartbeat_fm">Heartbeat FM</string>
     <string name="netease_login_failed">Sign-in or sync failed. Complete browser sign-in, or import your MUSIC_U cookie and enter your NetEase user ID if needed.</string>
     <string name="netease_sync">Sync and use as library</string>
     <string name="netease_logout">Sign out of NetEase</string>
@@ -2928,6 +3073,9 @@
     <string name="update_channel_title">Update channel</string>
     <string name="update_channel_stable">Stable</string>
     <string name="update_channel_preview">Prerelease</string>
+    <string name="settings_home_search_target">Home search destination</string>
+    <string name="settings_home_search_target_summary">Choose local library, LX or MusicFree. A NetEase library always searches NetEase Music.</string>
+    <string name="settings_home_search_local">Local music library</string>
     <string name="netease_search_title">NetEase Music search</string>
     <string name="netease_search_more">Load more</string>
     <string name="netease_quality_title">NetEase Music playback quality</string>
@@ -2957,11 +3105,16 @@
     <string name="folder_display_settings">Folder display</string>
     <string name="folder_display_size">List size</string>
     <string name="folder_display_width">List width</string>
+    <string name="netease_link_album_comments">Album comments</string>
+    <string name="netease_link_mv_comments">MV comments</string>
+    <string name="netease_album_comment_button">Comments</string>
+    <string name="player_view_song_comments">View song comments</string>
+    <string name="player_view_mv_comments">View MV comments</string>
     <string name="library_audio_filter_count">%1$d matching songs</string>
     <string name="library_audio_filter_progress">Filtering %1$d/%2$d: %3$d matches</string>
     <string name="settings_app_icon_traditional">Traditional</string>
     <string name="settings_player_landscape_style_classic_split">Classic split</string>
-    <string name="video_tools_title">M3U8 downloader</string>
+    <string name="video_tools_title">Video Player</string>
     <string name="video_tools_summary">Play videos and M3U/M3U8, download videos or export MP4</string>
     <string name="video_source_hint">Enter a video or M3U/M3U8 URL</string>
     <string name="video_open_source">Open URL</string>
@@ -3043,6 +3196,9 @@
     <string name="settings_desktop_lyric_word_lift_summary">Control word lift for floating and status bar lyrics independently of the lyrics page</string>
     <string name="settings_spotify_canvas">Spotify Canvas</string>
     <string name="settings_spotify_canvas_summary">Match Spotify looping videos to songs; existing dynamic artwork takes priority, with ordinary artwork when no Canvas is available</string>
+    <string name="settings_spotify_canvas_auto_hide">Auto-hide controls while Canvas plays</string>
+    <string name="settings_spotify_canvas_auto_hide_summary">After Canvas fills the player, hide the title and controls. Tap the video to bring them back</string>
+    <string name="player_canvas_auto_hide">Auto-hide controls</string>
     <string name="settings_spotify_canvas_cookie">Spotify sp_dc</string>
     <string name="settings_spotify_canvas_cookie_summary">Sign in at open.spotify.com in a browser and copy the sp_dc value from developer tools &gt; Cookies. Stored encrypted on this device and excluded from backups</string>
     <string name="settings_spotify_canvas_cookie_save_failed">Could not save sp_dc. Check the value or device key storage</string>
@@ -3057,7 +3213,9 @@
     <string name="settings_artist_image_save_location">Artist image save location</string>
     <string name="settings_artist_image_save_location_summary">Default: Pictures/Humminbird/artist_images; add a suffix only for duplicate names</string>
     <string name="settings_media_export_default">Default directory</string>
-    <string name="settings_mv_download_location">MV download location</string>
+        <string name="settings_song_download_location">Online song download location</string>
+    <string name="settings_song_download_location_summary">Songs from online sources (LX, MusicFree, NetEase) save to their built-in folders by default; choose a custom folder to override</string>
+<string name="settings_mv_download_location">MV download location</string>
     <string name="settings_mv_download_location_summary">Default: Movies/Humminbird/NcmOfflineMvs; the MV folder option uses the first associated directory</string>
     <string name="settings_mv_download_template">MV filename format</string>
     <string name="settings_export_artist_title">Artist - Title</string>
@@ -3081,6 +3239,7 @@
     <string name="song_more_select_composer">Select composer</string>
     <string name="song_more_select_arranger">Select arranger</string>
     <string name="song_more_select_lyricist">Select lyricist</string>
+    <string name="song_more_select_producer">Select producer</string>
     <string name="song_more_select_genre">Select genre</string>
     <string name="smb_protocol">SMB protocol</string>
     <string name="smb_protocol_auto">Automatic (SMB 2 / 3)</string>
@@ -3115,16 +3274,69 @@
     <string name="custom_category_name">Category name</string>
     <string name="custom_category_tag">Tag key</string>
     <string name="custom_category_duplicate">A category already uses this tag key</string>
+    <string name="custom_category_edit">Edit custom category</string>
+    <string name="custom_category_list_style">List style</string>
+    <string name="custom_category_list_style_summary">Matches the composer page, with rounded-square artwork. Turn off to use cards</string>
+    <string name="custom_category_album_tab">Show album tab on the detail page</string>
+    <string name="custom_category_album_tab_summary">Switch between songs and albums</string>
+    <string name="custom_category_count">%1$d</string>
     <string name="category_batch_edit">Batch edit</string>
+    <string name="category_batch_field_lyrics">Lyrics (optional)</string>
+    <string name="category_batch_field_composer">Composer (optional)</string>
     <string name="category_batch_value">New value</string>
     <string name="category_batch_description">Update the %2$s tag for all %1$d songs in this category</string>
     <string name="category_batch_write_hint">Writes only this tag to song files. Remote tracks cannot be edited directly.</string>
+    <string name="category_batch_placeholder_hint">Use &lt;TAG&gt; to copy another tag, e.g. &lt;ARTIST&gt; writes each song\'s artist.</string>
     <string name="category_batch_progress">Updating %1$d / %2$d</string>
     <string name="category_batch_result">Updated %1$d, failed %2$d, cannot write %3$d</string>
     <string name="artist_bio_match_rules">Artist biography matching rules</string>
     <string name="artist_bio_match_rules_summary">Try the source-specific alias, original name, then simplified name</string>
     <string name="artist_bio_match_all_sources">No sources selected: apply to all sources</string>
-    <string name="artist_bio_match_add">Add or edit a matching rule</string>
+    <string name="artist_bio_match_add">Add matching rule</string>
     <string name="artist_bio_match_search">Search name</string>
     <string name="artist_bio_match_alias">Target alias</string>
+    <string name="custom_category_apply_separators">Apply custom separators</string>
+    <string name="custom_category_apply_separators_summary">When off, this category ignores the protected artist/genre names and custom separators. Built-in categories are unaffected.</string>
+    <string name="custom_category_album_merge">Album merge rule (songs are one album when all selected fields match)</string>
+    <string name="custom_category_merge_album">Album name</string>
+    <string name="custom_category_merge_album_artist">Album artist</string>
+    <string name="custom_category_merge_date">Release date</string>
+    <string name="custom_category_collection_mode">Category collection</string>
+    <string name="custom_category_collection_mode_summary">Only the merged items are listed; open one to see all of its members</string>
+    <string name="custom_category_collection_names">Merged item names (one per line)</string>
+    <string name="custom_category_collection_members">Merged item members (one per line)</string>
+    <string name="custom_category_collection_hint">Names and members pair up line by line. Separate members with 、 or commas, e.g. Mandopop、C-Pop、Pop、J-Pop</string>
+    <string name="artist_image_search">Search images</string>
+    <string name="artist_image_search_hint">Enter an artist name to search for images</string>
+    <string name="artist_image_search_all">All</string>
+    <string name="artist_image_search_empty">No images found. Try another name.</string>
+    <string name="player_quick_playback_mode">Playback mode</string>
+    <string name="settings_player_show_favorite_button">Show favorite button</string>
+    <string name="settings_player_show_favorite_button_summary">Hide the favorite button on the player page. Long-press it to add to a playlist.</string>
+    <string name="settings_player_title_marquee">Scrolling title</string>
+    <string name="settings_player_title_marquee_summary">Scroll long song titles; when off they are truncated with an ellipsis</string>
+    <string name="settings_player_title_opens_album">Tap title to open album</string>
+    <string name="settings_player_title_opens_album_summary">Tapping the song title on the player page opens its album</string>
+    <string name="settings_player_subtitle_marquee">Scrolling subtitle</string>
+    <string name="settings_player_subtitle_marquee_summary">Scroll long artist names and other subtitles; when off they are truncated with an ellipsis</string>
+    <string name="settings_album_merge_strategy">Album merge rule</string>
+    <string name="settings_album_merge_strategy_summary">Songs count as one album when every selected field matches; only affects the default Album category</string>
+    <string name="settings_artist_wordmark_folder">Artist wordmark folder</string>
+    <string name="settings_artist_wordmark_folder_summary">After selecting a folder, an image matching the artist name replaces the artist name text on the artist page</string>
+    <string name="settings_artist_wordmark_folder_selected">Artist wordmark folder selected</string>
+    <string name="settings_artist_wordmark_folder_saved">Artist wordmark folder saved</string>
+    <string name="settings_artist_wordmark_folder_remove">Remove artist wordmark folder</string>
+    <string name="settings_artist_wordmark_folder_remove_summary">Clear the wordmark folder; the artist name falls back to text</string>
+    <string name="settings_album_case_effect">Album case effect</string>
+    <string name="settings_album_case_effect_summary">The album introduction page cover shows an openable CD jewel case — tap to flip the lid and reveal the disc, long-press for the large preview</string>
+    <string name="bottom_bar_style_floating_pill">HyperOS 4 Floating</string>
+    <string name="settings_bottom_bar_style_summary_floating_pill">Frosted capsule bar with icon+label items; search stays a separate circle</string>
+    <string name="settings_top_bar_liquid_glass">Liquid glass top bar</string>
+    <string name="settings_top_bar_liquid_glass_summary">Progressive blur band with each button on its own glass circle (requires progressive blur)</string>
+    <string name="batch_keep_modified_time">Keep modified time</string>
+    <string name="batch_partial_replace">Partial replace mode</string>
+    <string name="batch_match_label">Match</string>
+    <string name="batch_replace_label">Replace</string>
+    <string name="batch_pick_from_songs">Pick existing value</string>
+    <string name="bg_effect_os_off">Disabled</string>
 </resources>

@@ -43,7 +43,7 @@ internal fun checkBackupSettingsCompatibility(
 ): SettingsBackupCompatibilityReport {
     val isArchive = root.has("_portableAssetFiles") || root.has("_portableAssetDir")
     val hasSectionedPayload = root.has("settings") || root.has("playlists") ||
-        root.has("playback")
+        root.has("playback") || root.has("aiChat")
     val rawSettings = if (hasSectionedPayload) root.optJSONObject("settings") ?: JSONObject() else root
     val settings = rawSettings.filterBackupSettings(
         selectedTypes = selectedTypes,

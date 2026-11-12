@@ -5,6 +5,7 @@
     <string name="netease_link_target_honor">NetEase Cloud Music (Honor edition)</string>
     <string name="netease_link_target_custom">Custom</string>
     <string name="netease_link_open_failed">Couldn\'t open the link</string>
+    <string name="netease_link_song_comments">Song comments</string>
     <string name="netease_link_artist_wiki">Artist wiki</string>
     <string name="netease_link_mv_open_mode">NetEase MV open mode</string>
     <string name="netease_link_mv_open_mode_summary">When a song has NetEase MV info, play it in the built-in player or open it externally</string>

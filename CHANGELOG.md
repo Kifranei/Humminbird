@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.3.1
+
+### 中文
+
+与 Halcyon `433ad5ac`（dev: 1.3.1）全量同步，版本号与 `versionCode` 对齐为 `1.3.1` / `41`。保留 Humminbird 精简范围：四种界面语言（简中 / 繁中 / 英 / 日）、`arm64-v8a` 与 `armeabi-v7a` 两个 ABI、独立包名与更新渠道；二次元 / 萝莉图标维持退役状态，应用图标选项为「原版 / 传统」。
+
+同步要点（详见 Halcyon 1.3.1 更新日志）：
+- HyperOS 4 悬浮胶囊底栏（默认样式）与顶栏液态玻璃渐进模糊；下拉/筛选菜单全面换用 OS4 玻璃弹层并恢复预测性返回。
+- 介绍页 3D 专辑盒：双轴跟手倾斜，点按开合盒盖查看碟片。
+- 标签批量修改重做（#725）、艺术家图片搜索（#746/#754/#757/#764）、制作人分类（#728）、分类合集（#744）与专辑合并策略（#752/#749，改动即时生效）。
+- MusicFree JS 适配层重写（#732）、MCP 服务、本地视频工具、OriginOS 媒体岛。
+- 首页渐进模糊重影、播放页切歌流光/封面闪烁、详情页滚动恢复（#750）、歌单创建改对话框、更新页渠道改玻璃下拉等修复。
+
+### English
+
+Full sync with Halcyon `433ad5ac` (dev: 1.3.1); version aligned to `1.3.1` / `versionCode` `41`. The trimmed scope stays: four UI languages (Simplified Chinese, Traditional Chinese, English, Japanese), `arm64-v8a` + `armeabi-v7a` only, independent package name and update channel; anime/loli icons remain retired, leaving "Default / Traditional" icon choices.
+
+Highlights (see Halcyon's 1.3.1 changelog for the full list):
+- HyperOS 4 floating capsule dock (default) and liquid-glass top bar; all dropdown/filter menus are OS4 glass popups with predictive back.
+- 3D album case on the introduction page with two-axis finger tilt and tap-to-open lid.
+- Batch tag editor rework (#725), artist image search, Producer category (#728), category collections (#744), album merge rules (#752/#749, applied live).
+- MusicFree JS adapter rewrite (#732), MCP server, local video tools, OriginOS media island.
+- Fixes: home progressive-blur ghosting, player flow/cover flicker on track change, scroll restore on detail pages (#750), create-playlist dialog, update-channel glass dropdown, and more.
+
 ## 1.0.1
 
 ### 中文

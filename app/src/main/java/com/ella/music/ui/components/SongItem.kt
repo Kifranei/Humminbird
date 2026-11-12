@@ -59,6 +59,7 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -76,6 +77,7 @@ fun SongItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onPlayNext: (() -> Unit)? = null,
+    onDownload: (() -> Unit)? = null,
     onMusicVideo: (() -> Unit)? = null,
     onRemove: (() -> Unit)? = null,
     onMore: (() -> Unit)? = null,
@@ -409,6 +411,24 @@ fun SongItem(
         if (!compactMultiRow && !selectionMode && showPlayNextInLists && onPlayNext != null) {
             Spacer(modifier = Modifier.width(8.dp))
             PlayNextQuickButton(onClick = onPlayNext)
+        }
+        if (!selectionMode && onDownload != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.12f))
+                    .clickable(onClick = onDownload),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Regular.Download,
+                    contentDescription = stringResource(R.string.player_download_lx_song),
+                    tint = MiuixTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
         if (!selectionMode && onRemove != null) {
             Spacer(modifier = Modifier.width(8.dp))

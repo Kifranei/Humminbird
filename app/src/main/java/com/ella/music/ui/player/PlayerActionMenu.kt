@@ -74,6 +74,7 @@ internal fun PlayerActionMenu(
     onClose: () -> Unit,
     onAlbum: () -> Unit,
     onArtist: () -> Unit,
+    onDownload: () -> Unit,
     onLandscape: () -> Unit,
     onSongInfo: () -> Unit,
     onAddToPlaylist: () -> Unit,
@@ -82,6 +83,7 @@ internal fun PlayerActionMenu(
     onShare: () -> Unit,
     onLyricShare: () -> Unit,
     onSetRating: () -> Unit,
+    onAiInterpret: () -> Unit,
     onSpectrum: () -> Unit,
     onOpenEqualizer: () -> Unit,
     onDeleteSong: () -> Unit,
@@ -121,6 +123,13 @@ internal fun PlayerActionMenu(
     val navigate = com.ella.music.ui.navigation.LocalAppNavigator.current
     val openPosterWall = { onClose(); navigate(com.ella.music.ui.navigation.Screen.PosterWall.route) }
     val settingsManager = remember(context) { SettingsManager.getInstance(context) }
+    val commentIds by androidx.compose.runtime.produceState<Pair<String, String>>("" to "", song?.path, song?.dateModified, song?.onlineId, song?.onlineMvId) {
+        value = if (song == null) "" to "" else if (song.onlineSource == "netease") song.onlineId to song.onlineMvId else
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val info = com.ella.music.data.decodeNeteaseKey(MusicRepository.getInstance(context).getSongTagInfo(song).neteaseKey)
+                info?.musicId.orEmpty() to info?.mvId.orEmpty()
+            }
+    }
     val neteaseMvId = com.ella.music.ui.components.rememberNeteaseMvId(song)
     val musicVideoTarget = rememberPlayerMusicVideoTarget(song, knownNeteaseMvId = neteaseMvId)
     val openMusicVideo: () -> Unit = {
@@ -217,6 +226,7 @@ internal fun PlayerActionMenu(
                                     ActionMenuIds.ADD_TO_QUEUE -> onAddToQueue()
                                     ActionMenuIds.SHARE -> onShare()
                                     ActionMenuIds.LYRIC_SHARE -> onLyricShare()
+                                    ActionMenuIds.AI -> onAiInterpret()
                                     ActionMenuIds.INFO -> onSongInfo()
                                     ActionMenuIds.AUDIO_OUTPUT -> setPage(PlayerActionSheetPage.AudioOutput)
                                     ActionMenuIds.CASTING -> openSystemOutputSwitcher(context)
@@ -234,6 +244,7 @@ internal fun PlayerActionMenu(
                                     ActionMenuIds.ONLINE_LYRICS -> onMatchOnlineLyrics()
                                     ActionMenuIds.LYRIC_OFFSET -> setPage(PlayerActionSheetPage.LyricOffset)
                                     ActionMenuIds.KEEP_SCREEN_ON -> if (showPlayerKeepScreenOnAction) onPlayerKeepScreenOnChange(!playerKeepScreenOn)
+                                    ActionMenuIds.DOWNLOAD -> onDownload()
                                     ActionMenuIds.VIEW_MV -> if (musicVideoTarget.available) openMusicVideo()
                                     ActionMenuIds.DELETE -> onDeleteSong()
                                 }
@@ -249,6 +260,27 @@ internal fun PlayerActionMenu(
                             ActionMenuIds.POSTER_WALL -> PlayerActionMenuItem(
                                 stringResource(R.string.poster_wall_title), openPosterWall, icon = icon
                             )
+                            ActionMenuIds.SONG_WIKI -> if ((commentIds.first.toLongOrNull() ?: 0L) > 0L) {
+                                PlayerActionMenuItem(
+                                    stringResource(R.string.netease_link_song_wiki),
+                                    { onClose(); com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.SongWiki, commentIds.first) },
+                                    icon = icon
+                                )
+                            }
+                            ActionMenuIds.SONG_COMMENTS -> if ((commentIds.first.toLongOrNull() ?: 0L) > 0L) {
+                                PlayerActionMenuItem(
+                                    stringResource(R.string.player_view_song_comments),
+                                    { onClose(); com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.Comment, commentIds.first) },
+                                    icon = icon
+                                )
+                            }
+                            ActionMenuIds.MV_COMMENTS -> if ((commentIds.second.toLongOrNull() ?: 0L) > 0L) {
+                                PlayerActionMenuItem(
+                                    stringResource(R.string.player_view_mv_comments),
+                                    { onClose(); com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.MusicVideoComment, commentIds.second) },
+                                    icon = icon
+                                )
+                            }
                             // Fallback rows for horizontal shortcuts that are turned off.
                             // Without these branches the ids stay in visibleActions but render nothing.
                             ActionMenuIds.SPEED -> PlayerActionMenuItem(
@@ -283,6 +315,11 @@ internal fun PlayerActionMenu(
                             )
                             PlayerExtraActionIds.LYRIC_SHARE -> PlayerActionMenuItem(
                                 stringResource(R.string.lyric_share_chooser_title), onLyricShare, icon = icon
+                            )
+                            ActionMenuIds.AI -> PlayerActionMenuItem(
+                                stringResource(R.string.song_more_ai_title),
+                                onAiInterpret,
+                                icon = icon
                             )
                             ActionMenuIds.INFO -> PlayerActionMenuItem(
                                 stringResource(R.string.player_song_info),
@@ -382,6 +419,17 @@ internal fun PlayerActionMenu(
                                     { onPlayerKeepScreenOnChange(!playerKeepScreenOn) },
                                     icon = icon
                                 )
+                            }
+                            ActionMenuIds.DOWNLOAD -> if (song?.onlineSource == "netease" || (song?.onlineSource == "kw" && song.path.startsWith("http"))) {
+                                PlayerActionMenuItem(
+                                    stringResource(R.string.netease_download_song),
+                                    onDownload,
+                                    icon = icon
+                                )
+                            }
+                            ActionMenuIds.DOWNLOAD_MV -> if (song != null && neteaseMvId.isNotBlank()) {
+                                PlayerActionMenuItem(stringResource(R.string.netease_download_mv),
+                                    { com.ella.music.data.netease.NeteaseDownloadService.enqueue(context, song, neteaseMvId) }, icon = icon)
                             }
                             ActionMenuIds.VIEW_MV -> if (musicVideoTarget.available) {
                                 PlayerActionMenuItem(

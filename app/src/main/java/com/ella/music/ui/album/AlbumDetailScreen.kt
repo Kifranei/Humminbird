@@ -383,6 +383,11 @@ fun AlbumDetailScreen(
             .flatMap { splitArtistNames(it.lyricist) }
             .distinctBy { it.lowercase(Locale.ROOT) }
     }
+    val participatingProducers = remember(albumSongs, nameSplitRevision) {
+        albumSongs
+            .flatMap { splitArtistNames(it.producer) }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+    }
     val yearDisplayItem = remember(albumRecordedYear, albumSongs) {
         albumRecordedYear?.let { year ->
             buildAlbumMetadataDisplayItem(
@@ -473,7 +478,21 @@ fun AlbumDetailScreen(
             )
         }
     }
-    val listState = rememberLazyListState()
+    val producerDisplayItems = remember(participatingProducers, albumSongs, librarySongs) {
+        participatingProducers.map { producer ->
+            buildAlbumMetadataDisplayItem(
+                name = producer,
+                songs = mainViewModel.getSongsForMetadataCategory("producer", producer),
+                mainViewModel = mainViewModel,
+                fallbackSong = albumSongs.firstOrNull(),
+                categoryType = "producer",
+                coverCandidates = librarySongs,
+                artistCoverName = producer,
+                artistCoverSong = selectMetadataCategoryCoverSong(librarySongs, "producer", producer) ?: selectArtistCoverSong(librarySongs, producer)
+            )
+        }
+    }
+    val listState = com.ella.music.ui.components.rememberDetailListState(albumId)
     RestoreListScrollAfterSearch(
         searchExpanded = searchExpanded,
         query = searchQuery,
@@ -550,10 +569,9 @@ fun AlbumDetailScreen(
         return
     }
 
-    // Keep the explicit album-list restoration path for every system-back route.  Previously
-    // this handler was disabled for the normal detail state, so gesture/system back bypassed
-    // `onBack` and Navigation popped directly without restoring the album-list anchor.
-    BackHandler {
+    // The navigation host restores the album-list anchor when its ordinary/predictive pop commits.
+    // Local modes still consume Back before the destination itself can leave.
+    BackHandler(enabled = selection.selectionMode || searchExpanded || sortExpanded) {
         when {
             selection.selectionMode -> selection.finishSelectionMode()
             searchExpanded -> {
@@ -609,6 +627,11 @@ fun AlbumDetailScreen(
                     albumCoverModel = albumPreviewModel,
                     hasNeteaseAlbum = !neteaseAlbumUrl.isNullOrBlank(),
                     onNeteaseAlbumClick = { neteaseAlbumUrl?.let { com.ella.music.data.netease.NeteaseLinks.openWebUrl(context, it) } },
+                    onNeteaseCommentsClick = {
+                        neteaseAlbumUrl?.let(com.ella.music.data.netease.NeteaseLinks::parseWebUrl)?.second?.let {
+                            com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.AlbumComment, it)
+                        }
+                    },
                     onAlbumArtistClick = {
                         val albumArtist = album?.albumArtist?.takeIf { it.isNotBlank() }
                             ?: return@AlbumHeader
@@ -790,6 +813,7 @@ fun AlbumDetailScreen(
                 participatingComposers.isNotEmpty() ||
                 participatingArrangers.isNotEmpty() ||
                 participatingLyricists.isNotEmpty() ||
+                participatingProducers.isNotEmpty() ||
                 (showFooterReleaseDate && albumRecordedYear != null)
             ) {
                 item(key = "album-extra-info") {
@@ -802,6 +826,7 @@ fun AlbumDetailScreen(
                         composers = composerDisplayItems,
                         arrangers = arrangerDisplayItems,
                         lyricists = lyricistDisplayItems,
+                        producers = producerDisplayItems,
                         year = yearDisplayItem,
                         mainViewModel = mainViewModel,
                         artistCoverFolderUri = artistCoverFolderUri,
@@ -810,6 +835,7 @@ fun AlbumDetailScreen(
                         onComposerClick = { composer -> onNavigateToMetadataCategory("composer", composer) },
                         onArrangerClick = { arranger -> onNavigateToMetadataCategory("arranger", arranger) },
                         onLyricistClick = { lyricist -> onNavigateToMetadataCategory("lyricist", lyricist) },
+                        onProducerClick = { producer -> onNavigateToMetadataCategory("producer", producer) },
                         onYearClick = { year -> onNavigateToMetadataCategory("year", year) },
                         showReleaseDateSection = showFooterReleaseDate
                     )

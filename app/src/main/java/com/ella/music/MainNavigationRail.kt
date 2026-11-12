@@ -48,7 +48,15 @@ internal fun MainNavigationRail(
     modifier: Modifier = Modifier
 ) {
     val surface = MiuixTheme.colorScheme.surface
+    val dark = MiuixTheme.colorScheme.background.luminance() < 0.5f
+    val blurSupported = remember { isRuntimeShaderSupported() }
     val railBackground = when {
+        backdrop != null && blurSupported -> Modifier.drawBackdrop(
+            backdrop = backdrop,
+            shape = { RectangleShape },
+            effects = { blur(24.dp.toPx()) },
+            onDrawSurface = { drawRect(surface.copy(alpha = if (dark) 0.46f else 0.62f)) }
+        )
         backdrop != null -> Modifier.background(surface.copy(alpha = 0.86f))
         else -> Modifier.background(surface)
     }

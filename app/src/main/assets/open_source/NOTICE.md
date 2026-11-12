@@ -7,3 +7,4 @@ Miuix examples: Apache-2.0, compose-miuix-ui contributors; adapted from Kyant0/A
 
 See THIRD_PARTY_LICENSES.md in the source repository and the source-and-rebuild materials
 provided alongside this APK for corresponding sources and modification/rebuild instructions.
+FFmpegKit full 6.0-2.LTS: LGPL-3.0. Its original license texts are included as Android raw resources.

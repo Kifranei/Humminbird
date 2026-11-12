@@ -103,6 +103,7 @@ fun SettingsDetailScreen(
     val homeTilePinButtonsVisible by settingsManager.homeTilePinButtonsVisible.collectAsState(initial = false)
     val homeSectionItems = listOf(
         HomePreferenceItem("library", stringResource(R.string.settings_home_section_library), stringResource(R.string.settings_home_section_library_summary)),
+        HomePreferenceItem("online", stringResource(R.string.settings_home_section_online), stringResource(R.string.settings_home_section_online_summary)),
         HomePreferenceItem("recent", stringResource(R.string.settings_home_section_recent), stringResource(R.string.settings_home_section_recent_summary))
     )
     val homeTopBarActionItems = listOf(
@@ -110,6 +111,11 @@ fun SettingsDetailScreen(
         HomePreferenceItem(
             "analytics",
             stringResource(R.string.settings_home_top_action_analytics),
+            stringResource(R.string.settings_home_top_actions_summary)
+        ),
+        HomePreferenceItem(
+            "ai",
+            stringResource(R.string.settings_home_top_action_ai),
             stringResource(R.string.settings_home_top_actions_summary)
         ),
         HomePreferenceItem(
@@ -131,9 +137,13 @@ fun SettingsDetailScreen(
         HomePreferenceItem("year", stringResource(R.string.settings_library_tile_year), stringResource(R.string.settings_library_tile_year_summary)),
         HomePreferenceItem("composer", stringResource(R.string.settings_library_tile_composer), stringResource(R.string.settings_library_tile_composer_summary)),
         HomePreferenceItem("arranger", stringResource(R.string.settings_library_tile_arranger), stringResource(R.string.settings_library_tile_arranger_summary)),
-        HomePreferenceItem("lyricist", stringResource(R.string.settings_library_tile_lyricist), stringResource(R.string.settings_library_tile_lyricist_summary))
+        HomePreferenceItem("lyricist", stringResource(R.string.settings_library_tile_lyricist), stringResource(R.string.settings_library_tile_lyricist_summary)),
+        HomePreferenceItem("producer", stringResource(R.string.settings_library_tile_producer), stringResource(R.string.settings_library_tile_producer_summary))
     )
-    val homeOnlineTileItems = emptyList<HomePreferenceItem>()
+    val homeOnlineTileItems = listOf(
+        HomePreferenceItem("musicfree", "MusicFree", stringResource(R.string.home_import_api_source)),
+        HomePreferenceItem("lx", "LX Music", stringResource(R.string.home_import_api_source))
+    )
     val effectiveMode = if (showOnlyLyrics) SettingsDetailMode.Lyrics else mode
     var showHomeDisplayPage by remember(initialHomeDisplay) { mutableStateOf(initialHomeDisplay) }
     // Keep both viewports alive while the nested page is open. They are still scoped to this
@@ -273,6 +283,7 @@ fun SettingsDetailScreen(
                     SettingsTagScrapingSection(highlightKey = highlightKey)
                 }
                 SettingsDetailMode.Integrations -> {
+                    SettingsAiInterpretationSection(highlightKey = highlightKey)
                     SettingsMcpSection(highlightKey = highlightKey)
                     SettingsLastFmSection(
                         highlightKey = highlightKey,

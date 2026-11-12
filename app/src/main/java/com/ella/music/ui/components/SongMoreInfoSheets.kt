@@ -24,7 +24,6 @@ import androidx.compose.runtime.setValue
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.focusRequester
 import top.yukonga.miuix.kmp.basic.TextField
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -41,6 +40,7 @@ import com.ella.music.data.detailedAudioInfo
 import com.ella.music.data.formatBitRate
 import com.ella.music.data.model.AudioInfo
 import com.ella.music.data.model.Song
+import com.ella.music.data.metadata.songInfoCustomRows
 import com.ella.music.data.model.SongTagInfo
 import com.ella.music.data.model.formatPlaybackDuration
 import com.ella.music.ui.navigation.LocalAppNavigator
@@ -84,6 +84,13 @@ fun SongInfoSheet(
     var displayedModifiedMs by remember(song.id, song.dateModified) { mutableStateOf(song.dateModified) }
     var showNeteaseArtistPicker by remember(song.id) { mutableStateOf(false) }
     var neteaseArtistPickerForWiki by remember(song.id) { mutableStateOf(false) }
+    var neteaseCommentsSongId by remember(song.id) { mutableStateOf<String?>(null) }
+    com.ella.music.ui.player.NeteaseCommentsSheet(
+        show = neteaseCommentsSongId != null,
+        song = song,
+        onDismiss = { neteaseCommentsSongId = null },
+        songIdOverride = neteaseCommentsSongId
+    )
     var namePicker by remember(song.id) { mutableStateOf<SongInfoNamePicker?>(null) }
     LaunchedEffect(namePicker?.title) { onPickerTitleChange?.invoke(namePicker?.title) }
     val audioInfo by produceState<AudioInfo?>(initialValue = null, song.id, song.dateModified, song.fileSize) {
@@ -112,6 +119,7 @@ fun SongInfoSheet(
                     SongInfoJump.Composer -> context.getString(R.string.song_more_select_composer)
                     SongInfoJump.Arranger -> context.getString(R.string.song_more_select_arranger)
                     SongInfoJump.Lyricist -> context.getString(R.string.song_more_select_lyricist)
+                    SongInfoJump.Producer -> context.getString(R.string.song_more_select_producer)
                     SongInfoJump.Genre -> context.getString(R.string.song_more_select_genre)
                     else -> label
                 },
@@ -137,6 +145,7 @@ fun SongInfoSheet(
                     SongInfoJump.Composer -> "composer"
                     SongInfoJump.Arranger -> "arranger"
                     SongInfoJump.Lyricist -> "lyricist"
+                    SongInfoJump.Producer -> "producer"
                     SongInfoJump.Genre -> "genre"
                     else -> null
                 })
@@ -186,8 +195,14 @@ fun SongInfoSheet(
                 ?.let { SongInfoRow(stringResource(R.string.player_detail_artist), it) }
             neteaseInfo.albumName.takeIf { it.isNotBlank() }?.let { SongInfoRow(stringResource(R.string.player_detail_album), it) }
             neteaseInfo.comment.takeIf { it.isNotBlank() }?.let { SongInfoRow(stringResource(R.string.player_detail_comment), it) }
+            // Order: 歌曲页 → 歌曲评论 → 歌手页 → 艺人百科 → 专辑页 → MV.
             neteaseInfo.musicId.takeIf { it.isNotBlank() }?.let { id ->
                 SongMenuItem(stringResource(R.string.player_netease_song_page), onClick = { com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.Song, id) })
+                SongMenuItem(stringResource(R.string.netease_link_song_wiki), onClick = { com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.SongWiki, id) })
+                SongMenuItem(stringResource(R.string.netease_link_song_comments), onClick = {
+                    if (com.ella.music.data.netease.NeteaseLinks.commentsOpenExternally(context)) com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.Comment, id)
+                    else neteaseCommentsSongId = id
+                })
             }
             if (neteaseArtists.isNotEmpty()) {
                 SongMenuItem(
@@ -215,12 +230,14 @@ fun SongInfoSheet(
             }
             neteaseInfo.albumId.takeIf { it.isNotBlank() }?.let { id ->
                 SongMenuItem(stringResource(R.string.player_netease_album_page), onClick = { com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.Album, id) })
+                SongMenuItem(stringResource(R.string.netease_link_album_comments), onClick = { com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.AlbumComment, id) })
             }
             neteaseInfo.mvId.takeIf { it.isNotBlank() }?.let { id ->
                 SongMenuItem(
                     stringResource(R.string.player_netease_music_video),
                     onClick = { com.ella.music.MusicVideoLauncher.openNetease(context, song, id) }
                 )
+                SongMenuItem(stringResource(R.string.netease_link_mv_comments), onClick = { com.ella.music.data.netease.NeteaseLinks.open(context, com.ella.music.data.netease.NeteaseLinkKind.MusicVideoComment, id) })
             }
             SongInfoRow(stringResource(R.string.song_more_raw_netease_key), neteaseInfo.raw)
             neteaseInfo.decodedJson.takeIf { it.isNotBlank() }?.let {
@@ -239,6 +256,10 @@ fun SongInfoSheet(
     val composerValue = tagInfo?.composer?.ifBlank { song.composer }.orEmpty()
     val arrangerValue = tagInfo?.arranger?.ifBlank { song.arranger }.orEmpty()
     val lyricistValue = tagInfo?.lyricist?.ifBlank { song.lyricist }.orEmpty()
+    val producerValue = tagInfo?.producer?.ifBlank { song.producer }.orEmpty()
+    val copyrightValue = tagInfo?.copyright.orEmpty()
+    val languageValue = tagInfo?.language.orEmpty()
+    val customRows = tagInfo?.customTags?.songInfoCustomRows().orEmpty()
     val directoryValue = song.parentFolderPath().orEmpty()
     val artistLabel = stringResource(R.string.player_detail_artist)
     val albumLabel = stringResource(R.string.player_detail_album)
@@ -248,6 +269,9 @@ fun SongInfoSheet(
     val composerLabel = stringResource(R.string.player_detail_composer)
     val arrangerLabel = stringResource(R.string.player_detail_arranger)
     val lyricistLabel = stringResource(R.string.player_detail_lyricist)
+    val producerLabel = stringResource(R.string.player_detail_producer)
+    val copyrightLabel = stringResource(R.string.song_more_metadata_copyright)
+    val languageLabel = stringResource(R.string.player_detail_language)
     val formatLabelText = stringResource(R.string.song_more_detail_format)
     val bitrateLabel = stringResource(R.string.song_more_detail_bitrate)
     val pathLabel = stringResource(R.string.song_more_detail_path)
@@ -311,6 +335,17 @@ fun SongInfoSheet(
                     SongInfoRow(lyricistLabel, lyricistValue, onClick = {
                         jumpField(SongInfoJump.Lyricist, lyricistLabel, lyricistValue)
                     })
+                ActionMenuIds.SONG_INFO_PRODUCER ->
+                    SongInfoRow(producerLabel, producerValue, onClick = {
+                        jumpField(SongInfoJump.Producer, producerLabel, producerValue)
+                    })
+                ActionMenuIds.SONG_INFO_COPYRIGHT ->
+                    SongInfoRow(copyrightLabel, copyrightValue)
+                ActionMenuIds.SONG_INFO_LANGUAGE ->
+                    SongInfoRow(languageLabel, languageValue)
+                ActionMenuIds.SONG_INFO_CUSTOM -> customRows.forEach { (key, value) ->
+                    SongInfoRow(key, value)
+                }
                 ActionMenuIds.SONG_INFO_COMMENT ->
                     SongInfoRow(stringResource(R.string.player_detail_comment), tagInfo?.displayComment.orEmpty())
                 ActionMenuIds.SONG_INFO_NETEASE -> if (!tagInfo?.neteaseKey.isNullOrBlank()) {
@@ -382,26 +417,18 @@ fun SongInfoSheet(
             }
         }
     }
-    val modifiedFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     EllaMiuixDialog(
         show = editingModifiedTime,
         title = modifiedLabel,
         onDismissRequest = { editingModifiedTime = false }
     ) {
-        androidx.compose.runtime.LaunchedEffect(editingModifiedTime) {
-            if (editingModifiedTime) {
-                kotlinx.coroutines.delay(80)
-                runCatching { modifiedFocus.requestFocus() }
-            }
-        }
         TextField(
             value = modifiedTimeDraft,
             onValueChange = { modifiedTimeDraft = it },
             label = "yyyy-MM-dd HH:mm:ss",
             singleLine = true,
             modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(modifiedFocus),
+                .fillMaxWidth(),
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                 imeAction = androidx.compose.ui.text.input.ImeAction.Done
             )
@@ -435,6 +462,79 @@ internal fun parseSongDateTime(text: String): Long? {
     return runCatching {
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).parse(text.trim())?.time
     }.getOrNull()
+}
+
+@Composable
+internal fun SongAiInterpretationSheet(
+    song: Song,
+    mainViewModel: MainViewModel,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val settingsManager = remember(context) { SettingsManager.getInstance(context) }
+    val openAiApiKey by settingsManager.openAiApiKey.collectAsState(initial = "")
+    val aiFailedText = stringResource(R.string.song_more_ai_failed)
+    var requestKey by remember(song.id) { mutableStateOf(0) }
+    var isLoading by remember(song.id) { mutableStateOf(false) }
+    var resultText by remember(song.id) { mutableStateOf("") }
+    var errorText by remember(song.id) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(song.id, requestKey, openAiApiKey) {
+        if (openAiApiKey.isBlank()) {
+            Toast.makeText(context, R.string.library_ai_missing_api_key, Toast.LENGTH_SHORT).show()
+            onDismiss()
+            return@LaunchedEffect
+        }
+        isLoading = true
+        errorText = null
+        resultText = ""
+        runCatching {
+            mainViewModel.interpretSongWithOpenAi(song)
+        }.onSuccess {
+            resultText = it
+        }.onFailure {
+            errorText = it.message ?: aiFailedText
+        }
+        isLoading = false
+    }
+
+    EllaMiuixSheetColumn(
+        verticalPadding = 8.dp,
+        spacing = 10.dp,
+        showHandle = false
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            cornerRadius = 16.dp,
+            colors = CardDefaults.defaultColors(color = ellaOverlayCardColor())
+        ) {
+            val displayText = when {
+                isLoading -> stringResource(R.string.song_more_loading_ai)
+                errorText != null -> errorText.orEmpty()
+                resultText.isNotBlank() -> resultText
+                else -> ""
+            }
+            Text(
+                text = displayText,
+                fontSize = 14.sp,
+                lineHeight = 22.sp,
+                color = MiuixTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+            )
+        }
+        if (errorText != null) {
+            EllaMiuixActionMenuGroup {
+                SongMenuItem(stringResource(R.string.library_retry), onClick = { requestKey++ })
+            }
+        } else if (resultText.isNotBlank()) {
+            EllaMiuixActionMenuGroup {
+                SongMenuItem(stringResource(R.string.library_reinterpret), onClick = { requestKey++ })
+            }
+        }
+        EllaMiuixActionMenuGroup {
+            SongMenuItem(stringResource(R.string.common_close), onDismiss)
+        }
+    }
 }
 
 private data class SongInfoNamePicker(

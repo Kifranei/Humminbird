@@ -29,6 +29,7 @@ webkit = "1.17.1"
 super-lyric-api = "3.6"
 quickjs = "3.2.3"
 oboe = "1.11.0"
+ffmpeg-kit = "6.0-2.LTS"
 junit = "4.13.2"
 robolectric = "4.17"
 json-test = "20260814"
@@ -89,6 +90,7 @@ kotlin-annotations-jvm = { module = "org.jetbrains.kotlin:kotlin-annotations-jvm
 superlyric-api = { module = "com.github.HChenX:SuperLyricApi", version.ref = "super-lyric-api" }
 quickjs-wrapper = { module = "wang.harlon.quickjs:wrapper-android", version.ref = "quickjs" }
 oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
+ffmpeg-kit-full = { module = "com.arthenica:ffmpeg-kit-full", version.ref = "ffmpeg-kit" }
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 json-test = { module = "org.json:json", version.ref = "json-test" }

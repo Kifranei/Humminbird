@@ -28,6 +28,7 @@ internal fun String.backupType(): BackupType = when {
     isWallpaperAndImageSettingKey() -> BackupType.WallpapersAndImages
     isEqualizerSettingKey() -> BackupType.Equalizer
     isOnlineSourceSettingKey() -> BackupType.OnlineSources
+    isAiSettingKey() -> BackupType.AiConfigAndChat
     isFolderPlaylistSettingKey() -> BackupType.FolderPlaylists
     isPlaylistSettingKey() -> BackupType.Playlists
     isLibraryAndScanSettingKey() -> BackupType.LibraryAndScan
@@ -36,7 +37,7 @@ internal fun String.backupType(): BackupType = when {
 
 internal fun JSONObject.availableBackupTypes(includeDeviceLocalAssets: Boolean = false): Set<BackupType> {
     val available = linkedSetOf<BackupType>()
-    val hasSectionedPayload = has("settings") || has("playlists") || has("playback")
+    val hasSectionedPayload = has("settings") || has("playlists") || has("playback") || has("aiChat")
     val settings = if (hasSectionedPayload) optJSONObject("settings") ?: JSONObject() else this
     val keys = settings.keys()
     while (keys.hasNext()) {
@@ -53,6 +54,7 @@ internal fun JSONObject.availableBackupTypes(includeDeviceLocalAssets: Boolean =
     }
     if (has("playlists")) available += BackupType.Playlists
     if (has("playback")) available += BackupType.PlaybackStats
+    if (has("aiChat")) available += BackupType.AiConfigAndChat
     if (has(BACKUP_LYRICO_PLUGINS_FIELD)) available += BackupType.OnlineSources
     return available
 }
@@ -69,6 +71,12 @@ private fun String.isFontSettingKey(): Boolean =
         this == "lyric_custom_font_enabled" ||
         this == "lyric_share_use_lyric_font" ||
         this == "desktop_lyric_font_scale"
+
+private fun String.isAiSettingKey(): Boolean =
+    this == "openai_api_key" ||
+        this == "openai_base_url" ||
+        this == "openai_model" ||
+        this == "ai_api_protocol"
 
 private fun String.isEqualizerSettingKey(): Boolean =
     startsWith("audio_eq_") ||

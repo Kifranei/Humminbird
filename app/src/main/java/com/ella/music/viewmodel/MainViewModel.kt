@@ -66,6 +66,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val openSubsonicCollectionsStore = OpenSubsonicCollectionsStore.getInstance(application)
     private val playbackStatsStore = PlaybackStatsStore.getInstance(application)
     private val lastFmHistoryStore = LastFmHistoryStore.getInstance(application)
+    private val aiCoordinator = MainViewModelAiCoordinator(getApplication(), settingsManager, repository)
     private val neteaseLinkResolver = MainNeteaseLinkResolver(
         repository = repository,
         songsForArtist = ::getSongsForArtist,
@@ -224,6 +225,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         write = repository::writeCategoryTagForBatch, publish = repository::publishCategoryTagEdits)
 
     init {
+        viewModelScope.launch {
+            settingsManager.customMetadataCategories.distinctUntilChanged().collect { categories ->
+                metadataCategoryItemsCache.clear()
+                com.ella.music.data.CustomCategoryConfigStore.update(categories)
+            }
+        }
         viewModelScope.launch {
             combine(settingsManager.customMetadataCategories, songs) { categories, library ->
                 categories.isNotEmpty() && library.any { !it.customTagsLoaded &&
@@ -711,6 +718,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getFullAudioTagInfo(song: Song): AudioTagInfo? =
         repository.getFullAudioTagInfo(song)
+
+    suspend fun interpretSongWithOpenAi(song: Song): String =
+        aiCoordinator.interpretSong(song)
+
+    suspend fun chatWithOpenAiLibraryAssistant(
+        message: String,
+        conversationHistory: List<Pair<String, String>> = emptyList(),
+        maxPlayableItems: Int = 30
+    ): AiLibraryChatResult =
+        aiCoordinator.chatWithLibrary(
+            librarySongs = songs.value,
+            playbackStats = playbackStats.value,
+            playbackHistory = playbackHistory.value,
+            message = message,
+            conversationHistory = conversationHistory,
+            maxPlayableItems = maxPlayableItems
+        )
 
     fun clearOnlineMetadataCache() {
         repository.clearRemoteMetadataCache()

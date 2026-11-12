@@ -40,8 +40,10 @@ import com.ella.music.data.SettingsManager.Companion.KEY_APP_WALLPAPER_ENABLED
 import com.ella.music.data.SettingsManager.Companion.KEY_APP_WALLPAPER_OPACITY
 import com.ella.music.data.SettingsManager.Companion.KEY_APP_WALLPAPER_URI
 import com.ella.music.data.SettingsManager.Companion.KEY_APP_NOW_PLAYING_FLOW_BACKGROUND
+import com.ella.music.data.SettingsManager.Companion.KEY_ALBUM_CASE_EFFECT
 import com.ella.music.data.SettingsManager.Companion.KEY_ARTIST_COVER_CAROUSEL
 import com.ella.music.data.SettingsManager.Companion.KEY_ARTIST_COVER_FOLDER_URI
+import com.ella.music.data.SettingsManager.Companion.KEY_ARTIST_WORDMARK_FOLDER_URI
 import com.ella.music.data.SettingsManager.Companion.KEY_ARTIST_COVER_DOWNLOAD_FOLDER_URI
 import com.ella.music.data.SettingsManager.Companion.KEY_BOTTOM_BAR_STYLE
 import com.ella.music.data.SettingsManager.Companion.KEY_BOTTOM_BAR_GLASS_EFFECT
@@ -59,6 +61,7 @@ import com.ella.music.data.SettingsManager.Companion.KEY_HOME_HIDDEN_TOP_BAR_ACT
 import com.ella.music.data.SettingsManager.Companion.DEFAULT_HOME_TOP_BAR_ACTION_ORDER
 import com.ella.music.data.SettingsManager.Companion.KEY_HI_RES_LOGO_ENABLED
 import com.ella.music.data.SettingsManager.Companion.KEY_HI_RES_LOGO_URI
+import com.ella.music.data.SettingsManager.Companion.KEY_HOME_AI_MIX_VISIBLE
 import com.ella.music.data.SettingsManager.Companion.KEY_CONTINUE_PLAYBACK_ROW_VISIBLE
 import com.ella.music.data.SettingsManager.Companion.KEY_HOME_FEATURE_WALLPAPER_URI
 import com.ella.music.data.SettingsManager.Companion.KEY_HOME_HIDDEN_LIBRARY_TILES
@@ -113,6 +116,10 @@ interface AppearanceSettingsAccess {
     suspend fun setHomeSearchTarget(target: String)
     val bottomDockMergeSearch: Flow<Boolean>
     val artistCoverFolderUri: Flow<String>
+    val artistWordmarkFolderUri: Flow<String>
+    suspend fun setArtistWordmarkFolderUri(uri: String)
+    val albumCaseEffect: Flow<Boolean>
+    suspend fun setAlbumCaseEffect(enabled: Boolean)
     val artistCoverDownloadFolderUri: Flow<String>
     suspend fun setArtistCoverDownloadFolderUri(uri: String)
     val artistCoverCarousel: Flow<Boolean>
@@ -123,7 +130,9 @@ interface AppearanceSettingsAccess {
     val defaultBgEffectVersion: Int get() = HyperOsDetector.defaultBgEffectVersion()
     val topBarBlurStyle: Flow<Int>
     val progressiveTopBarBlur: Flow<Boolean>
+    val topBarLiquidGlass: Flow<Boolean>
     suspend fun setProgressiveTopBarBlur(enabled: Boolean)
+    suspend fun setTopBarLiquidGlass(enabled: Boolean)
     suspend fun setTopBarBlurStyle(style: Int)
     val appWallpaperEnabled: Flow<Boolean>
     val appWallpaperUri: Flow<String>
@@ -141,6 +150,7 @@ interface AppearanceSettingsAccess {
     val homeFeatureStyle: Flow<Int>
     suspend fun setHomeFeatureStyle(style: Int)
     val homeFeatureWallpaperUri: Flow<String>
+    val homeAiMixVisible: Flow<Boolean>
     val continuePlaybackRowVisible: Flow<Boolean>
     val categoryContinuePlaybackRowVisible: Flow<Boolean>
     val homeRecentSectionMode: Flow<Int>
@@ -204,6 +214,7 @@ interface AppearanceSettingsAccess {
     suspend fun recordSettingsSearchQuery(query: String)
     suspend fun clearSettingsSearchHistory()
     suspend fun setHomeFeatureWallpaperUri(uri: String)
+    suspend fun setHomeAiMixVisible(visible: Boolean)
     suspend fun setContinuePlaybackRowVisible(visible: Boolean)
     suspend fun setCategoryContinuePlaybackRowVisible(visible: Boolean)
     suspend fun setHomeRecentSectionMode(mode: Int)
@@ -248,10 +259,11 @@ internal class AppearanceSettingsAccessImpl(private val context: Context) : Appe
     override val widgetSafeLayout: Flow<Boolean> =
         context.dataStore.data.map { it[KEY_WIDGET_SAFE_LAYOUT] ?: false }
     override val bottomBarStyle: Flow<BottomBarStyle> = context.dataStore.data.map { preferences ->
-        val stored = preferences[KEY_BOTTOM_BAR_STYLE]
-            ?.let { runCatching { BottomBarStyle.valueOf(it) }.getOrNull() }
-        val resolved = stored ?: BottomBarStyle.Floating
-        if (resolved == BottomBarStyle.LiquidGlass) BottomBarStyle.Floating else resolved
+        preferences[KEY_BOTTOM_BAR_STYLE]
+            ?.let { stored -> runCatching { BottomBarStyle.valueOf(stored) }.getOrNull() }
+            // Fresh installs default to the HyperOS 4 capsule; the legacy glass-effect key is
+            // only a fallback for unrecognized values, not a style of its own.
+            ?: BottomBarStyle.FloatingPill
     }
     override val bottomBarGlassEffect: Flow<BottomBarGlassEffect> = context.dataStore.data.map { preferences ->
         runCatching {
@@ -349,8 +361,12 @@ internal class AppearanceSettingsAccessImpl(private val context: Context) : Appe
 
     override val artistCoverFolderUri: Flow<String> =
         context.dataStore.data.map { it[KEY_ARTIST_COVER_FOLDER_URI].orEmpty() }
+    override val artistWordmarkFolderUri: Flow<String> =
+        context.dataStore.data.map { it[KEY_ARTIST_WORDMARK_FOLDER_URI].orEmpty() }
+    override val albumCaseEffect: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_ALBUM_CASE_EFFECT] ?: true }
     override val artistCoverDownloadFolderUri: Flow<String> =
-        context.dataStore.data.map { it[KEY_ARTIST_COVER_DOWNLOAD_FOLDER_URI].orEmpty() }
+        context.dataStore.data.map { it[KEY_ARTIST_COVER_DOWNLOAD_FOLDER_URI] ?: ARTIST_IMAGE_INTERNAL_STORAGE }
     // 当某位艺术家有多张封面图时：true=多图轮播，false=随机取一张。
     override val artistCoverCarousel: Flow<Boolean> =
         context.dataStore.data.map { it[KEY_ARTIST_COVER_CAROUSEL] ?: true }
@@ -373,6 +389,12 @@ internal class AppearanceSettingsAccessImpl(private val context: Context) : Appe
     }
     override suspend fun setProgressiveTopBarBlur(enabled: Boolean) {
         context.dataStore.edit { it[androidx.datastore.preferences.core.booleanPreferencesKey("progressive_top_bar_blur")] = enabled }
+    }
+    override val topBarLiquidGlass: Flow<Boolean> = context.dataStore.data.map {
+        it[androidx.datastore.preferences.core.booleanPreferencesKey("top_bar_liquid_glass")] ?: false
+    }
+    override suspend fun setTopBarLiquidGlass(enabled: Boolean) {
+        context.dataStore.edit { it[androidx.datastore.preferences.core.booleanPreferencesKey("top_bar_liquid_glass")] = enabled }
     }
     override val appWallpaperEnabled: Flow<Boolean> =
         context.dataStore.data.map { it[KEY_APP_WALLPAPER_ENABLED] ?: false }
@@ -413,6 +435,8 @@ internal class AppearanceSettingsAccessImpl(private val context: Context) : Appe
 
     override val homeFeatureWallpaperUri: Flow<String> =
         context.dataStore.data.map { it[KEY_HOME_FEATURE_WALLPAPER_URI] ?: "" }
+    override val homeAiMixVisible: Flow<Boolean> =
+        context.dataStore.data.map { it[KEY_HOME_AI_MIX_VISIBLE] ?: true }
     override val continuePlaybackRowVisible: Flow<Boolean> =
         context.dataStore.data.map { resolveContinuePlaybackVisibility(it, library = true) }
     override val categoryContinuePlaybackRowVisible: Flow<Boolean> =
@@ -536,19 +560,24 @@ internal class AppearanceSettingsAccessImpl(private val context: Context) : Appe
     }
 
     override suspend fun setBottomBarStyle(style: BottomBarStyle) {
-        val saved = if (style == BottomBarStyle.LiquidGlass) BottomBarStyle.Floating else style
         context.dataStore.edit { preferences ->
-            preferences[KEY_BOTTOM_BAR_STYLE] = saved.name
-            if (saved == BottomBarStyle.Floating) {
-                preferences[KEY_BOTTOM_BAR_GLASS_EFFECT] = BottomBarGlassEffect.Blur.name
+            preferences[KEY_BOTTOM_BAR_STYLE] = style.name
+            when (style) {
+                BottomBarStyle.Floating -> preferences[KEY_BOTTOM_BAR_GLASS_EFFECT] = BottomBarGlassEffect.Blur.name
+                BottomBarStyle.LiquidGlass -> preferences[KEY_BOTTOM_BAR_GLASS_EFFECT] = BottomBarGlassEffect.LiquidGlass.name
+                BottomBarStyle.FloatingPill -> preferences[KEY_BOTTOM_BAR_GLASS_EFFECT] = BottomBarGlassEffect.Blur.name
+                BottomBarStyle.Normal -> Unit
             }
         }
     }
 
     override suspend fun setBottomBarGlassEffect(effect: BottomBarGlassEffect) {
         context.dataStore.edit {
-            it[KEY_BOTTOM_BAR_STYLE] = BottomBarStyle.Floating.name
-            it[KEY_BOTTOM_BAR_GLASS_EFFECT] = BottomBarGlassEffect.Blur.name
+            it[KEY_BOTTOM_BAR_GLASS_EFFECT] = effect.name
+            it[KEY_BOTTOM_BAR_STYLE] = when (effect) {
+                BottomBarGlassEffect.Blur -> BottomBarStyle.Floating.name
+                BottomBarGlassEffect.LiquidGlass -> BottomBarStyle.LiquidGlass.name
+            }
         }
     }
 
@@ -650,6 +679,21 @@ internal class AppearanceSettingsAccessImpl(private val context: Context) : Appe
                 prefs[KEY_ARTIST_COVER_FOLDER_URI] = safeUri
             }
         }
+    }
+
+    override suspend fun setArtistWordmarkFolderUri(uri: String) {
+        context.dataStore.edit { prefs ->
+            val safeUri = uri.trim()
+            if (safeUri.isBlank()) {
+                prefs.remove(KEY_ARTIST_WORDMARK_FOLDER_URI)
+            } else {
+                prefs[KEY_ARTIST_WORDMARK_FOLDER_URI] = safeUri
+            }
+        }
+    }
+
+    override suspend fun setAlbumCaseEffect(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_ALBUM_CASE_EFFECT] = enabled }
     }
 
     override suspend fun setArtistCoverDownloadFolderUri(uri: String) {
@@ -786,6 +830,10 @@ internal class AppearanceSettingsAccessImpl(private val context: Context) : Appe
         }
     }
 
+    override suspend fun setHomeAiMixVisible(visible: Boolean) {
+        context.dataStore.edit { it[KEY_HOME_AI_MIX_VISIBLE] = visible }
+    }
+
     override suspend fun setContinuePlaybackRowVisible(visible: Boolean) {
         context.dataStore.edit { it[SettingsManager.KEY_LIBRARY_CONTINUE_PLAYBACK_ROW_VISIBLE] = visible }
     }
@@ -843,6 +891,8 @@ internal fun migratedHomeItems(order: String, hidden: String, shortcuts: Boolean
     return (if (shortcuts) visible.take(shortcutCount) else visible.drop(shortcutCount)).joinToString(",")
 }
 
-internal fun normalizeHomeSearchTarget(value: String): String = "local"
+internal fun normalizeHomeSearchTarget(value: String): String =
+    value.takeIf { it in setOf("local", "lx", "musicfree") } ?: "local"
 
-internal fun resolveHomeSearchTarget(librarySource: String, preference: String): String = "local"
+internal fun resolveHomeSearchTarget(librarySource: String, preference: String): String =
+    if (librarySource == SettingsManager.LIBRARY_SOURCE_NETEASE) "netease" else normalizeHomeSearchTarget(preference)

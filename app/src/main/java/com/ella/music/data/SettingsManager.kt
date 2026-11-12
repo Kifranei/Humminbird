@@ -56,7 +56,8 @@ enum class BottomBarGlassEffect {
 enum class BottomBarStyle {
     Normal,
     Floating,
-    LiquidGlass
+    LiquidGlass,
+    FloatingPill
 }
 
 class SettingsManager(private val context: Context) :
@@ -302,6 +303,9 @@ class SettingsManager(private val context: Context) :
         val KEY_LIVE_UPDATE_LYRIC_SECONDARY_MODE = intPreferencesKey("live_update_lyric_secondary_mode")
         val KEY_XIAOMI_SUPER_ISLAND_LYRIC_ENABLED = booleanPreferencesKey("xiaomi_super_island_lyric_enabled")
         val KEY_XIAOMI_SUPER_ISLAND_SETTINGS = stringPreferencesKey("xiaomi_super_island_settings")
+        val KEY_VIVO_ATOM_WALKMAN_WHITELIST_ENABLED = booleanPreferencesKey("vivo_atom_walkman_whitelist_enabled")
+        val KEY_VIVO_MEDIA_ISLAND_ENABLED = booleanPreferencesKey("vivo_media_island_enabled")
+        val KEY_VIVO_MEDIA_ISLAND_ONLY = booleanPreferencesKey("vivo_media_island_only")
         val KEY_SAMSUNG_FLOATING_LYRIC_TRANSLATION = booleanPreferencesKey("samsung_floating_lyric_translation")
         val KEY_STATUS_BAR_ALLOW_PHONETIC = booleanPreferencesKey("status_bar_allow_phonetic")
         val KEY_DESKTOP_LYRIC_ENABLED = booleanPreferencesKey("desktop_lyric_enabled")
@@ -315,10 +319,12 @@ class SettingsManager(private val context: Context) :
         val KEY_ARTIST_IMAGE_SAVE_LOCATION = stringPreferencesKey("artist_image_save_location")
         val KEY_MV_DOWNLOAD_LOCATION = stringPreferencesKey("mv_download_location")
         val KEY_MV_DOWNLOAD_TEMPLATE = stringPreferencesKey("mv_download_template")
+        val KEY_SONG_DOWNLOAD_LOCATION = stringPreferencesKey("song_download_location")
         val KEY_POSTER_WALL_SOURCE = stringPreferencesKey("poster_wall_source")
         val KEY_POSTER_WALL_STACK_LAYOUTS = stringPreferencesKey("poster_wall_stack_layouts")
         val KEY_POSTER_WALL_STACKED = booleanPreferencesKey("poster_wall_stacked")
         val KEY_SPOTIFY_CANVAS_ENABLED = booleanPreferencesKey("spotify_canvas_enabled")
+        val KEY_SPOTIFY_CANVAS_AUTO_HIDE = booleanPreferencesKey("spotify_canvas_auto_hide_controls")
         val KEY_DESKTOP_LYRIC_HIDE_WHEN_PAUSED = booleanPreferencesKey("desktop_lyric_hide_when_paused")
         val KEY_DESKTOP_LYRIC_HIDE_IN_LANDSCAPE = booleanPreferencesKey("desktop_lyric_hide_in_landscape")
         val KEY_DESKTOP_LYRIC_HIDE_ON_PLAYER_PAGE = booleanPreferencesKey("desktop_lyric_hide_on_player_page")
@@ -369,6 +375,7 @@ class SettingsManager(private val context: Context) :
         val KEY_RANDOM_SORT_SEED = intPreferencesKey("random_sort_seed")
         val KEY_SHUFFLE_RESHUFFLE_ON_STARTUP = booleanPreferencesKey("shuffle_reshuffle_on_startup")
         val KEY_DISABLE_SEQUENTIAL_PLAYBACK = booleanPreferencesKey("disable_sequential_playback")
+        val KEY_PLAYBACK_MODE_STOP_AFTER_CURRENT = booleanPreferencesKey("playback_mode_stop_after_current")
         val KEY_PREVIOUS_BUTTON_ACTION = intPreferencesKey("previous_button_action")
         val KEY_PAUSED_SWITCH_MODE = intPreferencesKey("paused_switch_mode")
         val KEY_LYRIC_SOURCE_MODE = intPreferencesKey("lyric_source_mode")
@@ -415,6 +422,7 @@ class SettingsManager(private val context: Context) :
         val KEY_PLAYER_PROGRESS_LONG_PRESS_CYCLE = booleanPreferencesKey("player_progress_long_press_cycle")
         val KEY_PLAYER_PROGRESS_INFO_SEPARATED = booleanPreferencesKey("player_progress_info_separated")
         val KEY_TRANSPORT_BUTTON_OUTLINES = booleanPreferencesKey("transport_button_outlines")
+        val KEY_PLAYER_QUALITY_CHIP_OUTLINE = booleanPreferencesKey("player_quality_chip_outline")
         val KEY_PLAYER_TAP_SEEK_ENABLED = booleanPreferencesKey("player_tap_seek_enabled")
         val KEY_PLAYER_SHOW_TOTAL_DURATION = booleanPreferencesKey("player_show_total_duration")
         val KEY_PLAYER_SHOW_SONG_ANNOTATION = booleanPreferencesKey("player_show_song_annotation")
@@ -455,6 +463,10 @@ class SettingsManager(private val context: Context) :
         val KEY_PLAYER_IMMERSIVE_COVER = booleanPreferencesKey("player_immersive_cover")
         val KEY_APPLE_MUSIC_PLAYER_IMMERSIVE_COVER = booleanPreferencesKey("apple_music_player_immersive_cover")
         val KEY_PLAYER_CENTER_TITLE = booleanPreferencesKey("player_center_title")
+        val KEY_PLAYER_SHOW_FAVORITE_BUTTON = booleanPreferencesKey("player_show_favorite_button")
+        val KEY_PLAYER_TITLE_MARQUEE = booleanPreferencesKey("player_title_marquee")
+        val KEY_PLAYER_SUBTITLE_MARQUEE = booleanPreferencesKey("player_subtitle_marquee")
+        val KEY_PLAYER_TITLE_OPENS_ALBUM = booleanPreferencesKey("player_title_opens_album")
         val KEY_APPLE_MUSIC_USE_APPLE_FAVORITE = booleanPreferencesKey("apple_music_use_apple_favorite")
         val KEY_PLAYER_FAVORITE_HEART_PINK = booleanPreferencesKey("player_favorite_heart_pink")
         val KEY_PLAYER_COVER_CONTENT_COLOR = booleanPreferencesKey("player_cover_content_color")
@@ -546,6 +558,8 @@ class SettingsManager(private val context: Context) :
         val KEY_SHOW_LOCAL_MV_IN_LISTS = booleanPreferencesKey("show_local_mv_in_lists")
         val KEY_SHOW_ONLINE_MV_IN_LISTS = booleanPreferencesKey("show_online_mv_in_lists")
         val KEY_ARTIST_COVER_FOLDER_URI = stringPreferencesKey("artist_cover_folder_uri")
+        val KEY_ARTIST_WORDMARK_FOLDER_URI = stringPreferencesKey("artist_wordmark_folder_uri")
+        val KEY_ALBUM_CASE_EFFECT = booleanPreferencesKey("album_case_effect")
         val KEY_ARTIST_COVER_DOWNLOAD_FOLDER_URI = stringPreferencesKey("artist_cover_download_folder_uri")
         val KEY_ARTIST_COVER_CAROUSEL = booleanPreferencesKey("artist_cover_carousel")
         val KEY_ARTIST_IMAGE_DOWNLOAD = intPreferencesKey("artist_image_download")
@@ -583,6 +597,7 @@ class SettingsManager(private val context: Context) :
         val KEY_PLAYER_BEAUTIFUL_LYRICS_BRIGHTNESS = intPreferencesKey("player_beautiful_lyrics_brightness")
         val KEY_HI_RES_LOGO_ENABLED = booleanPreferencesKey("hi_res_logo_enabled")
         val KEY_HI_RES_LOGO_URI = stringPreferencesKey("hi_res_logo_uri")
+        val KEY_MCP_SERVER_ENABLED = booleanPreferencesKey("mcp_server_enabled")
         val KEY_WEB_MUSIC_SERVER_ENABLED = booleanPreferencesKey("web_music_server_enabled")
         val KEY_PLAYLIST_SPECIAL_ENTRIES_VISIBLE = booleanPreferencesKey("playlist_special_entries_visible")
         val KEY_PLAYLIST_CUSTOM_ORDER = stringPreferencesKey("playlist_custom_order")
@@ -666,6 +681,10 @@ class SettingsManager(private val context: Context) :
         val KEY_EMBY_ACTIVE_ID = stringPreferencesKey("emby_active_id")
         const val LEGACY_NAVIDROME_SERVER_ID = "navidrome-legacy"
         const val LEGACY_EMBY_SERVER_ID = "emby-legacy"
+        val KEY_OPENAI_API_KEY = stringPreferencesKey("openai_api_key")
+        val KEY_OPENAI_BASE_URL = stringPreferencesKey("openai_base_url")
+        val KEY_OPENAI_MODEL = stringPreferencesKey("openai_model")
+        val KEY_AI_API_PROTOCOL = intPreferencesKey("ai_api_protocol")
         val KEY_OPEN_PLAYER_ON_PLAY = booleanPreferencesKey("online_auto_open_player")
         val KEY_OPEN_PLAYER_FROM_NOTIFICATION = booleanPreferencesKey("open_player_from_notification")
         val KEY_STARTUP_AUTO_PLAY = booleanPreferencesKey("startup_auto_play")
@@ -722,6 +741,7 @@ class SettingsManager(private val context: Context) :
         val KEY_GENRE_SEPARATORS = stringPreferencesKey("genre_separators")
         val KEY_GENRE_PROTECTED_NAMES = stringPreferencesKey("genre_protected_names")
         val KEY_TAG_IGNORE_CASE = booleanPreferencesKey("tag_ignore_case")
+        val KEY_ALBUM_MERGE_FIELDS = stringPreferencesKey("album_merge_fields")
         val KEY_DECODER_MODE = intPreferencesKey("decoder_mode")
         val KEY_AUDIO_OUTPUT_BACKEND = intPreferencesKey("audio_output_backend")
         val KEY_AUDIO_OUTPUT_BIT_DEPTH = intPreferencesKey("audio_output_bit_depth")
@@ -756,6 +776,7 @@ class SettingsManager(private val context: Context) :
         // This URI points to device-local app storage. Legacy JSON excludes the path; ZIP backups
         // carry the referenced image and restore it into the target app's private directory.
         const val BACKUP_EXCLUDED_HOME_FEATURE_WALLPAPER_URI = "home_feature_wallpaper_uri"
+        val KEY_HOME_AI_MIX_VISIBLE = booleanPreferencesKey("home_ai_mix_visible")
         val KEY_CONTINUE_PLAYBACK_ROW_VISIBLE = booleanPreferencesKey("continue_playback_row_visible")
         val KEY_LIBRARY_CONTINUE_PLAYBACK_ROW_VISIBLE = booleanPreferencesKey("library_continue_playback_row_visible")
         val KEY_CATEGORY_CONTINUE_PLAYBACK_ROW_VISIBLE = booleanPreferencesKey("category_continue_playback_row_visible")
@@ -784,7 +805,7 @@ class SettingsManager(private val context: Context) :
         const val DEFAULT_RECENT_PLAYBACK_LIMIT = 100
         const val DEFAULT_RECENT_PLAYBACK_SHOW_DATE = true
         const val DEFAULT_RECENT_PLAYBACK_COLLECTION_TYPES =
-            "playlist,artist,album,folder,folder_playlists,year,genre,composer,arranger,lyricist"
+            "playlist,artist,album,folder,folder_playlists,year,genre,composer,arranger,lyricist,producer"
 
         const val LYRIC_FONT_SCALE_MIN = 75
         const val LYRIC_FONT_SCALE_PHONE_MAX = 125
@@ -825,6 +846,11 @@ class SettingsManager(private val context: Context) :
         const val PLAYER_PAGE_STYLE_HALCYON = 0
         const val PLAYER_PAGE_STYLE_APPLE_MUSIC = 1
         const val PLAYER_PAGE_STYLE_IMMERSIVE_LYRICS = 2
+        const val PLAYER_PAGE_STYLE_VINYL_TURNTABLE = 3
+        const val PLAYER_PAGE_STYLE_FAN_CARDS = 4
+        const val PLAYER_PAGE_STYLE_CINEMASCOPE = 5
+        const val PLAYER_PAGE_STYLE_SIGNAL = 6
+        const val PLAYER_PAGE_STYLE_EDITORIAL = 7
         const val DEFAULT_PLAYER_PAGE_STYLE = PLAYER_PAGE_STYLE_HALCYON
         const val PLAYER_PROGRESS_STYLE_GLOW = 0
         const val PLAYER_PROGRESS_STYLE_WAVEFORM = 1
@@ -879,7 +905,12 @@ class SettingsManager(private val context: Context) :
         fun normalizePlayerPageStyle(style: Int?): Int = when (style) {
             PLAYER_PAGE_STYLE_HALCYON,
             PLAYER_PAGE_STYLE_APPLE_MUSIC,
-            PLAYER_PAGE_STYLE_IMMERSIVE_LYRICS -> style
+            PLAYER_PAGE_STYLE_IMMERSIVE_LYRICS,
+            PLAYER_PAGE_STYLE_VINYL_TURNTABLE,
+            PLAYER_PAGE_STYLE_FAN_CARDS,
+            PLAYER_PAGE_STYLE_CINEMASCOPE,
+            PLAYER_PAGE_STYLE_SIGNAL,
+            PLAYER_PAGE_STYLE_EDITORIAL -> style
             else -> DEFAULT_PLAYER_PAGE_STYLE
         }
 
@@ -1105,6 +1136,7 @@ class SettingsManager(private val context: Context) :
         const val DEFAULT_PLAYER_DYNAMIC_FLOW_ENABLED = true
         const val DEFAULT_PLAYER_APPLE_FLOW_SPEED = 10
         const val DEFAULT_TRANSPORT_BUTTON_OUTLINES = true
+        const val DEFAULT_PLAYER_QUALITY_CHIP_OUTLINE = false
         const val DEFAULT_PLAYER_SHOW_TOTAL_DURATION = true
         const val DEFAULT_MUSIC_VIDEO_SYNC_ENABLED = true
         const val DEFAULT_MUSIC_VIDEO_STRETCH_ENABLED = false
@@ -1162,7 +1194,7 @@ class SettingsManager(private val context: Context) :
         const val LIBRARY_SOURCE_SFTP = "sftp"
 
         fun normalizeLibrarySource(source: String): String = when (source) {
-            LIBRARY_SOURCE_NETEASE -> LIBRARY_SOURCE_LOCAL
+            LIBRARY_SOURCE_NETEASE -> LIBRARY_SOURCE_NETEASE
             LIBRARY_SOURCE_NAVIDROME -> LIBRARY_SOURCE_NAVIDROME
             LIBRARY_SOURCE_OPENSUBSONIC -> LIBRARY_SOURCE_OPENSUBSONIC
             LIBRARY_SOURCE_EMBY -> LIBRARY_SOURCE_EMBY
@@ -1177,6 +1209,12 @@ class SettingsManager(private val context: Context) :
         const val APP_LANGUAGE_ZH_TW = "zh-TW"
         const val APP_LANGUAGE_EN = "en"
         const val APP_LANGUAGE_JA = "ja"
+        const val APP_LANGUAGE_KO = "ko"
+        const val APP_LANGUAGE_DE = "de"
+        const val APP_LANGUAGE_FR = "fr"
+        const val APP_LANGUAGE_RU = "ru"
+        const val APP_LANGUAGE_TR = "tr"
+        const val APP_LANGUAGE_AR = "ar"
         const val DEFAULT_RECENTS_ICON_FOLLOWS_SYSTEM_THEME = true
         const val APP_ICON_STYLE_DEFAULT = "default"
         const val APP_ICON_STYLE_ANIME = "anime"
@@ -1198,6 +1236,7 @@ class SettingsManager(private val context: Context) :
         const val BOTTOM_DOCK_ITEM_COMPOSER = "composer"
         const val BOTTOM_DOCK_ITEM_ARRANGER = "arranger"
         const val BOTTOM_DOCK_ITEM_LYRICIST = "lyricist"
+        const val BOTTOM_DOCK_ITEM_PRODUCER = "producer"
         const val BOTTOM_DOCK_ITEM_ANALYTICS = "analytics"
         const val BOTTOM_DOCK_ITEM_LIBRARY_ANALYSIS = "library_analysis"
         const val MAX_BOTTOM_DOCK_ITEMS = 4
@@ -1275,12 +1314,16 @@ class SettingsManager(private val context: Context) :
                 .distinct()
                 .take(2)
         }
-        val SEARCH_ALL_CATEGORY_TYPES = setOf("folder", "folder_playlist", "composer", "arranger", "lyricist", "genre", "year")
+        val SEARCH_ALL_CATEGORY_TYPES = setOf("folder", "folder_playlist", "composer", "arranger", "lyricist", "producer", "genre", "year")
         val SEARCH_ALL_SONG_MATCH_TYPES = linkedSetOf(
             "title", "artist", "album", "file_name", "translated_name", "alias", "comment", "tag",
-            "lyricist", "composer", "arranger", "album_artist", "genre", "year", "lyrics"
+            "lyricist", "composer", "arranger", "producer", "album_artist", "genre", "year", "lyrics"
         )
 
+        const val DEFAULT_OPENAI_BASE_URL = "https://api.deepseek.com/v1"
+        const val DEFAULT_OPENAI_MODEL = "deepseek-flash"
+        const val AI_API_PROTOCOL_COMPATIBLE = 0
+        const val AI_API_PROTOCOL_ANTHROPIC = 1
         const val LIST_QUALITY_DISPLAY_TABLET = 0
         const val LIST_QUALITY_DISPLAY_PHONE = 1
         const val LIST_QUALITY_DISPLAY_ALWAYS = 2
@@ -1313,6 +1356,7 @@ class SettingsManager(private val context: Context) :
         const val APP_SHORTCUT_COMPOSERS = "composers"
         const val APP_SHORTCUT_ARRANGERS = "arrangers"
         const val APP_SHORTCUT_LYRICISTS = "lyricists"
+        const val APP_SHORTCUT_PRODUCERS = "producers"
         const val APP_SHORTCUT_ANALYTICS = "analytics"
         const val APP_SHORTCUT_LIBRARY_ANALYSIS = "library_analysis"
         const val APP_SHORTCUT_SCAN_SETTINGS = "scan_settings"
@@ -1334,6 +1378,7 @@ class SettingsManager(private val context: Context) :
             APP_SHORTCUT_COMPOSERS,
             APP_SHORTCUT_ARRANGERS,
             APP_SHORTCUT_LYRICISTS,
+            APP_SHORTCUT_PRODUCERS,
             APP_SHORTCUT_ANALYTICS,
             APP_SHORTCUT_LIBRARY_ANALYSIS,
             APP_SHORTCUT_SCAN_SETTINGS,
@@ -1353,16 +1398,18 @@ class SettingsManager(private val context: Context) :
         @StringRes
         val DEFAULT_SHORTCUT_FOLDER_LABEL_RES = R.string.settings_shortcut_folder
 
-        const val DEFAULT_HOME_SECTION_ORDER = "library,recent"
-        const val DEFAULT_HOME_TOP_BAR_ACTION_ORDER = "shuffle,analytics,settings"
+        const val DEFAULT_HOME_SECTION_ORDER = "library,online,recent"
+        const val DEFAULT_HOME_TOP_BAR_ACTION_ORDER = "shuffle,analytics,ai,settings"
         const val DEFAULT_RANDOM_SORT_SEED = 0
         const val HOME_RECENT_SECTION_MODE_PLAYED = 0
         const val HOME_RECENT_SECTION_MODE_ADDED = 1
-        const val DEFAULT_HOME_LIBRARY_TILE_ORDER = "artist,album,recent_playback,poster_wall,folder,folder_tree,folder_playlist,playlist,genre,year,composer,arranger,lyricist"
+        const val DEFAULT_HOME_LIBRARY_TILE_ORDER = "artist,album,recent_playback,poster_wall,folder,folder_tree,folder_playlist,playlist,genre,year,composer,arranger,lyricist,producer"
         const val DEFAULT_HOME_ONLINE_TILE_ORDER = "lx,musicfree"
         const val LEGACY_DEFAULT_ARTIST_SEPARATORS = "/\nfeat.\n&\n,"
         const val DEFAULT_ARTIST_SEPARATORS = "/\nfeat.\n&\n,\n、"
         const val DEFAULT_GENRE_SEPARATORS = ";"
+        // 专辑合并策略 (#752): the album name is always part of the identity.
+        const val DEFAULT_ALBUM_MERGE_FIELDS = "ALBUM,ALBUMARTIST"
 
         val LYRIC_SOURCE_PRIORITY_IDS = listOf(
             LYRIC_SOURCE_EMBEDDED_TTML,
@@ -1392,6 +1439,7 @@ class SettingsManager(private val context: Context) :
             BOTTOM_DOCK_ITEM_COMPOSER,
             BOTTOM_DOCK_ITEM_ARRANGER,
             BOTTOM_DOCK_ITEM_LYRICIST,
+            BOTTOM_DOCK_ITEM_PRODUCER,
             BOTTOM_DOCK_ITEM_ANALYTICS,
             BOTTOM_DOCK_ITEM_LIBRARY_ANALYSIS
         )
@@ -1553,9 +1601,13 @@ class SettingsManager(private val context: Context) :
     suspend fun setArtistImageSaveLocation(value: String) { context.dataStore.edit { it[KEY_ARTIST_IMAGE_SAVE_LOCATION] = value.trim() } }
     suspend fun setMusicVideoDownloadLocation(value: String) { context.dataStore.edit { it[KEY_MV_DOWNLOAD_LOCATION] = value.trim() } }
     suspend fun setMusicVideoDownloadTemplate(value: String) { context.dataStore.edit { it[KEY_MV_DOWNLOAD_TEMPLATE] = value } }
+    val songDownloadLocation: Flow<String> = context.dataStore.data.map { it[KEY_SONG_DOWNLOAD_LOCATION] ?: "default" }
+    suspend fun setSongDownloadLocation(value: String) { context.dataStore.edit { it[KEY_SONG_DOWNLOAD_LOCATION] = value.trim() } }
     suspend fun setPosterWallStacked(enabled: Boolean) { context.dataStore.edit { it[KEY_POSTER_WALL_STACKED] = enabled } }
     val spotifyCanvasEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_SPOTIFY_CANVAS_ENABLED] ?: false }
     suspend fun setSpotifyCanvasEnabled(enabled: Boolean) { context.dataStore.edit { it[KEY_SPOTIFY_CANVAS_ENABLED] = enabled } }
+    val spotifyCanvasAutoHideControls: Flow<Boolean> = context.dataStore.data.map { it[KEY_SPOTIFY_CANVAS_AUTO_HIDE] ?: false }
+    suspend fun setSpotifyCanvasAutoHideControls(enabled: Boolean) { context.dataStore.edit { it[KEY_SPOTIFY_CANVAS_AUTO_HIDE] = enabled } }
     suspend fun setDesktopLyricWordLift(enabled: Boolean) = desktopLyricSettings.setDesktopLyricWordLift(enabled)
     val desktopLyricOutlineEnabled get() = desktopLyricSettings.desktopLyricOutlineEnabled
     val desktopLyricBackgroundMode get() = desktopLyricSettings.desktopLyricBackgroundMode
@@ -1748,11 +1800,15 @@ class SettingsManager(private val context: Context) :
             setBoolean(KEY_LIVE_UPDATE_LYRIC_ENABLED)
             setBoolean(KEY_XIAOMI_SUPER_ISLAND_LYRIC_ENABLED)
             setString(KEY_XIAOMI_SUPER_ISLAND_SETTINGS)
+            setBoolean(KEY_VIVO_ATOM_WALKMAN_WHITELIST_ENABLED)
+            setBoolean(KEY_VIVO_MEDIA_ISLAND_ENABLED)
+            setBoolean(KEY_VIVO_MEDIA_ISLAND_ONLY)
             setBoolean(KEY_SAMSUNG_FLOATING_LYRIC_TRANSLATION)
             setBoolean(KEY_STATUS_BAR_ALLOW_PHONETIC)
             setBoolean(KEY_DESKTOP_LYRIC_ENABLED)
             setBoolean(KEY_DESKTOP_LYRIC_WORD_LIFT)
             setBoolean(KEY_SPOTIFY_CANVAS_ENABLED)
+            setBoolean(KEY_SPOTIFY_CANVAS_AUTO_HIDE)
             setString(KEY_ARTIST_IMAGE_SAVE_LOCATION)
             setString(KEY_SMB_URL)
             setString(KEY_SMB_USERNAME)
@@ -1760,6 +1816,7 @@ class SettingsManager(private val context: Context) :
             setString(KEY_SMB_PROTOCOL)
             setString(KEY_MV_DOWNLOAD_LOCATION)
             setString(KEY_MV_DOWNLOAD_TEMPLATE)
+            setString(KEY_SONG_DOWNLOAD_LOCATION)
             setBoolean(KEY_POSTER_WALL_STACKED)
             setString(KEY_POSTER_WALL_STACK_LAYOUTS)
             setString(KEY_POSTER_WALL_SOURCE)
@@ -1788,6 +1845,7 @@ class SettingsManager(private val context: Context) :
             setBoolean(KEY_AUDIO_FOCUS_DISABLED)
             setBoolean(KEY_SHUFFLE_RESHUFFLE_ON_STARTUP)
             setBoolean(KEY_DISABLE_SEQUENTIAL_PLAYBACK)
+            setBoolean(KEY_PLAYBACK_MODE_STOP_AFTER_CURRENT)
             setBoolean(KEY_LYRIC_PAGE_TRANSLATION)
             setBoolean(KEY_LYRIC_PAGE_KEEP_SCREEN_ON)
             setBoolean(KEY_APPLE_MUSIC_LYRICS_WORD_LIFT)
@@ -1822,6 +1880,7 @@ class SettingsManager(private val context: Context) :
             setBoolean(KEY_MINI_PLAYER_LONG_PRESS_SOURCE)
             setInt(KEY_MINI_PLAYER_RIGHT_BUTTON)
             setBoolean(KEY_TRANSPORT_BUTTON_OUTLINES)
+            setBoolean(KEY_PLAYER_QUALITY_CHIP_OUTLINE)
             setBoolean(KEY_PLAYER_TAP_SEEK_ENABLED)
             setBoolean(KEY_PLAYER_SHOW_TOTAL_DURATION)
             setBoolean(KEY_PLAYER_SHOW_SONG_ANNOTATION)
@@ -1924,9 +1983,11 @@ class SettingsManager(private val context: Context) :
             setBoolean(KEY_OPEN_PLAYER_FROM_NOTIFICATION)
             setBoolean(KEY_STARTUP_AUTO_PLAY)
             setBoolean(KEY_STARTUP_OPEN_PLAYER)
+            setBoolean(KEY_HOME_AI_MIX_VISIBLE)
             setBoolean(KEY_CONTINUE_PLAYBACK_ROW_VISIBLE)
             setBoolean(KEY_LIBRARY_CONTINUE_PLAYBACK_ROW_VISIBLE)
             setBoolean(KEY_CATEGORY_CONTINUE_PLAYBACK_ROW_VISIBLE)
+            setBoolean(KEY_MCP_SERVER_ENABLED)
             setBoolean(KEY_WEB_MUSIC_SERVER_ENABLED)
             setBoolean(KEY_SLEEP_TIMER_STOP_AFTER_CURRENT)
             setBoolean(KEY_EQ_ENABLED)
@@ -2166,6 +2227,10 @@ class SettingsManager(private val context: Context) :
             setString(KEY_EMBY_SERVER_NAME)
             setString(KEY_EMBY_SERVERS)
             setString(KEY_EMBY_ACTIVE_ID)
+            setString(KEY_OPENAI_API_KEY)
+            setString(KEY_OPENAI_BASE_URL)
+            setString(KEY_OPENAI_MODEL)
+            setInt(KEY_AI_API_PROTOCOL)
             setString(KEY_LYRIC_SOURCE_PRIORITY)
             setString(KEY_LYRIC_LINE_BLACKLIST)
             setString(KEY_LYRIC_FONT_NAME)

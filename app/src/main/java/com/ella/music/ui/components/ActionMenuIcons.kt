@@ -19,6 +19,7 @@ import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Edit
 import top.yukonga.miuix.kmp.icon.extended.Favorites
+import top.yukonga.miuix.kmp.icon.extended.Help
 import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.HorizontalSplit
 import top.yukonga.miuix.kmp.icon.extended.Image
@@ -223,6 +224,74 @@ private val MenuSleepTimerIcon: ImageVector by lazy {
     }.build()
 }
 
+private val MenuAudioToolsIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "MenuAudioTools",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            fill = SolidColor(Color.Black),
+            pathFillType = PathFillType.NonZero
+        ) {
+            moveTo(2f, 20f)
+            verticalLineTo(10f)
+            quadTo(2f, 9.17f, 2.59f, 8.59f)
+            reflectiveQuadTo(4f, 8f)
+            horizontalLineTo(7f)
+            verticalLineTo(6f)
+            quadTo(7f, 5.18f, 7.59f, 4.59f)
+            reflectiveQuadTo(9f, 4f)
+            horizontalLineToRelative(6f)
+            quadToRelative(0.83f, 0f, 1.41f, 0.59f)
+            quadTo(17f, 5.18f, 17f, 6f)
+            verticalLineTo(8f)
+            horizontalLineToRelative(3f)
+            quadToRelative(0.83f, 0f, 1.41f, 0.59f)
+            reflectiveQuadTo(22f, 10f)
+            verticalLineTo(20f)
+            horizontalLineTo(2f)
+            close()
+            moveTo(8f, 15f)
+            verticalLineToRelative(1f)
+            horizontalLineTo(6f)
+            verticalLineTo(15f)
+            horizontalLineTo(4f)
+            verticalLineToRelative(3f)
+            horizontalLineTo(20f)
+            verticalLineTo(15f)
+            horizontalLineTo(18f)
+            verticalLineToRelative(1f)
+            horizontalLineTo(16f)
+            verticalLineTo(15f)
+            horizontalLineTo(8f)
+            close()
+            moveTo(4f, 10f)
+            verticalLineToRelative(3f)
+            horizontalLineTo(6f)
+            verticalLineTo(12f)
+            horizontalLineTo(8f)
+            verticalLineToRelative(1f)
+            horizontalLineToRelative(8f)
+            verticalLineTo(12f)
+            horizontalLineToRelative(2f)
+            verticalLineToRelative(1f)
+            horizontalLineToRelative(2f)
+            verticalLineTo(10f)
+            horizontalLineTo(4f)
+            close()
+            moveTo(9f, 8f)
+            horizontalLineToRelative(6f)
+            verticalLineTo(6f)
+            horizontalLineTo(9f)
+            verticalLineTo(8f)
+            close()
+        }
+    }.build()
+}
+
 internal val AddToPlaylistVectorIcon: ImageVector by lazy {
     ImageVector.Builder(
         name = "AddToPlaylist",
@@ -362,10 +431,12 @@ internal fun actionMenuIcon(id: String): ImageVector? = when (id) {
     ActionMenuIds.PLAY_NEXT -> PlayNextListIcon
     ActionMenuIds.SHARE -> MiuixIcons.Regular.Share
     ActionMenuIds.SPECTRUM -> MiuixIcons.Regular.Tune
+    ActionMenuIds.AI -> MiuixIcons.Regular.Help
     ActionMenuIds.INFO -> MiuixIcons.Regular.Info
     ActionMenuIds.RATING -> MenuRatingStarIcon
     ActionMenuIds.EDIT_TAGS -> MiuixIcons.Regular.Edit
     ActionMenuIds.LYRIC_TIMING -> MiuixIcons.Regular.Notes
+    ActionMenuIds.AUDIO_TOOLS -> MenuAudioToolsIcon
     ActionMenuIds.REMOVE_FROM_PLAYLIST -> MiuixIcons.Regular.Remove
     ActionMenuIds.REMOVE_FROM_RECENT_PLAYBACK -> MiuixIcons.Regular.Delete
     ActionMenuIds.DELETE_SINGLE_RECENT_PLAYBACK -> MiuixIcons.Regular.Delete
@@ -389,6 +460,7 @@ internal fun actionMenuIcon(id: String): ImageVector? = when (id) {
     ActionMenuIds.KEEP_SCREEN_ON -> MiuixIcons.Regular.Show
     ActionMenuIds.DOWNLOAD_MV, ActionMenuIds.DOWNLOAD -> MiuixIcons.Regular.Download
     ActionMenuIds.VIEW_MV -> MenuMusicVideoIcon
+    ActionMenuIds.SONG_COMMENTS, ActionMenuIds.MV_COMMENTS, ActionMenuIds.SONG_WIKI -> MiuixIcons.Regular.Notes
     PlayerExtraActionIds.LYRIC_SHARE -> MiuixIcons.Regular.Notes
     else -> null
 }

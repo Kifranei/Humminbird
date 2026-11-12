@@ -90,6 +90,8 @@ fun SettingsScreen(
     onNavigateToHighlightedCoverMediaSettings: (String) -> Unit = { onNavigateToCoverMediaSettings() },
     onNavigateToSetupWizard: () -> Unit = {},
     onNavigateToMaintenance: () -> Unit = {},
+    onNavigateToOther: () -> Unit = {},
+    onNavigateToExperimental: () -> Unit = {},
     onBack: () -> Unit = {},
     showBackButton: Boolean = true,
     mainViewModel: MainViewModel? = null,
@@ -369,6 +371,18 @@ fun SettingsScreen(
                             summary = stringResource(R.string.settings_backup_summary),
                             onClick = onNavigateToBackupSettings
                         )
+                    }
+                }
+
+                SettingsCardGroup {
+                    Column {
+                        ArrowPreference(
+                            title = stringResource(R.string.settings_experimental),
+                            summary = stringResource(R.string.settings_experimental_summary),
+                            onClick = onNavigateToExperimental
+                        )
+                        ArrowPreference(title = stringResource(R.string.settings_other),
+                            summary = stringResource(R.string.video_tools_summary), onClick = onNavigateToOther)
                     }
                 }
 

@@ -67,7 +67,7 @@ internal fun HyperOsNoUpdateView(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = stringResource(R.string.about_app_name),
+            text = "Halcyon",
             fontSize = 36.sp,
             fontWeight = FontWeight.Bold,
             color = MiuixTheme.colorScheme.onSurface,
@@ -194,7 +194,7 @@ internal fun HyperOsNewUpdateHeaderCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = stringResource(R.string.about_app_name),
+                text = "Halcyon",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
                 color = MiuixTheme.colorScheme.onSurface
@@ -203,7 +203,7 @@ internal fun HyperOsNewUpdateHeaderCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "${stringResource(R.string.about_app_name)} ${release.tagName}",
+                text = "Halcyon ${release.tagName}",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = MiuixTheme.colorScheme.onSurface

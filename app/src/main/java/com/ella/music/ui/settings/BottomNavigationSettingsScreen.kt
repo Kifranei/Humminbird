@@ -48,6 +48,7 @@ import com.ella.music.R
 import com.ella.music.bottomDockTabCatalog
 import com.ella.music.data.BottomBarGlassEffect
 import com.ella.music.data.SettingsManager
+import com.ella.music.ui.components.BottomBarLiquidGlassConfig
 import com.ella.music.ui.components.EllaSmallTopAppBar
 import com.ella.music.ui.components.GlassPill
 import com.ella.music.ui.components.ReorderableSelectionItem
@@ -55,7 +56,8 @@ import com.ella.music.ui.components.ReorderableSelectionSheet
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
-
+import com.ella.music.ui.components.EllaSpinnerPreference
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.basic.Icon
@@ -76,6 +78,7 @@ fun BottomNavigationSettingsScreen(onBack: () -> Unit) {
     val storedItems by settingsManager.bottomDockItems.collectAsState(
         initial = SettingsManager.DEFAULT_BOTTOM_DOCK_ITEMS.split(',')
     )
+    val homeSearchTarget by settingsManager.homeSearchTarget.collectAsState(initial = "local")
     val mergeSearch by settingsManager.bottomDockMergeSearch.collectAsState(initial = true)
     val maxSelectableItems = SettingsManager.maxBottomDockItems(mergeSearch)
     val startupItem by settingsManager.bottomDockStartupItem.collectAsState(
@@ -84,6 +87,18 @@ fun BottomNavigationSettingsScreen(onBack: () -> Unit) {
     val startupOpenPlayer by settingsManager.startupOpenPlayer.collectAsState(initial = false)
     val bottomBarCornerRadius by settingsManager.bottomBarCornerRadius.collectAsState(
         initial = SettingsManager.DEFAULT_BOTTOM_BAR_CORNER_RADIUS_DP
+    )
+    val bottomBarLiquidBlurRadius by settingsManager.bottomBarLiquidBlurRadius.collectAsState(
+        initial = SettingsManager.DEFAULT_BOTTOM_BAR_LIQUID_BLUR_RADIUS_DP
+    )
+    val bottomBarLiquidRefractionHeight by settingsManager.bottomBarLiquidRefractionHeight.collectAsState(
+        initial = SettingsManager.DEFAULT_BOTTOM_BAR_LIQUID_REFRACTION_HEIGHT_DP
+    )
+    val bottomBarLiquidRefractionAmount by settingsManager.bottomBarLiquidRefractionAmount.collectAsState(
+        initial = SettingsManager.DEFAULT_BOTTOM_BAR_LIQUID_REFRACTION_AMOUNT_DP
+    )
+    val bottomBarLiquidChromaticAberration by settingsManager.bottomBarLiquidChromaticAberration.collectAsState(
+        initial = SettingsManager.DEFAULT_BOTTOM_BAR_LIQUID_CHROMATIC_ABERRATION_PERCENT
     )
     val catalog = bottomDockTabCatalog()
     val selectedIds = SettingsManager.visibleBottomDockItems(
@@ -121,6 +136,20 @@ fun BottomNavigationSettingsScreen(onBack: () -> Unit) {
         0.dp
     }
     val topBarHeight = 56.dp + statusBarHeight
+    val previewBackdrop = rememberLayerBackdrop()
+    val previewLiquidGlassConfig = remember(
+        bottomBarLiquidBlurRadius,
+        bottomBarLiquidRefractionHeight,
+        bottomBarLiquidRefractionAmount,
+        bottomBarLiquidChromaticAberration
+    ) {
+        BottomBarLiquidGlassConfig(
+            blurRadiusDp = bottomBarLiquidBlurRadius.toFloat(),
+            refractionHeightDp = bottomBarLiquidRefractionHeight.toFloat(),
+            refractionAmountDp = bottomBarLiquidRefractionAmount.toFloat(),
+            chromaticAberration = bottomBarLiquidChromaticAberration / 100f
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -142,6 +171,8 @@ fun BottomNavigationSettingsScreen(onBack: () -> Unit) {
                     tabs = selectedIds.mapNotNull(catalog::get),
                     mergeSearch = mergeSearch,
                     cornerRadiusDp = bottomBarCornerRadius.toFloat(),
+                    liquidGlassConfig = previewLiquidGlassConfig,
+                    backdrop = previewBackdrop
                 )
             }
 
@@ -158,6 +189,70 @@ fun BottomNavigationSettingsScreen(onBack: () -> Unit) {
                     valueText = "${bottomBarCornerRadius}dp",
                     onValueChange = { value ->
                         scope.launch { settingsManager.setBottomBarCornerRadius(value) }
+                    }
+                )
+                } // search-anchor:end
+
+            }
+
+            SmallTitle(text = stringResource(R.string.settings_bottom_bar_liquid_glass_section))
+            SettingsCardGroup {
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_bottom_bar_liquid_blur_radius) {
+                SettingsIntSliderPreference(
+                    title = stringResource(R.string.settings_bottom_bar_liquid_blur_radius),
+                    summary = stringResource(R.string.settings_bottom_bar_liquid_blur_radius_summary),
+                    value = bottomBarLiquidBlurRadius,
+                    valueRange = SettingsManager.BOTTOM_BAR_LIQUID_BLUR_RADIUS_MIN_DP..
+                        SettingsManager.BOTTOM_BAR_LIQUID_BLUR_RADIUS_MAX_DP,
+                    valueText = "${bottomBarLiquidBlurRadius}dp",
+                    onValueChange = { value ->
+                        scope.launch { settingsManager.setBottomBarLiquidBlurRadius(value) }
+                    }
+                )
+                } // search-anchor:end
+
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_bottom_bar_liquid_refraction_height) {
+                SettingsIntSliderPreference(
+                    title = stringResource(R.string.settings_bottom_bar_liquid_refraction_height),
+                    summary = stringResource(R.string.settings_bottom_bar_liquid_refraction_height_summary),
+                    value = bottomBarLiquidRefractionHeight,
+                    valueRange = SettingsManager.BOTTOM_BAR_LIQUID_REFRACTION_MIN_DP..
+                        SettingsManager.BOTTOM_BAR_LIQUID_REFRACTION_MAX_DP,
+                    valueText = "${bottomBarLiquidRefractionHeight}dp",
+                    onValueChange = { value ->
+                        scope.launch { settingsManager.setBottomBarLiquidRefractionHeight(value) }
+                    }
+                )
+                } // search-anchor:end
+
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_bottom_bar_liquid_refraction_amount) {
+                SettingsIntSliderPreference(
+                    title = stringResource(R.string.settings_bottom_bar_liquid_refraction_amount),
+                    summary = stringResource(R.string.settings_bottom_bar_liquid_refraction_amount_summary),
+                    value = bottomBarLiquidRefractionAmount,
+                    valueRange = SettingsManager.BOTTOM_BAR_LIQUID_REFRACTION_MIN_DP..
+                        SettingsManager.BOTTOM_BAR_LIQUID_REFRACTION_MAX_DP,
+                    valueText = "${bottomBarLiquidRefractionAmount}dp",
+                    onValueChange = { value ->
+                        scope.launch { settingsManager.setBottomBarLiquidRefractionAmount(value) }
+                    }
+                )
+                } // search-anchor:end
+
+                // search-anchor:start
+                SettingsSearchAnchor(R.string.settings_bottom_bar_liquid_chromatic_aberration) {
+                SettingsIntSliderPreference(
+                    title = stringResource(R.string.settings_bottom_bar_liquid_chromatic_aberration),
+                    summary = stringResource(R.string.settings_bottom_bar_liquid_chromatic_aberration_summary),
+                    value = bottomBarLiquidChromaticAberration,
+                    valueRange = SettingsManager.BOTTOM_BAR_LIQUID_CHROMATIC_ABERRATION_MIN_PERCENT..
+                        SettingsManager.BOTTOM_BAR_LIQUID_CHROMATIC_ABERRATION_MAX_PERCENT,
+                    valueText = "$bottomBarLiquidChromaticAberration%",
+                    onValueChange = { value ->
+                        scope.launch { settingsManager.setBottomBarLiquidChromaticAberration(value) }
                     }
                 )
                 } // search-anchor:end
@@ -262,6 +357,22 @@ fun BottomNavigationSettingsScreen(onBack: () -> Unit) {
 
             SmallTitle(text = stringResource(R.string.settings_bottom_dock_selected))
             SettingsCardGroup {
+                SettingsSearchAnchor(R.string.settings_home_search_target) {
+                    // search-anchor:start
+                    SettingsSearchAnchor(R.string.settings_home_search_target) {
+                    EllaSpinnerPreference(
+                        title = stringResource(R.string.settings_home_search_target),
+                        summary = stringResource(R.string.settings_home_search_target_summary),
+                        items = listOf(
+                            stringResource(R.string.settings_home_search_local), "LX", "MusicFree"
+                        ).map { DropdownItem(title = it) },
+                        selectedIndex = listOf("local", "lx", "musicfree").indexOf(homeSearchTarget).coerceAtLeast(0),
+                        onSelectedIndexChange = { index ->
+                            scope.launch { settingsManager.setHomeSearchTarget(listOf("local", "lx", "musicfree")[index]) }
+                        }
+                    )
+                    } // search-anchor:end
+                }
                 // search-anchor:start
                 SettingsSearchAnchor(R.string.settings_bottom_dock_merge_search) {
                 SwitchPreference(
@@ -375,20 +486,24 @@ private fun BottomDockPreview(
     tabs: List<BottomDockTab>,
     mergeSearch: Boolean,
     cornerRadiusDp: Float,
+    liquidGlassConfig: BottomBarLiquidGlassConfig,
+    backdrop: top.yukonga.miuix.kmp.blur.LayerBackdrop?
 ) {
-    val previewBackdrop = rememberLayerBackdrop()
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .padding(vertical = 4.dp)
     ) {
+        // Underlay backdrop with vibrant gradient and shapes so refraction and lens distortion are visible
         Box(
             modifier = Modifier
                 .matchParentSize()
                 .padding(horizontal = 8.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .layerBackdrop(previewBackdrop)
+                .then(
+                    if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+                )
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
@@ -435,6 +550,7 @@ private fun BottomDockPreview(
             }
         }
 
+        // Live dock and search button preview rendered with GlassPill and liquid glass shader
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -443,12 +559,13 @@ private fun BottomDockPreview(
             verticalAlignment = Alignment.CenterVertically
         ) {
             GlassPill(
-                backdrop = previewBackdrop,
+                backdrop = backdrop,
                 modifier = Modifier
                     .then(if (mergeSearch) Modifier.fillMaxWidth() else Modifier.weight(1f))
                     .height(58.dp),
                 cornerRadiusDp = cornerRadiusDp,
-                glassEffect = BottomBarGlassEffect.Blur,
+                glassEffect = BottomBarGlassEffect.LiquidGlass,
+                liquidGlassConfig = liquidGlassConfig
             ) {
                 Row(
                     modifier = Modifier
@@ -468,10 +585,11 @@ private fun BottomDockPreview(
             }
             if (!mergeSearch) {
                 GlassPill(
-                    backdrop = previewBackdrop,
+                    backdrop = backdrop,
                     modifier = Modifier.size(58.dp),
                     cornerRadiusDp = cornerRadiusDp,
-                    glassEffect = BottomBarGlassEffect.Blur,
+                    glassEffect = BottomBarGlassEffect.LiquidGlass,
+                    liquidGlassConfig = liquidGlassConfig
                 ) {
                     Box(
                         modifier = Modifier.fillMaxSize(),

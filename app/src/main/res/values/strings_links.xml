@@ -5,6 +5,7 @@
     <string name="netease_link_target_honor">网易云音乐荣耀定制版</string>
     <string name="netease_link_target_custom">自定义</string>
     <string name="netease_link_open_failed">无法打开链接</string>
+    <string name="netease_link_song_comments">歌曲评论</string>
     <string name="netease_link_artist_wiki">艺人百科</string>
     <string name="netease_link_mv_open_mode">网易云MV 打开方式</string>
     <string name="netease_link_mv_open_mode_summary">歌曲带有网易云MV 信息时，选择用内置播放器在线播放还是外部打开</string>
